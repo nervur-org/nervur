@@ -46,8 +46,21 @@ jobs:
       - run: npm run check
         working-directory: nervur
 
+      # A version carrying a hyphen is a prerelease. It publishes under
+      # `next`, so `latest` keeps naming the last real release and
+      # `npm i nervur` is untouched.
+      - id: tag
+        working-directory: nervur
+        run: |
+          version=$(node -p "require('./package.json').version")
+          case "$version" in
+            *-*) echo "npm=next" >> "$GITHUB_OUTPUT" ;;
+            *) echo "npm=latest" >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "version $version"
+
       # `prepublishOnly` refuses a publish that is not the release road.
-      - run: npm publish
+      - run: npm publish --tag ${{ steps.tag.outputs.npm }}
         working-directory: nervur
         env:
           NERVUR_GATED: '1'

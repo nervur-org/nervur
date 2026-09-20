@@ -1,5 +1,8 @@
 # nervur
 
+[![check](https://github.com/nervur-org/nervur/actions/workflows/check.yml/badge.svg)](https://github.com/nervur-org/nervur/actions/workflows/check.yml)
+[![npm](https://img.shields.io/npm/v/nervur)](https://www.npmjs.com/package/nervur)
+
 Nervur's kit of [Quo](https://quo.systems). Quo is a protocol: an object
 asks another object and gets an answer, without knowing where it is. This
 package is one implementation of it, and the two names never stand for
@@ -35,20 +38,25 @@ A harbor is asked and nothing else. `harbor.ask` takes one root request,
 as its root, and answers one plain JSON value. `arrive`, `holds` and
 `close` are the rest of what a program holds of a harbor.
 
-With no terrain, the harbor picks its ground's bodies itself. In Node it
-keeps itself in a folder, `where` if you name one, else `$NERVUR_DIR`,
-else `~/.nervur`, speaks TCP and the web where you open them,
-and serves its root line, so the `nervur` command below asks it while it
-stands. A folder opens in one run at a time. Bundled for a browser, in a
-page or a worker, it keeps itself in the IndexedDB database `where`
-names, else `nervur`, its seed sealed under a key the browser never hands
-out, speaks the web where you open it, and opens in one run at a time.
-On Cloudflare Workers it is one Durable Object of many a worker carries,
-running in a child worker the object loads for the commit `live` names,
-answering Quo at `/<name>/quo` on whatever host reaches it, and asking
-over TCP and the web. Anywhere else it lives as long as its process and
-speaks the web where you open it. Hand in a terrain, as below, and that
-one is used.
+With no terrain, the harbor picks its ground's bodies itself.
+
+In Node it keeps itself in a folder: `where` if you name one, else
+`$NERVUR_DIR`, else `~/.nervur`. It speaks TCP and the web where you
+open them. It serves its root line, so the `nervur` command below asks
+it while it stands. A folder opens in one run at a time.
+
+Bundled for a browser, in a page or a worker, it keeps itself in an
+IndexedDB database. `where` names it, else `nervur`. Its seed is sealed
+under a key the browser never hands out. It speaks the web where you
+open it, and opens in one run at a time.
+
+On Cloudflare Workers it is one Durable Object of many a worker carries.
+It runs in a child worker the object loads for the commit `live` names.
+It answers Quo at `/<name>/quo` on whatever host reaches it, and asks
+over TCP and the web.
+
+Anywhere else it lives as long as its process, and speaks the web where
+you open it. Hand in a terrain, as below, and that one is used.
 
 Nothing enters a harbor unasked. A new harbor holds its catalogue alone,
 and a carrier stands only once the root opens it:
@@ -59,13 +67,14 @@ await harbor.ask({ method: 'open', args: { key: 'web', class: 'org.nervur.web' }
 
 ## A harbor on the edge
 
-An edge harbor is born on your machine and carried there, so you pilot it
+An edge harbor is born on your machine and carried there. So you pilot it
 from your own harbor, as you pilot one on a server, and you move its code
 the same way, with no deploy. One worker carries as many harbors as you
 pack into it, each a Durable Object by its name, answering at
-`/<name>/quo`. The worker is a shell: it keeps each harbor's storage and
-its web door, and runs the harbor, the kit and the modules its `live`
+`/<name>/quo`. The worker is a shell. It keeps each harbor's storage and
+its web door. It runs the harbor, the kit and the modules its `live`
 commit holds, in a child worker Cloudflare's Worker Loader makes of them.
+
 The worker is a folder of its own, an ES module project (`"type":
 "module"` in its `package.json`), holding the worker and its
 `wrangler.toml`:
@@ -119,8 +128,8 @@ nervur edge dev ./pack.edge.json main --dir ./harbor
 ```
 
 `edge dev` packs the harbor as `main` into `pack.edge.json`, beside any
-harbor packed there before, and runs your `wrangler dev`, keeping the
-objects' storage and a secret of its own in `.nervur-edge`, so the
+harbor packed there before. It runs your `wrangler dev`, keeping the
+objects' storage and a secret of its own in `.nervur-edge`. So the
 harbor stands again each time you run it. The harbor's code travels in
 its package, as its DNA. The first time its object starts, the harbor
 lands in its storage; after that the storage is the harbor, and a new
@@ -142,7 +151,7 @@ NERVUR_SECRET`, and hold the same one as `NERVUR_SECRET` in your shell.
 Name each harbor's address with `reach`, pack each with
 `nervur edge pack ./pack.edge.json <name> --dir <its folder>`, and
 `wrangler deploy`. A pack holds every seed sealed under that secret, so
-it ships in the bundle and opens nowhere else, and a new harbor is a new
+it ships in the bundle and opens nowhere else. A new harbor is a new
 deploy, never a new secret. `pilot` opens the web carrier where the
 invitation names a web address. A name the pack does not hold answers
 404, so a stranger's request mints nothing.
@@ -222,7 +231,7 @@ class and a contract.
 
 Your classes come in modules, each one file exporting `module`, `version`
 and `classes`, a module named as a kind is. A harbor's catalogue keeps
-its code as a git repository, its DNA, from its first moment: a commit
+its code as a git repository, its DNA, from its first moment. A commit
 holds `modules/<module>.js` for every module the harbor runs, and `live`
 names the commit that stands. Her asks, the root's and an owner's:
 
@@ -260,12 +269,13 @@ level stands the next and leaves it alone.
    hers from here, and `Harbor.open()` returns. It is one call, and no ask
    makes it.
 2. **The dock's**, on her `stand` ask. She stands every other faculty,
-   registries first, then memory faculties, then the rest; hands her
-   routes to the carrier; and stands every ward she hosts, under the seed
+   registries first, then memory faculties, then the rest. She hands her
+   routes to the carrier. She stands every ward she hosts, under the seed
    she keeps for it.
 3. **Each ward's beings**, stood by nothing. A being's cells, occupants
-   and standings are her ward's rows, so she is born from her row when an
-   ask reaches her, once for the asks in flight on her, and dropped after.
+   and standings are her ward's rows. So she is born from her row when an
+   ask reaches her, once for the asks in flight on her, and dropped
+   after.
    A harbor holds in memory its faculties, its wards and the beings
    answering now.
 
@@ -280,28 +290,28 @@ await harbor.ask({ method: 'stand' });
 The command asks it of every harbor it opens.
 
 Cells decide what stands. The modules only resolve a kind a row keeps.
-Opening a harbor on empty memory is its genesis: the harbor writes the
-catalogue and the default dock, and the root's asks write the rest: `add`
-on the catalogue, `open`, `host`, `route`, and `boot` on a ward.
+Opening a harbor on empty memory is its genesis. The harbor writes the
+catalogue and the default dock. The root's asks write the rest: `add` on
+the catalogue, `open`, `host`, `route`, and `boot` on a ward.
 `host { ward, seed? }` stands a ward under a seed you name, or a drawn
 one.
 
 A ward is a being too, and her row keeps her class's kind. `Ward` and
 `Dock` are contracts, and `DefaultWard` and `DefaultDock` the library's
 defaults of them. A class of yours extending either, in a module the
-catalogue runs, is a ward of your own: `host { ward, class }` stands a
-hosted ward of it, and `become { class }` on any ward, the box ward's
-dock among them, has her born again of it on the same cells and
-relations. A dock of yours stands on every open, since she stands once
-the catalogue runs.
+catalogue runs, is a ward of your own. `host { ward, class }` stands a
+hosted ward of it. `become { class }` on any ward has her born again of
+it, on the same cells and relations, the box ward's dock among them. A
+dock of yours stands on every open, since she stands once the catalogue
+runs.
 
 Every class comes from a registry. The catalogue is the library's, and a
 class of yours extending `RegistryFaculty` is another: open it as any
 faculty, and name it where a class is named. `open { key, class,
-registry }` stands a faculty through it, `host { ward, registry }` stands
-a ward and every class of it through it, and `become { class, registry }`
-stands the dock through it, where the catalogue stands that registry. A
-registry may stand through another.
+registry }` stands a faculty through it. `host { ward, registry }` stands
+a ward and every class of it through it. `become { class, registry }`
+stands the dock through it. Each of the three holds where the catalogue
+stands that registry. A registry may stand through another.
 
 A ward's place is kept by the root memory unless you name a memory
 faculty. `open { key: 'vault', class: 'org.nervur.ground-memory' }` opens
@@ -318,15 +328,15 @@ carries a ward between keepers whole.
 - **Entropy, Clock, Custody, Memory, Carrier, Loader.** The contracts a
   terrain fulfils. Each has one suite, and every body that fulfils it
   passes it. `nervur/proof` hands you those suites and the unpacking
-  law's as scenes, a title and a function each, so a body of your own,
-  a memory in a cloud or a secret of your platform's, runs them under
-  your own runner: `for (const [title, scene] of memoryScenes('Mine',
+  law's as scenes, a title and a function each. A body of your own runs
+  them under your own runner, be it a memory in a cloud or a secret of
+  your platform's. `for (const [title, scene] of memoryScenes('Mine',
   make, expect)) test(title, scene)`.
 - **Harbor, Terrain, Catalogue, Registry.** The onion.
 - **World, PointerTerrain** and the pointer bodies. A whole world with
   this package alone.
 - **SourceLoader, BundleLoader.** A module's source run by the engine's
-  own import, its `nervur` linked to the kit running, and the modules a
+  own import, its `nervur` linked to the kit running. And the modules a
   bundle carries, found by their git blob, for a service worker, which
   imports nothing once it runs.
 - **addGround, grounds**: the grounds `Harbor.open()` tries, and a way to
@@ -335,8 +345,8 @@ carries a ward between keepers whole.
   folder you name in code.
 - **BrowserTerrain, IdbMemory, IdbCustody**, from `nervur/browser`: the
   browser ground's terrain and bodies. `serveWorker(Harbor.open())` at
-  the top of a shared or service worker holds one harbor for every tab,
-  each tab asks it with `rootOf(worker)`, and a push the service worker
+  the top of a shared or service worker holds one harbor for every tab.
+  Each tab asks it with `rootOf(worker)`. A push the service worker
   hears is the dock's `heard`, told to every carrier.
 - **harborShell, harborWorker, EdgeMemory, EdgeCustody, EdgeLoader**,
   from `nervur/edge`, and the kit as one module's text, from
@@ -364,12 +374,12 @@ carries a ward between keepers whole.
   the dock's `heard` when a device hears a push.
 
 Quo crosses two carriers, TCP and the web, and no third. MCP, an HTTP API
-and every other outside protocol are gateway faculties: classes that
-serve their clients, a UI in a browser, an MCP client, a caller holding
-a bearer token, on one side, and stand as an ordinary being on the
-other, offering standings, holding occupants and speaking Quo inbound
-and outbound. They and every screen
-are classes written over this package, and none ships in it.
+and every other outside protocol are gateway faculties. A gateway serves
+its clients on one side: a UI in a browser, an MCP client, a caller
+holding a bearer token. On the other it stands as an ordinary being,
+offering standings, holding occupants and speaking Quo both ways. They
+and every screen are classes written over this package, and none ships
+in it.
 
 ## The command
 
@@ -399,17 +409,19 @@ so nobody routes it by hand. Where an invitation carries no `at`,
 named this way is trusted first.
 
 `init` makes the harbor, opens its TCP carrier unless you pass
-`--no-tcp`, and prints its pk and an owner invitation. `serve` listens for
-Quo on that carrier and for the root's asks on a local socket, open to
-you alone, and adds nothing to the harbor: one with no TCP carrier is not
-served. Every other command is one root ask, `pilot` at most two, sent
-to the served harbor, or answered from the folder when none is served.
-Each prints one JSON line. `--dir` defaults to `$NERVUR_DIR`, then `~/.nervur`.
+`--no-tcp`, and prints its pk and an owner invitation. `serve` listens
+for Quo on that carrier, and for the root's asks on a local socket open
+to you alone. It adds nothing to the harbor, so one with no TCP carrier
+is not served. Every other command is one root ask, `pilot` at most two.
+Each goes to the served harbor, or is answered from the folder when none
+is served, and prints one JSON line. `--dir` defaults to `$NERVUR_DIR`,
+then `~/.nervur`.
+
 `module add` reads the file and commits its text into the harbor's DNA,
 so the harbor holds its own code on any ground. Routes live in the
 harbor like everything else, so a restart finds both. `nervur modules`
-shows what runs, `nervur module remove <module>` stops one, `nervur log`
-walks the commits, `nervur live <commit>` moves `live`, and `nervur
+shows what runs, and `nervur module remove <module>` stops one. `nervur
+log` walks the commits and `nervur live <commit>` moves `live`. `nervur
 origin <url>` with `nervur fetch` reads a git repository into the
 harbor.
 
@@ -421,17 +433,18 @@ nervur pilot far '<owner invitation>' --dir ./mine
 nervur host shop --via far --dir ./mine
 ```
 
-`pilot` is your dock's `hold`: it keeps the invitation under the name
-`far` as an ordinary Quo relation, kept in your harbor's memory, and
-reaches the far harbor where its invitation's `at` says; where it says
-nothing, name the address after the invitation, and the dock routes it
-there. Where that address is on the web, `pilot` opens the web carrier
-first. With `--via far`, any command is asked of the far harbor as its
-owner, sealed over its carrier, except `own` and `disown`, which stay
-the far root's. Every ward holds far beings this way, a ward or any
-other being whose invitation
-carries the notes `{ owner: true }`, each under a name, asked with
-`pilot { name, method, args }` and let go with `drop { name }`.
+`pilot` is your dock's `hold`. It keeps the invitation under the name
+`far`, as an ordinary Quo relation in your harbor's memory. It reaches
+the far harbor where its invitation's `at` says. Where it says nothing,
+name the address after the invitation, and the dock routes it there.
+Where that address is on the web, `pilot` opens the web carrier first.
+
+With `--via far`, any command is asked of the far harbor as its owner,
+sealed over its carrier, except `own` and `disown`, which stay the far
+root's. Every ward holds far beings this way, each under a name. It may
+be a ward, or any other being whose invitation carries the notes
+`{ owner: true }`. Each is asked with `pilot { name, method, args }` and
+let go with `drop { name }`.
 
 `harbor.ask(request)` is the same request in code, for any other front:
 `{ ward?, method?, args? }` in, one JSON answer out.
