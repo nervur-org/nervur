@@ -1,0 +1,44 @@
+name: Bug report
+description: Something in nervur does not do what it says
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Please do not report a security problem
+        here; see SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version of nervur
+      placeholder: 0.22.0
+    validations:
+      required: true
+  - type: input
+    id: engine
+    attributes:
+      label: Engine and version
+      description: Node, Deno, Bun, workerd, a browser, or an app's webview
+      placeholder: Node 22.18 on macOS 15
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: The smallest program that shows it
+      render: javascript
+    validations:
+      required: true
+  - type: textarea
+    id: spec
+    attributes:
+      label: The sentence of Quo's spec this touches, if any
+      description: >
+        Where nervur and the spec disagree, the spec is right and nervur
+        has a defect. Naming the sentence makes that quick to settle.

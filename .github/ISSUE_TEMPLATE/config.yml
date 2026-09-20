@@ -1,0 +1,10 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Quo, the protocol
+    url: https://github.com/razvangherghina/quo
+    about: >
+      Quo is a separate work with its own spec. A question about what the
+      bytes mean belongs there.
+  - name: Security
+    url: https://github.com/nervur-org/nervur/security/policy
+    about: Report a vulnerability privately, never in a public issue.

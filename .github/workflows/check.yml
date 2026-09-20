@@ -1,0 +1,39 @@
+name: check
+
+# The library's own gate, run on every push to main and every pull request.
+# `quo/` is a repository of its own, so it is checked out beside this one:
+# the tests walk up until they find a folder named quo holding SPEC.md, and
+# that is what they find here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: nervur
+        uses: actions/checkout@v5
+        with:
+          path: nervur
+
+      - name: quo, beside it
+        uses: actions/checkout@v5
+        with:
+          repository: razvangherghina/quo
+          path: quo
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - run: npm install
+        working-directory: nervur
+
+      - run: npm run check
+        working-directory: nervur

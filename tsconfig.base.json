@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    // A test may read a library written in JavaScript, and read it typed:
+    // the types are inferred from the code itself rather than declared
+    // beside it, because a declaration file is a second list of what a
+    // module exports and it falls behind the first one silently.
+    "allowJs": true,
+    "checkJs": false,
+    // A website installs from its own folder, so its dependencies are its
+    // own tree and not this one's. Their declarations are theirs to be right
+    // about; what is checked here is the code this repository wrote.
+    "skipLibCheck": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"]
+  }
+}

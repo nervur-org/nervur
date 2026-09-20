@@ -1,0 +1,53 @@
+name: release
+
+# A tag published to the registry, by OpenID Connect and no secret. npm
+# knows this repository and this file by name, as its trusted publisher,
+# and hands the run a credential that lives for that run alone. There is
+# no token here and none in the repository.
+#
+# The gate runs again before the publish, on the machine that publishes,
+# so what goes out is what was proven.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: nervur
+        uses: actions/checkout@v5
+        with:
+          path: nervur
+
+      - name: quo, beside it
+        uses: actions/checkout@v5
+        with:
+          repository: razvangherghina/quo
+          path: quo
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing wants a recent npm; the one bundled with Node
+      # is older than the one that speaks OIDC.
+      - run: npm install -g npm@latest
+
+      - run: npm install
+        working-directory: nervur
+
+      - run: npm run check
+        working-directory: nervur
+
+      # `prepublishOnly` refuses a publish that is not the release road.
+      - run: npm publish
+        working-directory: nervur
+        env:
+          NERVUR_GATED: '1'

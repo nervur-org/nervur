@@ -1,0 +1,105 @@
+{
+  "name": "nervur",
+  "version": "0.22.1",
+  "description": "Nervur's kit of Quo: an object asks another object and gets an answer, without knowing where it is.",
+  "keywords": [
+    "quo",
+    "protocol",
+    "capability",
+    "object-capability"
+  ],
+  "author": "Bookarest Digital SRL",
+  "license": "Apache-2.0",
+  "homepage": "https://nervur.org",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nervur-org/nervur.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nervur-org/nervur/issues"
+  },
+  "type": "module",
+  "bin": {
+    "nervur": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "workerd": "./dist/edge.js",
+      "browser": "./dist/browser.js",
+      "node": "./dist/node.js",
+      "default": "./dist/index.js"
+    },
+    "./edge": {
+      "types": "./dist/core/edge/index.d.ts",
+      "default": "./dist/core/edge/index.js"
+    },
+    "./edge/kit": {
+      "types": "./dist/core/edge/kit.d.ts",
+      "default": "./dist/core/edge/kit.js"
+    },
+    "./browser": {
+      "types": "./dist/core/browser/index.d.ts",
+      "default": "./dist/core/browser/index.js"
+    },
+    "./node": {
+      "types": "./dist/core/node/index.d.ts",
+      "default": "./dist/core/node/index.js"
+    },
+    "./folder": {
+      "types": "./dist/core/folder/index.d.ts",
+      "default": "./dist/core/folder/index.js"
+    },
+    "./tcp": {
+      "types": "./dist/core/tcp/index.d.ts",
+      "default": "./dist/core/tcp/index.js"
+    },
+    "./http": {
+      "types": "./dist/core/http/index.d.ts",
+      "default": "./dist/core/http/index.js"
+    },
+    "./proof": {
+      "types": "./dist/core/proof/index.d.ts",
+      "default": "./dist/core/proof/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node kit.mjs",
+    "check": "tsc -p tsconfig.json && npm run build &&node test.mjs \"test/core/**/*.test.ts\" \"test/defaults/**/*.test.ts\" \"test/kit/*.test.ts\"",
+    "deep": "node test.mjs \"test/terrain/*.test.ts\"",
+    "cover": "node test/cover.mjs",
+    "mutate": "node test/mutate.mjs",
+    "prepublishOnly": "test \"$NERVUR_GATED\" = 1 || { echo 'a publish is /release, from the root, on the human'\"'\"'s word' >&2; exit 1; }"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/post-quantum": "0.7.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "devDependencies": {
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/instrumenter": "^10.0.0",
+    "@types/node": "^26.4.1",
+    "bun": "^1.4.0",
+    "deno": "^2.9.6",
+    "esbuild": "^0.28.2",
+    "istanbul-lib-coverage": "^3.2.2",
+    "playwright": "^1.62.1",
+    "typescript": "^7.0.2",
+    "v8-to-istanbul": "^9.3.0",
+    "workerd": "^1.20260904.1",
+    "wrangler": "^4.134.0"
+  }
+}
