@@ -6,7 +6,8 @@
 // checked as Quo checks it: a key that is not canonical or has small
 // order is refused before the engine reads it, and so is an S at or above
 // the group's order. The engine's check is cofactorless, and reads R as
-// written.
+// written. A small-order R, which an honest signer never writes, is
+// checked by noble's code, since engines differ on it.
 import { NobleCrypto } from '../bodies/noble-crypto.ts';
 
 const subtle = globalThis.crypto.subtle;
@@ -74,6 +75,8 @@ export class NativeCrypto extends NobleCrypto {
   override async verify(pk: Uint8Array, message: Uint8Array, signature: Uint8Array): Promise<boolean> {
     if (pk.length !== 32 || signature.length !== 64) return false;
     if (!canonical(pk) || SMALL.has(hex(pk)) || !below(signature.subarray(32), ORDER)) return false;
+    // A small-order R verifies like any other, and engines differ on it, so noble's check reads it.
+    if (SMALL.has(hex(signature.subarray(0, 32)))) return super.verify(pk, message, signature);
     try {
       const key = await subtle.importKey('raw', view(pk), { name: 'Ed25519' }, false, ['verify']);
       return await subtle.verify({ name: 'Ed25519' }, key, view(signature), view(message));
