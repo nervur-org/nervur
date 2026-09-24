@@ -4,13 +4,13 @@
 // its own houses goes only by pointer. Ground two is a NodeGround in its own
 // process, `nervur up` on a folder, piloted through its hand on a socket.
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { ClassList, Ground, JoinedCarry, WebCarry, type Faculty, type Opened } from 'nervur';
-import { FakeCustody, FakeMemory } from 'nervur/bench';
-import { serveHttp, TcpCarry } from 'nervur/node';
+import { FileMemory, FolderCustody, serveHttp, TcpCarry } from 'nervur/node';
 import { Guest } from '../world/guest.ts';
 import { Host } from '../world/host.ts';
 import { Steward } from '../world/steward.ts';
@@ -23,8 +23,11 @@ export type Ask = Opened['ask'];
 type Json = NonNullable<Parameters<Ask>[0]['args']>;
 type Beings = ConstructorParameters<typeof ClassList>[0]['beings'];
 
-/** The command, as `nervur` runs it from the package's source. */
-export const cli = new URL('../../../src/node/cli.ts', import.meta.url).pathname;
+/** The command, as the package's `bin` names it, run from the source that bin is built from. */
+export const cli = (() => {
+  const { bin } = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as { bin: { nervur: string } };
+  return fileURLToPath(new URL(`../../../${bin.nervur.replace(/^dist/, 'src').replace(/\.js$/, '.ts')}`, import.meta.url));
+})();
 
 /** The owner, through the hand: what the steward answered. */
 export const hand = async (ask: Ask, method: string, args: Json = {}) => {
@@ -63,31 +66,32 @@ export const paper = async (ask: Ask, being: string, occupant: string) => ((awai
  */
 export const groundOne = async (t: TestContext, { dials = false, faculties = {} }: { dials?: boolean; faculties?: Readonly<Record<string, Faculty>> } = {}) => {
   const tcp = new TcpCarry({ host: '127.0.0.1', allowPrivate: dials });
+  t.after(() => tcp.close());
   let httpAt = '';
   const web = new WebCarry({ addresses: () => [httpAt], allowPrivate: dials });
   const served = await serveHttp({ host: '127.0.0.1' }, [web]);
+  t.after(() => served.close());
   httpAt = `http://127.0.0.1:${served.port}/quo`;
   const carry = new CountingCarry(new JoinedCarry({ tcp, http: web }), { tcp, http: web });
+  // Its seeds and its memory in a folder of its own, as an owner's hand-written ground keeps them.
+  const state = mkdtempSync(join(tmpdir(), 'ground-one-'));
+  t.after(() => rmSync(state, { recursive: true, force: true }));
   // Each house's classes, by its name, as the entry that opens it names them.
   const classes = new Map<string, ClassList>();
   const ground = await Ground.open({
-    custody: new FakeCustody('ground one'),
-    memory: new FakeMemory(),
+    custody: new FolderCustody(join(state, 'seeds')),
+    memory: new FileMemory(join(state, 'record')),
     carry,
     faculties,
     bodies: {
-      memory: { fake: () => new FakeMemory() },
+      memory: { file: ({ house }) => new FileMemory(join(state, `${house}.memory`)) },
       classes: { named: ({ house }) => classes.get(house)! },
     },
   });
-  t.after(async () => {
-    await ground.close();
-    await tcp.close();
-    await served.close();
-  });
+  t.after(() => ground.close());
   const open = async (name: string, { beings = [Host, Guest], granted = [] }: { beings?: Beings; granted?: readonly string[] } = {}) => {
     classes.set(name, new ClassList({ steward: Steward, beings }));
-    const standing = await ground.add(name, { memory: { body: 'fake' }, classes: { body: 'named' }, faculties: [...granted] });
+    const standing = await ground.add(name, { memory: { body: 'file' }, classes: { body: 'named' }, faculties: [...granted] });
     assert.ok(standing.ward !== undefined, `the house ${name} did not open: ${standing.why}`);
     const ask: Ask = (request) => ground.ask({ house: name, ...request });
     return { ask, ward: standing.ward };

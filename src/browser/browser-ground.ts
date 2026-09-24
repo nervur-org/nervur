@@ -19,14 +19,14 @@ import { OriginClasses, type Load } from './origin-classes.ts';
 export interface BrowserRecipe {
   readonly faculties?: () => Readonly<Record<string, Faculty | Promise<Faculty>>>;
   readonly bodies?: Partial<Bodies>;
+  /** The kinds that hold the ground's own `houses`: its pilot. */
+  readonly houses?: { readonly kinds: readonly string[] };
 }
 
 /** What the ground takes of its engine. Each is the page's own where omitted. */
 export interface BrowserPlatform {
   readonly locks: Pick<LockManager, 'request'>;
   readonly channel: (name: string) => Pick<BroadcastChannel, 'postMessage' | 'close'> & { onmessage: ((event: MessageEvent) => void) | null };
-  readonly custody: (name: string) => Promise<Custody>;
-  readonly memory: (name: string) => Promise<Memory>;
   /** Where its code stands; its classes load from under it alone. */
   readonly origin: string;
   /** Asks the browser to keep its storage, and answers whether it will. */
@@ -34,6 +34,27 @@ export interface BrowserPlatform {
   /** Loads a module of classes by URL: `import()`, or in a service worker a map of the worker's own imports. */
   readonly load: Load;
 }
+
+/**
+ * Where its seeds and its memories rest: the terrain's own, never a
+ * recipe's, since the record that would name another lives in them. A
+ * BrowserGround's are the origin's IndexedDB; an AppGround's are the
+ * shell's. No entry exports this.
+ */
+export interface Stores {
+  readonly custody: (name: string) => Promise<Custody>;
+  readonly memory: (name: string) => Promise<Memory>;
+}
+
+const originStores: Stores = {
+  custody: (custody) => LockedCustody.open(custody),
+  memory: (memory) => IndexedDbMemory.open(memory),
+};
+
+let joinOn: (options: BrowserGroundOptions, stores: Stores) => Promise<BrowserGround>;
+
+/** The origin's ground on stores of the terrain's own: an AppGround's, or a proof's in memory. No entry exports it. */
+export const openOn = (options: BrowserGroundOptions, stores: Stores): Promise<BrowserGround> => joinOn(options, stores);
 
 export interface BrowserGroundOptions {
   /** The ground's name on its origin, which names its lock, its channel and its storage. `nervur` where omitted. */
@@ -55,6 +76,7 @@ export interface BrowserHandRequest {
   readonly method?: string;
   readonly args?: Json;
   readonly after?: Answer;
+  readonly cells?: true;
 }
 
 type Said =
@@ -75,8 +97,6 @@ const joined = <T>(own: Readonly<Record<string, T>>, added: Readonly<Record<stri
 const defaults = (name: string): BrowserPlatform => ({
   locks: navigator.locks,
   channel: (channel) => new BroadcastChannel(channel),
-  custody: (custody) => LockedCustody.open(custody),
-  memory: (memory) => IndexedDbMemory.open(memory),
   origin: globalThis.location?.origin ?? `nervur:${name}`,
   persist: async () => (await navigator.storage?.persist?.()) ?? false,
   load: (href) => import(href),
@@ -85,6 +105,7 @@ const defaults = (name: string): BrowserPlatform => ({
 export class BrowserGround {
   readonly #name: string;
   readonly #platform: BrowserPlatform;
+  readonly #stores: Stores;
   readonly #options: BrowserGroundOptions;
   readonly #self = random();
   readonly #channel: ReturnType<BrowserPlatform['channel']>;
@@ -103,9 +124,10 @@ export class BrowserGround {
   #failed!: (error: unknown) => void;
   #closed = false;
 
-  private constructor(name: string, platform: BrowserPlatform, options: BrowserGroundOptions) {
+  private constructor(name: string, platform: BrowserPlatform, stores: Stores, options: BrowserGroundOptions) {
     this.#name = name;
     this.#platform = platform;
+    this.#stores = stores;
     this.#options = options;
     this.#channel = platform.channel(`${name}-hand`);
     this.#leading = new Promise((resolve, reject) => {
@@ -119,15 +141,23 @@ export class BrowserGround {
    * The origin's ground, joined: this page runs it where it takes the lock,
    * and reaches the page that runs it where another holds the lock.
    */
-  static async open(options: BrowserGroundOptions = {}): Promise<BrowserGround> {
+  static open(options: BrowserGroundOptions = {}): Promise<BrowserGround> {
+    return BrowserGround.#join(options, originStores);
+  }
+
+  static async #join(options: BrowserGroundOptions, stores: Stores): Promise<BrowserGround> {
     const name = options.name ?? 'nervur';
     if (!NAME.test(name)) throw new TypeError(`no ground is named ${name}`);
     const platform = { ...defaults(name), ...options.platform };
-    const joining = new BrowserGround(name, platform, options);
+    const joining = new BrowserGround(name, platform, stores, options);
     joining.#listen();
     joining.#queue();
     joining.#say({ kind: 'who' });
     return joining;
+  }
+
+  static {
+    joinOn = (options, stores) => BrowserGround.#join(options, stores);
   }
 
   /** Whether this page runs the ground now. */
@@ -238,16 +268,15 @@ export class BrowserGround {
       this.#opened.push(opened);
       return opened;
     };
-    const custody = kept(await platform.custody(`${name}-custody`));
-    const memory = kept(await platform.memory(`${name}-ground`));
+    const stores = this.#stores;
+    const custody = kept(await stores.custody(`${name}-custody`));
+    const memory = kept(await stores.memory(`${name}-ground`));
     this.#persisted = await platform.persist().catch(() => false);
     // It only dials, so it writes no address into an invitation.
     const web = new WebCarry({ allowPrivate: this.#options.allowPrivate === true });
-    const carry = new JoinedCarry({ https: web, http: web });
-    const faculties: Record<string, Faculty> = {};
-    for (const [faculty, made] of Object.entries(recipe.faculties?.() ?? {})) faculties[faculty] = await made;
+    const carry = new JoinedCarry({ https: web, http: web, wss: web, ws: web });
     const bodies: Bodies = {
-      memory: joined({ indexeddb: async ({ house }) => kept(await platform.memory(`${name}-house-${house}`)) }, recipe.bodies?.memory),
+      memory: joined({ indexeddb: async ({ house }) => kept(await stores.memory(`${name}-house-${house}`)) }, recipe.bodies?.memory),
       classes: joined(
         {
           origin: ({ args }) => {
@@ -259,7 +288,8 @@ export class BrowserGround {
       ),
     };
     const wait = this.#options.wait;
-    return Ground.open({ custody, memory, carry, bodies, faculties, ...(wait === undefined ? {} : { wait }) });
+    const faculties = recipe.faculties;
+    return Ground.open({ custody, memory, carry, bodies, ...(faculties === undefined ? {} : { recipe: faculties }), ...(wait === undefined ? {} : { wait }), ...(recipe.houses === undefined ? {} : { houses: recipe.houses }) });
   }
 
   /** This page leaves: its ground closes where it ran one, and the lock passes to the next page. */

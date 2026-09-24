@@ -116,9 +116,17 @@ export interface Carry {
    * The box handed to the door of a ward this carry listens for, before any
    * address. Otherwise it is carried to the first of `at` that answers, in
    * order. A box that may have been heard is carried to no second address.
+   * `wait` is how long this box may wait for its reply, in milliseconds,
+   * in place of the carry's own; a watch held long is not cut short.
    */
-  send(options: { ward: string; at: readonly string[]; box: Uint8Array }): Promise<Sent>;
+  send(options: { ward: string; at: readonly string[]; box: Uint8Array; wait?: number }): Promise<Sent>;
   at(options: { toward?: string }): readonly string[];
+  /**
+   * The domains that vouch for the ward, as quo/DOMAIN.md writes a vouch:
+   * each domain its addresses in `at` name, asked in their order. A carry
+   * that speaks no web names none, and answers nothing it did not read.
+   */
+  vouched(options: { ward: string; at: readonly string[] }): Promise<readonly string[]>;
 }
 
 /**

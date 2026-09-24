@@ -57,6 +57,7 @@ declare class Response {
 declare class URL {
   constructor(url: string, base?: string);
   readonly protocol: string;
+  readonly host: string;
   readonly hostname: string;
   readonly pathname: string;
 }
@@ -70,7 +71,7 @@ declare class AbortController {
   abort(): void;
 }
 
-declare function fetch(input: string, init?: { method?: string; body?: Uint8Array; signal?: AbortSignal }): Promise<Response>;
+declare function fetch(input: string, init?: { method?: string; body?: Uint8Array; signal?: AbortSignal; redirect?: 'error' | 'follow' | 'manual' }): Promise<Response>;
 
 declare class WebSocket {
   constructor(url: string, protocols?: string | string[]);

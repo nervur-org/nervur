@@ -9,11 +9,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { FolderClasses, serveHand, takeLock } from 'nervur/node';
+import { cli } from '../fixtures/node/grounds.ts';
 import { stop, up } from '../fixtures/node/spawned.ts';
 
 const folder = new URL('../fixtures/node/', import.meta.url).pathname;
 const classes = new URL('../fixtures/node/classes/', import.meta.url).pathname;
-const cli = new URL('../../src/node/cli.ts', import.meta.url).pathname;
 
 // The command as the owner runs it. Each run is a process of its own, so the ground answers meanwhile.
 const nervur = (...args: string[]) => {
@@ -44,6 +44,8 @@ test('An unattended ground holds its state alone, is asked through the command, 
   assert.equal(nervur(...at, 'ask', 'main', 'bear', 'kind=org.example.counter', 'id=tally', 'args={"start":4}').code, 0, 'a class from the folder is borne');
   assert.deepEqual(nervur(...at, 'ask', 'main', '--id', 'tally', 'total'), { code: 0, out: '{"result":4}' }, 'and the owner asks her by id');
   assert.equal(nervur(...at, 'ask', 'main', '--id').code, 2, 'an --id naming no being asks nothing');
+  assert.deepEqual(nervur(...at, 'ask', 'main', '--id', 'tally', '--cells'), { code: 0, out: '{"result":{"total":4,"state":"open","rung":0}}' }, 'the owner reads her cells');
+  assert.equal(nervur(...at, 'ask', 'main', '--id', 'tally', '--cells', 'total').code, 2, 'cells are read alone');
 
   await assert.rejects(start(), /exited with 1/, 'a second instance on the state refuses');
   assert.deepEqual(nervur(...at, 'ask', 'main', 'count'), { code: 0, out: '{"result":1}' }, 'and the first stands');

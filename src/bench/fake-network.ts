@@ -3,10 +3,13 @@
 // hosts as DNS points them, and every box between hosts crosses it. A test
 // makes it slow, drops, loses and repeats boxes on it, cuts it one way or
 // both, turns a host off and points a name elsewhere, as the world does.
-// Its time is the bench's clock, and its chance is drawn from a seed, so a
-// run goes the same way twice.
-import type { Door, Hooked } from '../ground/ground.ts';
-import type { Clock, Sent } from '../foundation.ts';
+// It keeps the one clock every ground on it reads, which the test alone
+// moves, and its chance is drawn from a seed, so a run goes the same way
+// twice.
+import { vouchesOf, type Hooked, type Sent } from '../index.ts';
+
+type Door = Parameters<Hooked['listen']>[0]['door'];
+import { FakeClock } from './fake-clock.ts';
 import { stream } from './seeded.ts';
 import { settle } from './settle.ts';
 
@@ -14,6 +17,8 @@ interface Host {
   readonly doors: Map<string, Door>;
   readonly listens: boolean;
   up: boolean;
+  /** Its one listener, which answers a request over the web at its names. */
+  serve?: (request: Request) => Promise<Response>;
 }
 
 /** How one link behaves, each way: its latency in milliseconds, and the share of boxes dropped, of replies lost, and of boxes delivered twice. */
@@ -29,11 +34,18 @@ export interface Crossing {
   readonly from: string;
   readonly to: string;
   readonly ward: string;
-  readonly outcome: 'dropped' | 'answered' | 'silent' | 'lost' | 'twice';
+  readonly outcome: 'dropped' | 'answered' | 'silent' | 'lost' | 'twice' | 'late';
 }
 
 const SCHEME = 'bench://';
+const LATE = Symbol('late');
 const pair = (a: string, b: string) => [a, b].sort().join('\n');
+
+// Each network's clock, which the grounds on it and the bench read, and no entry exports.
+const clocks = new WeakMap<FakeNetwork, FakeClock>();
+
+/** The clock of a network, as a BenchGround reads it. */
+export const clockOf = (network: FakeNetwork): FakeClock => clocks.get(network)!;
 
 export class FakeNetwork {
   readonly #hosts = new Map<string, Host>();
@@ -41,7 +53,7 @@ export class FakeNetwork {
   // One-way cuts, `from` then `to`.
   readonly #cuts = new Set<string>();
   readonly #links = new Map<string, Link>();
-  readonly #clock: Clock | undefined;
+  readonly #clock: FakeClock;
   readonly #chance: (length: number) => Uint8Array;
   #drop = 0;
   #lose = 0;
@@ -50,15 +62,33 @@ export class FakeNetwork {
   /** Every box that crossed between two hosts, in order. A box by pointer inside a host crosses nothing. */
   readonly crossings: Crossing[] = [];
 
-  /** `clock` is the bench's, and times every latency; `seed` draws every chance. */
-  constructor({ clock, seed = 'network' }: { clock?: Clock; seed?: string } = {}) {
-    this.#clock = clock;
+  /** `seed` draws every chance; `start` is the time its clock starts at. */
+  constructor({ seed = 'network', start }: { seed?: string; start?: number } = {}) {
+    this.#clock = new FakeClock(start);
+    clocks.set(this, this.#clock);
     this.#chance = stream(`network:${seed}`);
   }
 
+  /** The time on its clock, which every ground on it reads. */
+  now(): number {
+    return this.#clock.now();
+  }
+
+  /** Every ask, effect and reply the grounds started, run to where it waits on the clock or ends. */
+  settle(): Promise<void> {
+    return settle();
+  }
+
+  /** The clock moved on by `ms` at once, every wait it passes fired, and what came due run. */
+  async advance(ms: number): Promise<void> {
+    this.#clock.advance(ms);
+    await settle();
+  }
+
   /** A host's carry. One that listens is dialled at its names; one that does not only dials, as a device. */
-  join(host: string, { names = [], listens = true }: { names?: readonly string[]; listens?: boolean } = {}): Hooked {
-    const held = this.#hosts.get(host) ?? { doors: new Map<string, Door>(), listens, up: true };
+  join(host: string, { names = [], listens = true, serve }: { names?: readonly string[]; listens?: boolean; serve?: (request: Request) => Promise<Response> } = {}): Hooked {
+    const held: Host = this.#hosts.get(host) ?? { doors: new Map<string, Door>(), listens, up: true };
+    if (serve !== undefined) held.serve = serve;
     this.#hosts.set(host, held);
     for (const name of names) this.#names.set(name, host);
     return {
@@ -66,7 +96,17 @@ export class FakeNetwork {
       unlisten: ({ ward }) => void held.doors.delete(ward),
       send: (options) => this.#send(host, options),
       at: () => (held.listens ? [...this.#names].filter(([, to]) => to === host).map(([name]) => SCHEME + name) : []),
+      // Each name its addresses write is a domain, read at the listener of the host it points at.
+      vouched: ({ ward, at }) => vouchesOf({ fetcher: (url) => this.#get(host, url), ward, at, schemes: ['bench'] }),
     };
+  }
+
+  // A GET over the web from one host to the host a name points at, which a cut or a host off stops.
+  async #get(from: string, url: string): Promise<Response> {
+    const to = this.#names.get(new URL(url).hostname);
+    const held = to === undefined ? undefined : this.#hosts.get(to);
+    if (to === undefined || held?.serve === undefined || !held.up || this.#cuts.has(`${from}\n${to}`)) throw new TypeError('fetch failed');
+    return held.serve(new Request(url));
   }
 
   /** A name pointed at a host, as a DNS record moved. */
@@ -76,7 +116,6 @@ export class FakeNetwork {
 
   /** How the link between two hosts behaves, both ways, until it is set again. */
   link(a: string, b: string, link: Link): void {
-    if (link.latency !== undefined && link.latency > 0 && this.#clock === undefined) throw new TypeError('a network with latency is made with the bench’s clock');
     for (const share of [link.drop, link.lose, link.duplicate]) if (share !== undefined && !(share >= 0 && share <= 1)) throw new TypeError('a share is between 0 and 1');
     this.#links.set(pair(a, b), link);
   }
@@ -130,12 +169,9 @@ export class FakeNetwork {
    * each, so latencies end, retries leave and replies land as time passes.
    */
   async elapse(ms: number, { step = 1_000 }: { step?: number } = {}): Promise<void> {
-    const clock = this.#clock;
-    if (clock === undefined || !('advance' in clock) || typeof clock.advance !== 'function') throw new TypeError('a network elapses on the bench’s clock');
-    const advance = clock.advance.bind(clock) as (ms: number) => void;
     await settle();
     for (let left = ms; left > 0; left -= step) {
-      advance(Math.min(step, left));
+      this.#clock.advance(Math.min(step, left));
       await settle();
     }
   }
@@ -148,11 +184,23 @@ export class FakeNetwork {
   }
 
   async #delay(ms: number | undefined): Promise<void> {
-    if (ms === undefined || ms <= 0 || this.#clock === undefined) return;
+    if (ms === undefined || ms <= 0) return;
     await this.#clock.wait({ id: `network:${++this.#waits}`, ms });
   }
 
-  async #send(from: string, { ward, at, box }: { ward: string; at: readonly string[]; box: Uint8Array }): Promise<Sent> {
+  // A door's answer, or LATE where the box's wait on the network's clock runs out first.
+  async #within(answer: Promise<Uint8Array | null>, wait: number | undefined): Promise<Uint8Array | null | typeof LATE> {
+    if (wait === undefined) return answer;
+    const id = `network:late:${++this.#waits}`;
+    const late = this.#clock.wait({ id, ms: wait }).then((fired) => (fired ? LATE : new Promise<never>(() => undefined)));
+    try {
+      return await Promise.race([answer, late]);
+    } finally {
+      this.#clock.cancel({ id });
+    }
+  }
+
+  async #send(from: string, { ward, at, box, wait }: { ward: string; at: readonly string[]; box: Uint8Array; wait?: number }): Promise<Sent> {
     const own = this.#hosts.get(from);
     if (own === undefined || !own.up) return { reply: null, heard: false };
     // A ward on this host takes the box by pointer, before any address, and crosses nothing.
@@ -179,7 +227,12 @@ export class FakeNetwork {
       if (door === undefined) continue;
       const twice = this.#twice > 0 || this.#roll(link.duplicate);
       if (this.#twice > 0) this.#twice--;
-      const reply = await door(box);
+      const reply = await this.#within(door(box), wait);
+      // A door that answered past the box's wait may have heard it.
+      if (reply === LATE) {
+        log('late');
+        return { reply: null, heard: true };
+      }
       if (twice) await door(box);
       await this.#delay(link.latency);
       // A reply lost after the door answered was heard, so no other address is tried.

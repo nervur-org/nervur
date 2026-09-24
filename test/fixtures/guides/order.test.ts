@@ -18,10 +18,10 @@ test('An order is paid once the provider calls the handle it was given', async (
   assert.deepEqual(await order.ask('add', { sku: 'tea', price: 4 }), { result: { total: 4 } });
   assert.deepEqual(await order.ask('checkout'), { result: null });
   await bench.settle();
-  assert.equal((await order.cells())!.state, 'paying', 'the charge left once checkout landed, and answered pending');
+  assert.equal((await order.describe())?.state, 'paying', 'the charge left once checkout landed, and answered pending');
 
   assert.deepEqual(await payments.settle('first'), { result: null });
   await bench.settle();
-  assert.equal((await order.cells())!.state, 'paid');
+  assert.equal((await order.describe())?.state, 'paid');
   assert.deepEqual(await order.ask('add', { sku: 'jam', price: 1 }), { error: { message: 'not in this state' } });
 });

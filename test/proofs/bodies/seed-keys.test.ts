@@ -2,17 +2,20 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { NobleCrypto } from '../../../src/bodies/noble-crypto.ts';
 import { SeedKeys } from '../../../src/bodies/seed-keys.ts';
-import { keysSuite } from '../suites/keys.ts';
+import { keysSuite } from '../../suites/keys.ts';
 
 const crypto = new NobleCrypto();
 const seed = 'a'.repeat(64);
 
 keysSuite('SeedKeys', () => new SeedKeys(seed, crypto), crypto);
 
-test('SeedKeys takes sixty-four lowercase hex digits and nothing else', () => {
+test('It refuses a seed inside the house, and a seed that is not sixty-four hex digits: the house holds keys that derive, and no seed', () => {
   for (const bad of [undefined, '', 'A'.repeat(64), 'a'.repeat(63), `${'a'.repeat(64)}\n`, 'g'.repeat(64)]) {
     assert.throws(() => new SeedKeys(bad, crypto), TypeError, String(bad));
   }
+  const keys = new SeedKeys(seed, crypto);
+  assert.deepEqual(Object.keys(keys), [], 'nothing of the seed stands on the keys the house is handed');
+  assert.ok(!JSON.stringify(keys).includes(seed));
 });
 
 test('The ward key comes from the seed as the spec derives it', async () => {

@@ -1,14 +1,11 @@
-// The garage door's twin, on the Pi's ground, and the remote on Alice's
-// phone. The twin alone holds the relay; it keeps who opened the door and
-// which pulse did it, and rings a bell when a pulse is answered. The
-// remote holds a standing on the twin and taps it by an effect.
+// The garage door's twin, on the Pi's ground, and the remote on a phone.
+// The twin alone holds the relay, and keeps who opened the door and which
+// pulse did it. The remote holds a standing on the twin and taps it by an
+// effect, so a tap is sent until it is answered, and pulses once.
 import { Being, need, s, type Args } from 'nervur/being';
 
 /** The relay, as the Python program offers it: one pulse, answered with its count. */
 export const Relay = need('relay', { pulse: { result: s.integer() } });
-
-/** A bell the twin rings once a pulse is answered, so a test waits on it. */
-export const Bell = need('bell', { ring: { args: s.object({ pulses: s.integer() }) } });
 
 /** The twin, as the remote asks it. */
 export const Door = need('garage', { open: {} });
@@ -16,7 +13,7 @@ export const Door = need('garage', { open: {} });
 export class Garage extends Being.of({
   kind: 'org.example.garage',
   description: 'The twin of a garage door: who opened it, and which pulse did.',
-  needs: { relay: Relay, bell: Bell },
+  needs: { relay: Relay },
   cells: { openers: [] as string[], pulses: [] as number[], failed: [] as string[] },
   asks: {
     open: {},
@@ -32,7 +29,6 @@ export class Garage extends Being.of({
   pulsed({ result, error }: Args<Garage, 'pulsed'>) {
     if (error === undefined) this.cells.pulses = [...this.cells.pulses, result];
     else this.cells.failed = [...this.cells.failed, error.message];
-    this.bell.ring({ pulses: this.cells.pulses.length });
   }
 
   log() {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The shapes of the house's rows, as JSON.
 import type { Json, Notes } from '../being/being.ts';
-import type { Occupant as QuoOccupant, Standing as QuoStanding } from '../quo/room.ts';
+import type { Occupant as QuoOccupant, Standing as QuoStanding } from '../quo/index.ts';
 
 /** A JSON value copied, as every row and cell is JSON. */
 export const copy = <T>(value: T): T => (value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T));
@@ -24,6 +24,8 @@ export interface WardRow {
 export interface OwnerRow {
   being: string;
   occupant: string;
+  /** A token's: the blueprint of the faculty it was handed to, which alone calls it. */
+  faculty?: string;
 }
 
 export interface OccupantRow {
@@ -52,6 +54,8 @@ export interface StandingRow {
   quo?: QuoStanding;
   /** The address of hers that last answered: where each ask goes first. */
   route?: string;
+  /** The domains that vouch for a far standing's ward, read once its take landed and again when it moves. */
+  vouched?: string[];
 }
 
 /** Where an effect goes. */
@@ -63,6 +67,9 @@ export interface OutboxEntry {
   method: string;
   args: Json;
   reply?: string;
+  /** A watch: the digest of the answer she holds, and how long the far side may hold it. */
+  after?: string;
+  wait?: number;
   queued: number;
   deadline: number;
   next: number;

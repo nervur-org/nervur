@@ -2,14 +2,17 @@
 // mint and every bind lets go of those left so.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Json } from '../../../src/being/being.ts';
+import type { Json } from 'nervur/being';
+import { FakeNetwork } from 'nervur/bench';
 import { FakeClock } from '../../../src/bench/fake-clock.ts';
 import { FakeMemory } from '../../../src/bench/fake-memory.ts';
 import { ClassList } from '../../../src/bodies/class-list.ts';
 import { NobleCrypto } from '../../../src/bodies/noble-crypto.ts';
 import { SeedKeys } from '../../../src/bodies/seed-keys.ts';
 import { StrictTools } from '../../../src/bodies/strict-tools.ts';
-import { openForBench } from '../../../src/house/house.ts';
+import { openHouse } from '../../../src/house/house.ts';
+import { Rows } from '../../../src/house/rows.ts';
+import type { BeingRow } from '../../../src/house/rows-shape.ts';
 import { Room } from '../../../src/quo/room.ts';
 import { Lender } from '../fixtures/lender.ts';
 import { Member } from '../fixtures/member.ts';
@@ -21,7 +24,10 @@ const MINUTE = 60_000;
 const open = async () => {
   const clock = new FakeClock();
   const classes = new ClassList({ steward: Lender, beings: [Member] });
-  const { opened: house, access } = await openForBench({ keys: new SeedKeys('a'.repeat(64), crypto), memory: new FakeMemory(), classes, clock, crypto, tools }, []);
+  const carry = new FakeNetwork().join('lender');
+  const keys = new SeedKeys('a'.repeat(64), crypto);
+  const memory = new FakeMemory();
+  const house = await openHouse({ keys, memory, classes, carry, clock, crypto, tools }, []);
   const ask = (method: string, args: Json = {}) => house.ask({ method, args });
   const lend = async (id: string, expires?: number, way = 'invite') => {
     const answer = await ask('lend', { way, id, ...(expires === undefined ? {} : { expires }) });
@@ -40,14 +46,11 @@ const open = async () => {
     };
     return { answered: 'object' in read, again };
   };
-  // The heirs an occupant holds, or undefined where she holds no such occupant.
+  // The heirs an occupant holds, or undefined where she holds no such occupant, read from her sealed row.
   const heirs = async (being: string, occupant: string) => {
-    let held: string[] | undefined;
-    await access.patch(being, (row) => {
-      const seat = row.occupants[occupant];
-      held = seat === undefined ? undefined : Object.keys(seat.quo ?? {});
-    });
-    return held;
+    const rows = await Rows.open(memory, keys, crypto, tools);
+    const seat = (await rows.get<BeingRow>(await rows.place(`being:${being}`)))?.occupants[occupant];
+    return seat === undefined ? undefined : Object.keys(seat.quo ?? {});
   };
   return { clock, ask, lend, knock, heirs };
 };

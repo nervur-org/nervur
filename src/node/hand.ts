@@ -30,6 +30,8 @@ export interface HandRequest {
   readonly args?: { readonly [key: string]: Json };
   /** The answer the owner holds, which makes a `readOnly` ask a watch. */
   readonly after?: Answer;
+  /** Her cells read, and nothing asked. */
+  readonly cells?: true;
 }
 
 const object = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -42,14 +44,15 @@ const request = (line: string): HandRequest | null => {
     return null;
   }
   if (!object(value)) return null;
-  const { house, faculty, describe, id, method, args, after, ...rest } = value;
+  const { house, faculty, describe, id, method, args, after, cells, ...rest } = value;
   if (Object.keys(rest).length > 0) return null;
   for (const text of [house, faculty, id, method]) if (text !== undefined && typeof text !== 'string') return null;
   if (args !== undefined && !object(args)) return null;
   if (describe !== undefined && describe !== true) return null;
+  if (cells !== undefined && cells !== true) return null;
   // An answer is `{ result }` or `{ error }`, and nothing else.
   if (after !== undefined && !(object(after) && Object.keys(after).length === 1 && ('result' in after || 'error' in after))) return null;
-  return Object.fromEntries(Object.entries({ house, faculty, describe, id, method, args, after }).filter(([, field]) => field !== undefined));
+  return Object.fromEntries(Object.entries({ house, faculty, describe, id, method, args, after, cells }).filter(([, field]) => field !== undefined));
 };
 
 const serve = (ask: (request: HandRequest) => Promise<unknown>, socket: Socket) => {

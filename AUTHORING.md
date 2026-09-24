@@ -1,10 +1,10 @@
 # Writing for nervur
 
 This guide teaches the two things you write with `nervur`. A **being**
-holds logic and state. A **faculty** reaches the world outside. A
-**ground** runs them on a machine, and the library ships it. The
-examples build one small shop, and every file here is a file the
-package's own tests run.
+holds logic and state. A **faculty** reaches the world outside, and
+[Writing a faculty](FACULTIES.md) teaches it whole. A **ground** runs them on
+a machine, and the library ships it. The examples build one small shop,
+and every file here is a file the package's own tests run.
 
 The shop has three classes and one faculty.
 
@@ -169,7 +169,7 @@ JavaScript writes nothing.
 | `args` | the schema of what it takes; omitted, the empty object alone |
 | `result` | the schema of what it answers; omitted, nothing |
 | `hints` | `readOnly`, `idempotent`, `destructive` |
-| `examples` | cells, a role, args, fakes, and what it gives |
+| `examples` | a history of her asks, a role, args, fakes, and what it gives |
 | `description` | one line for readers and agents |
 | `wait` | milliseconds she may run; omitted, thirty seconds |
 
@@ -202,6 +202,9 @@ nothing lands.
 | `this.house.cancelAlarm({ key })` | an alarm removed |
 | `this.<need>.<method>({…}, { reply? })` | an awaited call, or an effect |
 | `this.held(id, Need).<ask>({…}, { reply?, after? })` | the same, on a standing, and a watch where `after` is given |
+| `this.held(id).describe()`, `.ask(method, {…}, options)` | a standing with no need: what it shows her, then any ask it showed |
+| `this.stranger({ ward, at }, Need).<ask>({…})` | a far house's public being, asked as a stranger, every ask awaited |
+| `this.stranger({ ward, at }).describe()`, `.ask(method, {…})` | the same with no need: what she shows a stranger, then any ask it showed |
 | `this.standings` | `list()`, `note(id, notes)` and `drop(id)` |
 | `this.handle(ask, { bind?, notes?, once?, expires? })` | a handle to one of her asks |
 | `this.invite(id, { notes?, expires? })` | a new occupant, as a handle |
@@ -261,6 +264,12 @@ hold: `{ result: [...] }`. From a being, pass the result she holds:
 `readOnly` ask is watched, and a watch on anything else is refused where
 she makes it.
 
+A watch may land as a reply instead: `{ after: seen, reply: 'heard' }`.
+It leaves once her ask lands, as an effect does, and its answer asks her
+`heard`, where she writes what she heard and watches again. So a device
+that only dials, a phone or a Pi behind a router, hears its station the
+moment something changes there, and opens no port.
+
 A watch moves only on what its asker could read, since it runs as that
 asker. One asker holds one watch on one ask with the same args, and a
 second answers the first at once. A watch across a door holds its
@@ -277,7 +286,11 @@ An **occupant** is someone who may ask her. She mints one with
 A **standing** is someone she may ask. She receives one where an ask's
 args carry an invitation under `s.handle`, or where her steward
 introduces one. She asks through it with `this.held(id, Need)`, which
-checks the standing's describe covers the need.
+checks the standing's describe covers the need. A standing from an
+invitation is named `standing:` and sixteen hex digits, and the id is
+what her ask receives. One her steward introduced is named by the being
+it reaches. She asks a far standing from the ask after the one that took
+it.
 
 Every relation carries two sets of notes. `notes` are hers alone.
 `steward` are her steward's, written when the steward made the relation,
@@ -365,13 +378,14 @@ export class Shop extends Being.of({
 | `bear({ kind, id, args })` | places a new being; the same id twice answers the first |
 | `remove({ id })` | removes a being and everything of hers |
 | `list()` | every being, her kind, whether she is absent, and her dead letters |
-| `ask({ id, method, args }, { reply? })` | asks any being as her occupant `steward` |
+| `ask({ id, method, args }, { reply? })` | asks any being as her occupant `steward`; with no method, reads what she shows the steward |
 | `introduce({ from, to, notes })` | gives `from` a standing on `to`, and `to` an occupant |
 | `invite({ id, occupant, notes, expires? })` | gives a being a new occupant, and the steward its handle |
 
 `bear`, `remove`, `introduce` and `invite` land in the steward's own
 write. If her ask fails, none of them happened. A being borne runs her
-`born` ask first, where her class declares one.
+`born` ask first, where her class declares one, asked as the occupant
+`steward`, so its entry says `for: 'steward'`.
 
 Every other being is placed as `normal`. She holds the standing
 `steward` and the occupant `steward`, and can drop neither.
@@ -469,10 +483,19 @@ hold.
 Every need is covered, or she is absent. An absent being answers silence
 and keeps her cells, and answers again once an offer covers her needs.
 
+A standing is matched to a need by rules two to four alone. A describe
+names no blueprint, so the need's name is hers to choose there.
+
+A need she forgot to declare is a member she does not hold, and the call
+throws inside her ask, which answers only `the ask failed`. So check your
+classes with `npx tsc --noEmit` beside your tests, which run with
+`node --test`.
+
 ### Testing on the bench
 
-The bench opens two houses in one process, on fake memory, keys, clock
-and carry. So every ask crosses a door as it would in production.
+The bench opens two houses on one ground in memory, on fake memory,
+keys and clock. A being of the bench's own house asks hers through a
+door, so every ask crosses as it would in production.
 
 ```ts
 // order.test.ts
@@ -495,38 +518,49 @@ test('An order is paid once the provider calls the handle it was given', async (
   assert.deepEqual(await order.ask('add', { sku: 'tea', price: 4 }), { result: { total: 4 } });
   assert.deepEqual(await order.ask('checkout'), { result: null });
   await bench.settle();
-  assert.equal((await order.cells())!.state, 'paying', 'the charge left once checkout landed, and answered pending');
+  assert.equal((await order.describe())?.state, 'paying', 'the charge left once checkout landed, and answered pending');
 
   assert.deepEqual(await payments.settle('first'), { result: null });
   await bench.settle();
-  assert.equal((await order.cells())!.state, 'paid');
+  assert.equal((await order.describe())?.state, 'paid');
   assert.deepEqual(await order.ask('add', { sku: 'jam', price: 1 }), { error: { message: 'not in this state' } });
 });
 ```
 
-`place(Class, { id, cells })` bears a being and starts her from those
-cells. A placed being is asked with `ask(method, args, { role })`,
-described with `describe({ role })`, and read with `cells()`. `settle()`
-lets every effect and reply run, and `advance(ms)` moves the fake clock.
+`place(Class, { id, born })` has the bench's steward bear a being. A
+placed being is asked with `ask(method, args, { role })` and described
+with `describe({ role })`. Test her through her asks first, as every
+asker meets her. `cells()` reads her cells through the hand, as her owner
+inspects them. An effect answers with the reply it brings once it lands.
+`settle()` lets every effect and reply run, and `advance(ms)` moves the
+fake clock.
 
-The bench plays a role with an occupant named for it, whose own notes and
-steward notes both hold the role as `true`.
+The bench plays a role as an owner could, judged on her cells as they
+stand. `root`, and a role root holds, is the hand. `steward` is the
+bench's steward, and `being` a being it introduces to her. Any other
+role is an occupant the bench's steward invites, with the role `true` in
+its steward notes. A role read from her own notes is hers to grant, and
+a handle only her own ask mints.
 
 A steward and a public being are placed where the house places them.
 `Bench.open({ steward: Shop, public: Lobby, classes: [Order] })` opens the
 author's house with them there, and `place(Shop)` and `place(Lobby)` find
-them. A role `root` holds is played through the hand, on any being. On
-the public being, a role a stranger holds is played by a box with no
-relation, signed with a key drawn from the bench's seed.
+them. On the public being, a role a stranger holds is played by a being
+of the bench's own house, asking as a stranger. Beside a steward the test
+brings, the bench plays `root` and `stranger` alone, and places no other
+being. A world of your steward and the beings she bears is tested on a
+BenchGround, as [Faces](FACES.md) tests its desk.
 `Bench.check(Shop, { position: 'steward' })` and `Bench.check(Lobby, {
-position: 'public', steward: Shop })` check them.
+position: 'public' })` check them.
 
-An entry's `examples` are tests the bench runs. Each is one ask on a
-fresh bench: `cells` start her, `role` asks, `args` are the ask's,
-`fakes` answer her needs, and `gives` is the answer owed. `Bench.check`
-runs every example twice from one seed and flags a class that answers
-differently. It then describes every state to every role, and names every
-finding that failed.
+An entry's `examples` are tests the bench runs. Each is a history, then
+one ask, on a fresh bench. `given` lists the asks of hers that bring her
+from her `born` to where the example starts. `role` asks, `args` are the
+ask's, `fakes` answer her needs, and `gives` is the answer owed.
+`Bench.check` runs every example twice from one seed and flags a class
+that answers differently, or leaves her cells differently. It then
+describes every state to every role it plays, and names every finding
+that failed.
 
 ## A faculty
 
@@ -582,34 +616,11 @@ export const paymentsOffer = (payments: Payments): Offer => ({ blueprint: Paymen
 ```
 
 An offer is `{ blueprint, object, kinds?, window?, handler?, stop? }`.
-
-- **The object has the blueprint's methods.** Each takes one args object
-  and a context, and answers `{ result }` or `{ error: { message } }`. A
-  throw is a failure to answer, and the house tries again.
-- **The context holds the call id.** An effect arrives again with the same
-  call id when an answer was lost. A faculty that changes the world
-  answers a call id it has seen with the answer it gave.
-- **A handle arrives as a token.** The faculty calls it with
-  `context.call({ token, args, id })`. Its own `id` makes that call run
-  once, however often it is sent.
-- **`kinds` is the ground's grant.** It lists the classes that may hold
-  the offer. Without it, every class whose need it covers holds it.
-- **`window` is how long the faculty remembers a call id.** It is seven
-  days where omitted, and the house gives up on an effect at it.
-- **`handler` answers HTTP on the ground's one listener.** It takes a
-  `Request` and answers a `Response`, or `null` where the request is not
-  its own. A site, an API or an MCP server is a faculty with a handler.
-- **`stop` is called when the ground stops**, faculties in the reverse of
-  the order they were made.
-
-The object arrives living. The ground makes and starts the faculty, and
-the house never starts, stops or restarts it. Every being whose need it
-covers holds the same object.
-
-A faculty is the ground's, never a house's. The ground's recipe makes
-each one by name, from the settings the ground hands it. `env` is the
-ground's environment, so a secret stays on its machine and out of the
-code. `dir(name)` answers a folder of the faculty's own.
+The object answers each call with its call id, and one that changes the
+world answers a call id it has seen with the answer it gave. The ground's
+recipe makes each faculty by name, and `kinds` grants it to the classes
+it names. [Writing a faculty](FACULTIES.md) teaches the craft whole, with a
+faculty written in Python.
 
 ```ts
 // recipe.ts
@@ -619,10 +630,6 @@ export const faculties = () => ({
   payments: paymentsOffer(new Payments()),
 });
 ```
-
-Policy over a faculty is written as a being. Limits, approvals and
-quotas are not the faculty's. One being holds the raw faculty through
-`kinds`, and every other being reaches her through a standing.
 
 ## A ground
 
@@ -639,6 +646,13 @@ nervur-ground/
   payments.ts
   classes/index.ts, order.ts, shop.ts, lobby.ts
   state/        made by the ground, its owner's alone
+```
+
+The folder is a package of ECMAScript modules, so Node reads its
+TypeScript as it is written, with no build step.
+
+```bash
+npm init -y && npm pkg set type=module && npm install nervur
 ```
 
 A house's folder names what the house holds.
@@ -672,9 +686,11 @@ It is set by its environment.
 
 | Setting | What it sets |
 | --- | --- |
-| `NERVUR_TCP_PORT` | its TCP port, 7300 where unset |
+| `NERVUR_TCP_PORT` | its TCP port, 9110 where unset |
 | `NERVUR_HTTP_PORT` | its HTTP port, for Quo over the web and every handler; no HTTP where unset |
-| `NERVUR_ADDRESSES` | the public addresses it writes into invitations, by commas |
+| `NERVUR_ADDRESSES` | the public addresses it writes into invitations, by commas: `tcp`, `https`, `http`, `wss` or `ws` |
+| `NERVUR_ORIGINS` | the pages of other origins it answers on the web, by commas; a page of its own host needs none |
+| `NERVUR_ALLOW_PRIVATE` | `1` to dial private and loopback addresses, as two grounds on one machine do |
 | `NERVUR_BIND` | the address it listens on, `0.0.0.0` where unset |
 | `NERVUR_STATE` | its state, `state/` in its folder where unset |
 | `NERVUR_KEYCHAIN` | a keychain service holding its seeds on macOS, in place of files |
@@ -682,8 +698,10 @@ It is set by its environment.
 
 The state holds each house's seed in a file its owner alone reads, and
 each house's ledger. A ledger appends every write and never rewrites
-one, and one behind its witness is refused, so a restored backup cannot
-replay what a house already answered. A lost seed is a lost house.
+one. Its witness keeps where it last stood, and a ledger behind its
+witness is refused. So a ledger restored alone cannot replay what a
+house already answered, though a whole state folder restored with its
+witnesses is not seen. A lost seed is a lost house.
 
 A house is added once, and the ground opens it again at every start.
 
@@ -714,16 +732,22 @@ npx nervur houses list
 ```
 
 `ask` asks a being in a house as `root`: the steward, or the being
-`--id` names. The owner lands a paper in a being with one ask, and her
-`accept` names `root` in its `for`, or names no `for`.
+`--id` names. The owner opens an order through the steward, and hands a
+courier's paper to it the same way. The steward's `hire` carries the
+paper unopened, and the order takes it.
 
 ```bash
 npx nervur ask shop open id=first
 ```
 
 ```bash
-npx nervur ask shop --id alice accept invitation=7b22…
+npx nervur ask shop hire order=first courier=7b22…
 ```
+
+`--id` names the being asked in the steward's place, as `npx nervur ask
+shop --id first` shows the order's describe. `--cells` reads her cells
+and asks nothing, as `npx nervur ask shop --id first --cells`. No one
+but the owner reads them, and only her own asks write them.
 
 Each prints one JSON value. It exits 0 on a result and 1 on an error
 answered. It exits 2 where nothing was asked, so a script tells a
@@ -812,3 +836,40 @@ through a faculty your recipe makes.
    leaves her absent, and the refusal says why.
 
 A failed ask changed nothing she owns, so asking again is safe.
+
+## What the house refuses
+
+Each refusal answers why, where it is met: at her class's first resolve,
+at her call, or where an ask arrives.
+
+- A being reaching anything her position, her needs and `this.house` do
+  not give.
+- A ground's own references handed to a being, or offered to her as a
+  faculty.
+- A handle or an invitation in her cells.
+- Her cells read by anyone but the owner's hand.
+- A standing she mints herself. Standings arrive from the house.
+- A far standing asked in the ask that took it. She asks it from her next
+  ask.
+- A write by anyone else to her notes, and by her to her steward's.
+- An occupant id the house reserves, and one she already holds.
+- Two member names that clash.
+- An ask with no entry.
+- A state no ask reaches, an ask no role reaches, and a role unused.
+- A method landing in a state its `to` does not name.
+- A `readOnly` ask that writes.
+- A need and an offer that disagree on `idempotent`.
+- A schema keyword outside the subset `s` writes.
+- Two offers covering one need for one kind, and a kind two sources
+  claim.
+- An effect sent before its ask landed, or sent again while a call for
+  it is pending.
+- An ask a stranger reaches that is not idempotent.
+- An invite from a public being.
+- A seed inside the house, and a seed that is not sixty-four hex digits.
+- A memory opened with keys that derive another bound.
+- A send to a private address, unless its ground allows it.
+- A call on the house beside `House.open`, `door` and `ask`.
+- A faculty in a house's code. Faculties are the ground's.
+- A custom body for a ground's own custody or memory.
+- A ground an owner must write. Each terrain's ships.

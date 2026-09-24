@@ -87,28 +87,51 @@ export class LockedCustody implements Custody {
   }
 
   keys({ house }: { house: string }): Promise<Keys> {
+    return this.#inTurn(house, (named) => this.#keys(named));
+  }
+
+  // One custody step at a time, so two first uses of a house never draw two seeds.
+  #inTurn<T>(house: string, step: (house: string) => Promise<T>): Promise<T> {
     if (!NAME.test(house)) return Promise.reject(new TypeError(`no house is named ${house}`));
-    const turn = this.#turn.then(() => this.#keys(house));
+    const turn = this.#turn.then(() => step(house));
     this.#turn = turn.catch(() => undefined);
     return turn;
   }
 
+  /** A house's seed as hex, drawn where none is kept, for the hand's `moves` alone. */
+  seed({ house }: { house: string }): Promise<string> {
+    return this.#inTurn(house, (named) => this.#seed(named));
+  }
+
+  /** A seed kept for a house, as a move brings it in; a house holding another is refused. */
+  keep({ house, seed }: { house: string; seed: string }): Promise<void> {
+    return this.#inTurn(house, async (named) => {
+      if (!/^[0-9a-f]{64}$/.test(seed)) throw new TypeError('a seed is sixty-four lowercase hex digits');
+      if ((await this.#seed(named, seed)) !== seed) throw new Error(`the house ${named} holds another seed`);
+    });
+  }
+
   async #keys(house: string): Promise<Keys> {
+    return new SeedKeys(await this.#seed(house));
+  }
+
+  // The house's seed as hex: the one sealed on the shelf, or `given`, or a fresh one, sealed there first.
+  async #seed(house: string, given?: string): Promise<string> {
     const key = await this.#key();
     // The house's name is sealed in, so one house's seed never opens as another's.
     const additionalData = new TextEncoder().encode(house);
     let sealed = (await this.#shelf.get(`seed:${house}`)) as Sealed | undefined;
     if (sealed === undefined) {
-      const seed = crypto.getRandomValues(new Uint8Array(32));
+      const seed = given === undefined ? crypto.getRandomValues(new Uint8Array(32)) : new Uint8Array(given.match(/../g)!.map((pair) => parseInt(pair, 16)));
       const iv = crypto.getRandomValues(new Uint8Array(12));
       sealed = { iv, data: new Uint8Array(await this.#subtle.encrypt({ name: 'AES-GCM', iv, additionalData }, key, seed)) };
       seed.fill(0);
       await this.#shelf.set(`seed:${house}`, sealed);
     }
     const seed = new Uint8Array(await this.#subtle.decrypt({ name: 'AES-GCM', iv: sealed.iv, additionalData }, key, sealed.data));
-    const keys = new SeedKeys(hex(seed));
+    const text = hex(seed);
     seed.fill(0);
-    return keys;
+    return text;
   }
 
   async #key(): Promise<CryptoKey> {

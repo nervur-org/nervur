@@ -5,57 +5,18 @@
 import { lookup } from 'node:dns/promises';
 import { isIP, createConnection, createServer, type Server, type Socket } from 'node:net';
 import type { Carry, Sent } from '../foundation.ts';
-import { ASK, LARGEST, NOTHING, PK, REPLY, privateAddress } from '../quo/frame.ts';
+import { ASK, Frames, NOTHING, PK, REPLY, framed, parseAddress, privateAddress } from '../quo/frame.ts';
 
-export { privateAddress } from '../quo/frame.ts';
+// How long a line lies still before the system asks the far end whether it is there: under a router's forgetting.
+const KEEPALIVE = 25_000;
+
+export { parseAddress, privateAddress } from '../quo/frame.ts';
 
 /** What listens: a ward's name and its door. */
 export interface Listened {
   readonly ward: string;
   door(box: Uint8Array): Promise<Uint8Array | null>;
 }
-
-type Frame = { kind: number; id: number; rest: Buffer };
-
-// Reads frames off a stream. `false` from `take` is a stream that sent no frame, and is closed.
-class Frames {
-  #held = Buffer.alloc(0);
-
-  take(chunk: Buffer, each: (frame: Frame) => void): boolean {
-    this.#held = Buffer.concat([this.#held, chunk]);
-    while (this.#held.length >= 4) {
-      const length = this.#held.readUInt32BE(0);
-      if (length < 5 || length > LARGEST) return false;
-      if (this.#held.length < 4 + length) return true;
-      const body = this.#held.subarray(4, 4 + length);
-      this.#held = this.#held.subarray(4 + length);
-      const kind = body[0];
-      const rest = Buffer.from(body.subarray(5));
-      if (kind > NOTHING || (kind === ASK && rest.length < PK) || (kind === NOTHING && rest.length > 0)) return false;
-      each({ kind, id: body.readUInt32BE(1), rest });
-    }
-    return true;
-  }
-}
-
-const frame = (kind: number, id: number, rest: Uint8Array): Buffer => {
-  const out = Buffer.alloc(4 + 5 + rest.length);
-  out.writeUInt32BE(5 + rest.length, 0);
-  out[4] = kind;
-  out.writeUInt32BE(id, 5);
-  out.set(rest, 9);
-  return out;
-};
-
-/** A `tcp://host:port` address read, or `null` where it is none of this carrier's. */
-export const parseAddress = (address: string): { host: string; port: number } | null => {
-  const found = /^tcp:\/\/(\[[0-9a-fA-F:.]+\]|[^/?#@:[\]]+):([0-9]{1,5})$/i.exec(address);
-  if (found === null) return null;
-  const port = Number(found[2]);
-  if (port < 1 || port > 65_535) return null;
-  const host = found[1].startsWith('[') ? found[1].slice(1, -1) : found[1];
-  return { host, port };
-};
 
 interface Dialled {
   socket: Socket;
@@ -122,26 +83,32 @@ export class TcpCarry implements Carry {
     return [`tcp://${host}:${this.#bound}`];
   }
 
+  /** None: TCP names no domain, and a vouch is read on the web. */
+  vouched(_options: { ward: string; at: readonly string[] }): Promise<readonly string[]> {
+    return Promise.resolve([]);
+  }
+
   #answer(socket: Socket) {
     this.#accepted.add(socket);
+    socket.setKeepAlive(true, KEEPALIVE);
     socket.on('close', () => this.#accepted.delete(socket));
     socket.on('error', () => socket.destroy());
     const frames = new Frames();
     socket.on('data', (chunk: Buffer) => {
       const read = frames.take(chunk, ({ kind, id, rest }) => {
         if (kind !== ASK) return;
-        const ward = rest.subarray(0, PK).toString('hex');
+        const ward = Buffer.from(rest.subarray(0, PK)).toString('hex');
         const door = this.#doors.get(ward);
         if (door === undefined) {
-          socket.write(frame(NOTHING, id, new Uint8Array(0)));
+          socket.write(framed(NOTHING, id, new Uint8Array(0)));
           return;
         }
-        door(new Uint8Array(rest.subarray(PK))).then(
+        door(rest.slice(PK)).then(
           (reply) => {
-            if (!socket.destroyed) socket.write(reply === null ? frame(NOTHING, id, new Uint8Array(0)) : frame(REPLY, id, reply));
+            if (!socket.destroyed) socket.write(reply === null ? framed(NOTHING, id, new Uint8Array(0)) : framed(REPLY, id, reply));
           },
           () => {
-            if (!socket.destroyed) socket.write(frame(NOTHING, id, new Uint8Array(0)));
+            if (!socket.destroyed) socket.write(framed(NOTHING, id, new Uint8Array(0)));
           },
         );
       });
@@ -149,7 +116,7 @@ export class TcpCarry implements Carry {
     });
   }
 
-  async send({ ward, at, box }: { ward: string; at: readonly string[]; box: Uint8Array }): Promise<Sent> {
+  async send({ ward, at, box, wait = this.#wait }: { ward: string; at: readonly string[]; box: Uint8Array; wait?: number }): Promise<Sent> {
     // A ward this carry listens for is on this ground: its door takes the box by pointer.
     const door = this.#doors.get(ward);
     if (door !== undefined) {
@@ -159,7 +126,7 @@ export class TcpCarry implements Carry {
     for (const address of at) {
       const parsed = parseAddress(address);
       if (parsed === null) continue;
-      const answer = await this.#ask(address, parsed, ward, box);
+      const answer = await this.#ask(address, parsed, ward, box, wait);
       // A reply ends it; an ask that may have been heard is not carried again.
       if (answer === 'heard') return { reply: null, heard: true };
       if (answer !== null) return { reply: answer, via: address };
@@ -167,7 +134,7 @@ export class TcpCarry implements Carry {
     return { reply: null, heard: false };
   }
 
-  async #ask(address: string, target: { host: string; port: number }, ward: string, box: Uint8Array): Promise<Uint8Array | null | 'heard'> {
+  async #ask(address: string, target: { host: string; port: number }, ward: string, box: Uint8Array, wait: number): Promise<Uint8Array | null | 'heard'> {
     let dialled: Dialled;
     try {
       dialled = await this.#dial(address, target);
@@ -177,9 +144,9 @@ export class TcpCarry implements Carry {
     const id = dialled.next;
     dialled.next = (dialled.next + 1) >>> 0;
     const answered = new Promise<{ kind: number; box: Uint8Array } | null>((resolve) => dialled.pending.set(id, resolve));
-    dialled.socket.write(frame(ASK, id, new Uint8Array([...Buffer.from(ward, 'hex'), ...box])));
+    dialled.socket.write(framed(ASK,id, new Uint8Array([...Buffer.from(ward, 'hex'), ...box])));
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<'late'>((resolve) => (timer = setTimeout(() => resolve('late'), this.#wait)));
+    const late = new Promise<'late'>((resolve) => (timer = setTimeout(() => resolve('late'), wait)));
     const answer = await Promise.race([answered, late]);
     clearTimeout(timer);
     dialled.pending.delete(id);
@@ -198,6 +165,8 @@ export class TcpCarry implements Carry {
           socket.once('connect', resolve);
           socket.once('error', reject);
         });
+        // A line a router would forget while a watch is held is kept warm by the system.
+        socket.setKeepAlive(true, KEEPALIVE);
         const dialled: Dialled = { socket, pending: new Map(), next: 1 };
         const frames = new Frames();
         const drop = () => {

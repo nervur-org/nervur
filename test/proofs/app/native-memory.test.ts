@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { NativeMemory } from 'nervur/app';
 import { MapStore } from '../../fixtures/app/shell.ts';
-import { memorySuite } from '../suites/memory.ts';
+import { memorySuite } from '../../suites/memory.ts';
 
 memorySuite('NativeMemory', () => new NativeMemory(new MapStore(), 'suite'));
 

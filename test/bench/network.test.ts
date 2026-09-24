@@ -3,18 +3,17 @@
 // turns off and moves as the world does.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BenchGround, FakeClock, FakeNetwork } from 'nervur/bench';
+import { BenchGround, FakeNetwork } from 'nervur/bench';
 import * as shop from '../fixtures/world/shop.ts';
 
 const modules = { shop };
 
 const world = async () => {
   const network = new FakeNetwork();
-  const clock = new FakeClock();
-  const acme = await BenchGround.open({ network, clock, host: 'acme', names: ['acme.com'], modules });
-  const home = await BenchGround.open({ network, clock, host: 'alice-home', names: ['alice.home'], modules });
-  const phone = await BenchGround.open({ network, clock, host: 'alice-phone', modules });
-  return { network, clock, acme, home, phone };
+  const acme = await BenchGround.open({ network, host: 'acme', names: ['acme.com'], modules });
+  const home = await BenchGround.open({ network, host: 'alice-home', names: ['alice.home'], modules });
+  const phone = await BenchGround.open({ network, host: 'alice-phone', modules });
+  return { network, acme, home, phone };
 };
 
 const bear = (ground: BenchGround, house: string, kind: string, id: string) => ground.ask({ house, method: 'bear', args: { kind: `org.example.${kind}`, id } });
@@ -30,7 +29,7 @@ const link = async (from: { ground: BenchGround; house: string; host: string }, 
 
 const greet = (ground: BenchGround, house: string, guest: string) => ground.ask({ house, id: guest, method: 'greetHost' });
 
-test('One class greets the same in one house, in two houses of a ground, and across grounds', async () => {
+test('The asker’s id is true: one class greets the same in one house, in two houses of a ground, and across grounds', async () => {
   const { acme, home } = await world();
   await home.add('home', 'shop');
   await home.add('studio', 'shop');
@@ -85,7 +84,7 @@ test('A cut stops a far ask until it heals, and a lost reply is a failure the ne
 });
 
 test('A ground turned off and on keeps its houses, and moved to another host it keeps its wards', async () => {
-  const { network, clock, acme, home } = await world();
+  const { network, acme, home } = await world();
   const store = await acme.add('store', 'shop');
   await home.add('home', 'shop');
   await bear(acme, 'store', 'host', 'bob');
@@ -98,7 +97,7 @@ test('A ground turned off and on keeps its houses, and moved to another host it 
   assert.deepEqual(await greet(home, 'home', 'alice'), { result: 'bob greets alice' }, 'on again');
 
   await acme.down();
-  const moved = await BenchGround.open({ network, clock, host: 'acme-new', names: ['acme.net'], modules, machine: acme.machine });
+  const moved = await BenchGround.open({ network, host: 'acme-new', names: ['acme.net'], modules, machine: acme.machine });
   network.point('acme.com', 'acme-new');
   assert.equal(moved.list()[0]?.ward, store.ward, 'the same ward on another host');
   assert.deepEqual(await greet(home, 'home', 'alice'), { result: 'bob greets alice' }, 'the name followed it');

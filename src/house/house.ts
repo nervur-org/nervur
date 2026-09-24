@@ -4,10 +4,10 @@
 import type { Asker, Json, Notes, Position } from '../being/being.ts';
 import { covers } from '../being/covers.ts';
 import { blueprintOf, WAIT, type Blueprint, type BlueprintMethod } from '../being/need.ts';
-import { isJson, resolve, type Table, type TableEntry } from '../being/table.ts';
+import { isJson, offered, resolve, type Table, type TableEntry } from '../being/table.ts';
 import type { BeingClass, Carry, Classes, Clock, Crypto, Keys, Memory, Tools } from '../foundation.ts';
-import { Room, type Admitted, type Choice } from '../quo/room.ts';
-import { Carried, Crossing, HandleRef, handleOf, inward, outward } from './crossing.ts';
+import { Room, type Admitted, type Choice } from '../quo/index.ts';
+import { Crossing, Marks, inward, outward } from './crossing.ts';
 import { Rows, type Draft } from './rows.ts';
 import { copy, emptyRow, type Answer, type BeingRow, type DeadLetter, type OccupantRow, type OutboxEntry, type OwnerRow, type StandingRow, type Target, type WardRow } from './rows-shape.ts';
 
@@ -18,7 +18,7 @@ export interface Foundation {
   readonly keys: Keys;
   readonly memory: Memory;
   readonly classes: Classes;
-  readonly carry?: Carry;
+  readonly carry: Carry;
   readonly clock: Clock;
   readonly crypto: Crypto;
   readonly tools: Tools;
@@ -36,7 +36,16 @@ export interface Offer {
 /** What a faculty's method receives beside its args. */
 export interface FacultyContext {
   readonly id: string;
-  call(options: { token: string; args?: Json; id: string }): Promise<Answer>;
+  /**
+   * A token it was handed, asked. A handle's token asks its one ask. An
+   * occupant's token asks the `method` named, as that occupant, and
+   * `after` makes a `readOnly` ask a watch. `home` carries the answer's
+   * handles home: they leave as invitation bytes, which a house takes,
+   * in place of tokens.
+   */
+  call(options: { token: string; method?: string; args?: Json; id: string; after?: Answer; home?: boolean }): Promise<Answer>;
+  /** What the occupant behind a token may ask now, as her describe shows it. */
+  describe(options: { token: string }): Promise<{ describe: Json } | { error: { message: string } }>;
 }
 
 /** What `House.open` gives. */
@@ -46,14 +55,17 @@ export interface Opened {
   /**
    * The hand: a being asked by `id` as `root`, the steward where no id is
    * named. `after` is the answer the caller holds, which makes a `readOnly`
-   * ask a watch.
+   * ask a watch. `cells` reads her cells and asks nothing, which no other
+   * way into the house can.
    */
-  ask(request: { id?: string; method?: string; args?: Json; after?: Answer }): Promise<Answer | { readonly describe: Json }>;
+  ask(request: { id?: string; method?: string; args?: Json; after?: Answer; cells?: true }): Promise<Answer | { readonly describe: Json }>;
 }
 
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
 const RETRY_BOUND = 300_000;
+/** What a reply has to come home in, past the time its ask ran. */
+const HOMEWARD = 5_000;
 const STEWARD = 'steward';
 const PUBLIC = 'public';
 const RESERVED_BEINGS = new Set([STEWARD, PUBLIC, 'root', 'stranger']);
@@ -82,8 +94,8 @@ interface Request {
   readonly call?: string;
   /** Asked by the house itself, as the occupant steward: replies, alarms, born. */
   readonly house?: boolean;
-  /** Who reads the answer: a faculty is handed tokens, a house invitations. */
-  readonly reader?: 'house' | 'faculty';
+  /** Who reads the answer: a faculty is handed tokens it alone calls, a house invitations. */
+  readonly reader?: Reader;
   /** Changes that land with the ask whatever its outcome. */
   readonly always?: { change(draft: Draft, outcome: Outcome): Promise<void> | void; landed?(): void };
   /** The key a stranger signed with. */
@@ -94,6 +106,18 @@ interface Request {
   readonly strange?: boolean;
   /** The digest of the answer the asker holds: a `readOnly` ask asked with it is a watch. */
   readonly after?: string;
+}
+
+/** Who a handle leaves for: a far house, as an invitation, or one faculty, by its blueprint, as a token. */
+type Reader = 'house' | { readonly faculty: string };
+
+/** One ask as a describe shows it. */
+interface DescribedAsk {
+  readonly method: string;
+  readonly args?: unknown;
+  readonly result?: unknown;
+  readonly hints?: { readonly readOnly?: boolean; readonly idempotent?: boolean };
+  readonly wait?: unknown;
 }
 
 /** What a ground may set on a house beside its foundation and offers. */
@@ -109,6 +133,15 @@ const answerOf = (outcome: Outcome): Answer | null => (outcome !== null && 'answ
 
 const errorOf = (message: string): Answer => ({ error: { message } });
 
+// The card a far public being is reached by: her ward, and her addresses in order.
+const cardOf = (card: unknown): { ward: string; at: readonly string[] } => {
+  const { ward, at } = (card ?? {}) as { ward?: unknown; at?: unknown };
+  if (typeof ward !== 'string' || !/^[0-9a-f]{128}$/.test(ward) || !Array.isArray(at) || !at.every((address) => typeof address === 'string')) {
+    throw new Fail('a public being is reached by its ward and its addresses');
+  }
+  return { ward, at };
+};
+
 // How long a handle's invitations may wait unspent: whole milliseconds above zero, or never.
 const expiresOf = (expires: unknown): number | undefined => {
   if (expires === undefined) return undefined;
@@ -122,46 +155,31 @@ const positionOf = (being: string): Position => (being === STEWARD ? 'steward' :
 const standingOf = (being: string, row: BeingRow, id: string): StandingRow | undefined =>
   id === STEWARD && being !== STEWARD ? { notes: {}, steward: {}, local: { being: STEWARD, occupant: `being:${being}` } } : row.standings[id];
 
+/** An ask's args as a handle's holder sends them: what its bind fixes is the house's, and shown to no one. */
+const unbound = <T extends object>(args: T, bound: Json | undefined): T => {
+  if (typeof bound !== 'object' || bound === null || Array.isArray(bound)) return args;
+  const schema = args as { properties?: Record<string, unknown>; required?: readonly string[] };
+  if (schema.properties === undefined) return args;
+  const fixed = new Set(Object.keys(bound));
+  return {
+    ...args,
+    properties: Object.fromEntries(Object.entries(schema.properties).filter(([key]) => !fixed.has(key))),
+    ...(schema.required === undefined ? {} : { required: schema.required.filter((key) => !fixed.has(key)) }),
+  };
+};
+
 /** Whether an ask is awaited by its caller: a public being's are, unless her author said otherwise. */
 const idempotentIn = (entry: TableEntry, position: Position): boolean => (position === 'public' ? !entry.effect : entry.hints.idempotent);
 const names = (value: readonly string[] | null) => value;
 
-export const openHouse = async (foundation: Foundation, offers: readonly Offer[], options: Options = {}): Promise<Opened> => (await openForBench(foundation, offers, options)).opened;
-
-/** What the bench reaches inside a house, and nothing a ground reaches. */
-export interface BenchAccess {
-  /** Her cells as they stand, her defaults under them. */
-  cells(being: string): Promise<Record<string, Json> | null>;
-  /** Her row changed directly, as no ask could: the cells an example starts from. */
-  patch(being: string, change: (row: BeingRow) => void): Promise<boolean>;
-  /** An occupant of hers written directly, and an invitation to it. */
-  occupant(being: string, occupant: string, held: OccupantRow): Promise<string>;
-  /** One ask on a standing of a being of this house, crossing as a box. */
-  far(being: string, standing: string, method: string | undefined, args: Json): Promise<Answer | { describe: Json } | null>;
-  /** A being borne directly, as the steward's `bear` would, with her `born` run. */
-  bear(kind: string, id: string, born?: Json): Promise<void>;
-  /** The roles an asker the house makes, `root` or `stranger`, holds on her now. */
-  roles(being: string, asker: 'root' | 'stranger'): Promise<readonly string[]>;
-}
-
-/** A house opened for the bench: the three things a ground holds, and the bench's reach. */
-export const openForBench = async (foundation: Foundation, offers: readonly Offer[], options: Options = {}): Promise<{ opened: Opened; access: BenchAccess }> => {
+/** A house opened on its foundation and its offers: its ward, its door and its hand, and nothing more. */
+export const openHouse = async (foundation: Foundation, offers: readonly Offer[], options: Options = {}): Promise<Opened> => {
   const house = new House(foundation, offers, options);
   await house.open();
   return {
-    opened: {
-      ward: house.ward,
-      door: (box) => house.door(box),
-      ask: (request) => house.hand(request),
-    },
-    access: {
-      cells: (being) => house.benchCells(being),
-      patch: (being, change) => house.benchPatch(being, change),
-      occupant: (being, occupant, held) => house.benchOccupant(being, occupant, held),
-      far: (being, standing, method, args) => house.far(being, standing, method, args, method === undefined ? undefined : house.tools.hex(house.crypto.random(16))),
-      bear: (kind, id, born) => house.benchBear(kind, id, born),
-      roles: (being, asker) => house.benchRoles(being, asker),
-    },
+    ward: house.ward,
+    door: (box) => house.door(box),
+    ask: (request) => house.hand(request),
   };
 };
 
@@ -177,6 +195,10 @@ class House {
   readonly #memory: Memory;
   readonly #offers: readonly (Offer & { readonly bp: Blueprint })[];
   readonly #room: Room;
+  /** Its marks on the handles and invitations it hands its beings, known to it alone. */
+  readonly #marks = new Marks();
+  /** The waits it raced against its clock, each named once. */
+  #withins = 0;
   #rows!: Rows;
   #wardPlace = '';
   ward = '';
@@ -218,14 +240,17 @@ class House {
     this.#keys = foundation.keys;
     this.#memory = foundation.memory;
     this.#classes = foundation.classes;
-    this.#carry = foundation.carry ?? { send: async () => ({ reply: null, heard: false }), at: () => [] };
+    this.#carry = foundation.carry;
     this.#clock = foundation.clock;
     this.#crypto = foundation.crypto;
     this.#tools = foundation.tools;
     this.#room = new Room(foundation.keys, foundation.crypto, foundation.tools);
+    const references = new Set<unknown>(Object.values(foundation));
     this.#offers = offers.map((offer) => {
-      const bp = blueprintOf(offer.blueprint) ?? (offer.blueprint as Blueprint);
-      if (typeof bp?.name !== 'string' || typeof bp.methods !== 'object') throw new TypeError('an offer has no blueprint');
+      // Held to the rules a need is, where it arrives: a keyword outside the subset refuses it.
+      const bp = offered(offer.blueprint);
+      // What the ground hands the house is never a being's to call.
+      if (references.has(offer.object)) throw new TypeError(`the offer ${bp.name} is a reference of the house's foundation`);
       for (const name of Object.keys(bp.methods)) {
         if (typeof (offer.object as Record<string, unknown>)[name] !== 'function') throw new TypeError(`the offer ${bp.name} has no method ${name}`);
       }
@@ -306,7 +331,7 @@ class House {
     if (row !== null) {
       for (const alarm of Object.values(row.alarms)) times.push(alarm.at);
       const heads = new Map<string, OutboxEntry>();
-      for (const entry of row.outbox) if (!heads.has(targetKey(entry.to))) heads.set(targetKey(entry.to), entry);
+      for (const entry of row.outbox) if (!heads.has(laneOf(entry))) heads.set(laneOf(entry), entry);
       for (const entry of heads.values()) times.push(Math.min(entry.next, entry.deadline));
     }
     if (times.length === 0) this.#dueAt.delete(being);
@@ -351,9 +376,19 @@ class House {
 
   // ---- asking ----
 
-  /** The hand: a being asked by id as the occupant root, the steward where none is named. */
-  async hand({ id = STEWARD, method, args, after }: { id?: string; method?: string; args?: Json; after?: Answer }): Promise<Answer | { describe: Json }> {
-    if ((await this.#being(id)) === null) return errorOf(`no being ${id} is here`);
+  /**
+   * The hand: a being asked by id as the occupant root, the steward where
+   * none is named. `cells` reads her cells as last landed, her defaults
+   * under them, and asks nothing.
+   */
+  async hand({ id = STEWARD, method, args, after, cells }: { id?: string; method?: string; args?: Json; after?: Answer; cells?: true }): Promise<Answer | { describe: Json }> {
+    const found = await this.#being(id);
+    if (found === null) return errorOf(`no being ${id} is here`);
+    if (cells === true) {
+      if (method !== undefined || args !== undefined || after !== undefined) return errorOf('the hand reads her cells alone');
+      const row = await this.#rows.get<BeingRow>(await this.#place(id));
+      return { result: { ...(copy(found.resolved.table.cells) as Record<string, Json>), ...row?.cells } };
+    }
     const watch = after === undefined ? {} : { after: await this.digest(after) };
     const outcome = await this.ask({ being: id, occupant: 'root', ...(method === undefined ? {} : { method }), args: args ?? {}, ...watch });
     if (outcome === null) return errorOf('the house answered nothing');
@@ -426,7 +461,7 @@ class House {
           const same = outcome !== null && 'answer' in outcome && (await this.digest(outcome.answer)) === request.after;
           const left = deadline - this.#clock.now();
           if (!same || ended || left <= 0) return await give(outcome);
-          if ((await within(this.#clock, left, changed)) === null) return await give(outcome);
+          if ((await this.within(left, changed)) === null) return await give(outcome);
         } finally {
           this.#unlisten(request.being, listening);
         }
@@ -495,7 +530,7 @@ class House {
    * Her describe for one asker, and its mark, which moves exactly when the
    * describe does. A stranger is not told her kind or her description.
    */
-  async #describe(table: Table, state: string, shown: (entry: TableEntry) => boolean, position: Position, stranger: boolean): Promise<{ describe: Json; mark: string }> {
+  async #describe(table: Table, state: string, shown: (entry: TableEntry) => boolean, position: Position, stranger: boolean, bound?: Json): Promise<{ describe: Json; mark: string }> {
     const asks = Object.values(table.asks)
       .filter(shown)
       .map((entry) => ({
@@ -503,7 +538,7 @@ class House {
         in: names(entry.in) ?? table.states,
         to: names(entry.to) ?? names(entry.in) ?? table.states,
         ...(entry.description === undefined ? {} : { description: entry.description }),
-        args: entry.args,
+        args: unbound(entry.args, bound),
         ...(entry.result === undefined ? {} : { result: entry.result }),
         hints: { ...entry.hints, idempotent: idempotentIn(entry, position) },
         wait: entry.wait,
@@ -572,13 +607,15 @@ class House {
     const asker = this.#asker(request.being, row, request.occupant, request.house === true, request.signer);
     if (asker === undefined) return silent();
     const cells = { ...(copy(table.cells) as Record<string, Json>), ...row.cells };
+    // What the house asks itself, her born, her alarms and her replies, it asks as her steward would, with the steward's roles alone.
     const shownFor = (now: Record<string, Json>) => {
-      const roles = request.house === true ? new Set([STEWARD, ...Object.keys(table.roles)]) : this.#roles(table, asker, { id: request.being, position, cells: now });
-      return (entry: TableEntry) => request.house === true || this.#shown(entry, asker, roles, position);
+      const roles = this.#roles(table, asker, { id: request.being, position, cells: now });
+      return (entry: TableEntry) => this.#shown(entry, asker, roles, position);
     };
     const stranger = asker.id === 'stranger';
     // The mark of what this asker is shown on these cells.
-    const markOf = async (now: Record<string, Json>) => (await this.#describe(table, table.state({ id: request.being, position, cells: now }), shownFor(now), position, stranger)).mark;
+    const bound = asker.handle?.bind;
+    const markOf = async (now: Record<string, Json>) => (await this.#describe(table, table.state({ id: request.being, position, cells: now }), shownFor(now), position, stranger, bound)).mark;
     let state: string;
     try {
       state = table.state({ id: request.being, position, cells });
@@ -590,7 +627,7 @@ class House {
     // Args that repeat a key are refused before anything runs, with the mark this asker is shown.
     if (request.strange === true) return (await land({ answer: errorOf('the args repeat a key'), mark: await markOf(cells) }, true)) ?? null;
     if (request.method === undefined) {
-      const described = await this.#describe(table, state, shown, position, stranger);
+      const described = await this.#describe(table, state, shown, position, stranger, bound);
       return (await land(described, false)) ?? null;
     }
     const failed = async (message: string): Promise<Outcome> => (await land({ answer: errorOf(message), mark: await markOf(cells) }, true)) ?? null;
@@ -601,7 +638,6 @@ class House {
       const stored = row.calls[callKey];
       if (stored !== undefined) return (await land({ answer: stored.answer, mark: await markOf(cells) }, false)) ?? null;
     }
-    const bound = asker.handle?.bind;
     const wire = typeof bound === 'object' && bound !== null && !Array.isArray(bound) ? { ...(request.args as object), ...bound } : (request.args ?? {});
     const why = this.#tools.check(entry.args, wire);
     if (why !== null) return failed(why);
@@ -611,14 +647,13 @@ class House {
     const tx = new Tx(this, request.being, row, resolved, Math.min(now + Math.min(entry.wait, this.#wait), request.until ?? Number.POSITIVE_INFINITY));
     let answer: Answer;
     try {
-      const args = await inward(this.#tools, entry.args, wire, (hex) => tx.accept(hex));
+      const args = await inward(this.#tools, this.#marks, entry.args, wire, (hex) => tx.accept(hex));
       const being = Reflect.construct(Class as unknown as new () => object, []) as Record<string, unknown>;
       tx.cells = copy(cells);
       Object.defineProperties(being, tx.reach(asker, position, table));
       const method = being[request.method] as (args: unknown) => unknown;
       // The ask has its own wait, and fails where the method runs past it.
-      const ran = await within(
-        this.#clock,
+      const ran = await this.within(
         entry.wait,
         (async () => {
           const value = await method.call(being, args);
@@ -633,21 +668,24 @@ class House {
       if (!to.includes(after)) throw new Error(`she landed in ${after}`);
       if (!isJson(tx.cells)) throw new Fail('a handle, an invitation or a value that is not JSON stands in her cells');
       if (entry.hints.readOnly && (tx.ops.length > 0 || this.#tools.canonical(tx.cells) !== this.#tools.canonical(cells))) throw new Error('a readOnly ask wrote');
-      const result = entry.result === undefined ? null : await outward(this.#tools, entry.result, returned, request.being, (handle) => tx.mint(handle, request.reader ?? 'house'));
+      const result = entry.result === undefined ? null : await outward(this.#tools, this.#marks, entry.result, returned, request.being, (handle) => tx.mint(handle, request.reader ?? 'house'));
       answer = { result: result as Json };
     } catch (error) {
       await tx.abandon();
+      tx.untake();
       this.#dropMinting(tx);
       return failed(error instanceof Fail || error instanceof Crossing ? error.message : 'the ask failed');
     }
 
     const outcome = { answer, mark: await markOf(tx.cells) };
-    let landed: boolean;
+    // A read writes none of her cells: it ran on the cells last landed, and an ask may have landed beside it.
+    const writes = !entry.hints.readOnly || callKey !== undefined || request.always !== undefined || asker.handle?.once === true;
+    let landed = true;
     try {
-      landed = await this.#rows.transact(async (draft) => {
+      if (writes) landed = await this.#rows.transact(async (draft) => {
         const current = await draft.get<BeingRow>(place);
         if (current === null) throw new Error('she was removed while she was asked');
-        current.cells = tx.cells;
+        if (!entry.hints.readOnly) current.cells = tx.cells;
         if (callKey !== undefined) current.calls[callKey] = { answer, at: this.#clock.now() };
         if (asker.handle?.once === true) await this.#dismiss(draft, current, request.occupant);
         for (const op of tx.ops) await op(draft, current);
@@ -656,9 +694,11 @@ class House {
       });
     } catch (error) {
       // A change her powers could not make, such as an occupant held already: nothing of her ask lands.
+      tx.untake();
       this.#dropMinting(tx);
       return failed(error instanceof Fail ? error.message : 'the ask failed');
     }
+    if (!landed) tx.untake();
     this.#dropMinting(tx);
     if (!landed) return null;
     request.always?.landed?.();
@@ -780,7 +820,7 @@ class House {
     const seen = new Set<string>();
     const sends: Promise<void>[] = [];
     for (const entry of row.outbox) {
-      const key = targetKey(entry.to);
+      const key = laneOf(entry);
       if (seen.has(key)) continue;
       seen.add(key);
       if (this.#inFlight.has(`${being}\n${entry.id}`)) continue;
@@ -799,7 +839,9 @@ class House {
     try {
       let answer: Answer | null;
       try {
-        answer = await this.deliver(being, row, entry.to, entry.method, entry.args, entry.id);
+        // A watch is held on the far side for its wait, and answers the same when it runs out.
+        const watch = entry.after === undefined ? undefined : { until: this.#clock.now() + (entry.wait ?? WAIT), after: entry.after };
+        answer = await this.deliver(being, row, entry.to, entry.method, entry.args, entry.id, watch?.until, watch?.after);
       } catch {
         answer = null;
       }
@@ -843,10 +885,24 @@ class House {
     await this.ask({ being, occupant: STEWARD, house: true, method: entry.reply, args: answer, always: { change: (draft, outcome) => remove(draft, answerOf(outcome)) } });
   }
 
+  // Every entry to that receiver fails with the first. Each stays in flight
+  // until its reply has landed, so no pump sends one while its turn comes.
   async #giveUp(being: string, place: string, entry: OutboxEntry): Promise<void> {
-    const row = await this.#rows.get<BeingRow>(place);
-    const behind = (row?.outbox ?? []).filter((one) => targetKey(one.to) === targetKey(entry.to));
-    for (const one of behind) await this.#settle(being, place, one, errorOf('the call gave up at its deadline'));
+    const held = new Set([`${being}\n${entry.id}`]);
+    this.#inFlight.add(`${being}\n${entry.id}`);
+    try {
+      const row = await this.#rows.get<BeingRow>(place);
+      const behind = (row?.outbox ?? []).filter((one) => laneOf(one) === laneOf(entry));
+      for (const one of behind) {
+        held.add(`${being}\n${one.id}`);
+        this.#inFlight.add(`${being}\n${one.id}`);
+      }
+      for (const one of behind) await this.#settle(being, place, one, errorOf('the call gave up at its deadline'));
+    } finally {
+      for (const flight of held) this.#inFlight.delete(flight);
+      this.#blocked.delete(being);
+    }
+    await this.pump(being);
   }
 
   /**
@@ -889,6 +945,27 @@ class House {
     return turn;
   }
 
+  /**
+   * The domains that vouch for a far standing's ward, read by the carry and
+   * kept on the standing. It runs after her ask lands, so a take never
+   * waits on the web.
+   */
+  async vouch(being: string, standing: string): Promise<void> {
+    const place = await this.#place(being);
+    const held = (await this.#rows.get<BeingRow>(place))?.standings[standing]?.quo;
+    if (held === undefined) return;
+    let vouched: readonly string[];
+    try {
+      vouched = await this.#carry.vouched({ ward: held.invitation.ward, at: held.invitation.at ?? [] });
+    } catch {
+      vouched = [];
+    }
+    await this.#rows.transact(async (draft) => {
+      const relation = (await draft.get<BeingRow>(place))?.standings[standing];
+      if (relation !== undefined) relation.vouched = [...vouched];
+    });
+  }
+
   async #far(being: string, standing: string, method: string | undefined, args: Json, call: string | undefined, until: number | undefined, after: string | undefined): Promise<Answer | { describe: Json } | null> {
     const place = await this.#place(being);
     const row = await this.#rows.get<BeingRow>(place);
@@ -920,7 +997,8 @@ class House {
     // A carry that failed says nothing of where the box went, so it may have been heard.
     let heard = true;
     try {
-      const sent = await this.#carry.send({ ward: held.invitation.ward, at, box: sealed.box });
+      // An ask that runs its whole time, a watch above all, still has a margin for its reply to come home.
+      const sent = await this.#carry.send({ ward: held.invitation.ward, at, box: sealed.box, ...(left === undefined ? {} : { wait: left + HOMEWARD }) });
       if (sent.reply !== null) ({ reply, via } = sent);
       else heard = sent.heard;
     } catch {
@@ -932,6 +1010,8 @@ class House {
     // A route is pinned only by a reply that opened as the far ward's, an
     // object or a word. Silence may be bytes no key of hers sealed, and pins nothing.
     await moveTo(told, 'object' in read || 'quo' in read ? via : undefined);
+    // A ward reached somewhere new may be vouched for by another domain.
+    if (told !== moved) void this.vouch(being, standing);
     if (!('object' in read)) return null;
     const key = `${being}\n${standing}`;
     if (method === undefined) {
@@ -948,9 +1028,20 @@ class House {
   async #faculty(offer: Offer & { bp: Blueprint }, method: string, args: Json, id: string, want: BlueprintMethod | undefined): Promise<Answer | null> {
     const context: FacultyContext = {
       id,
-      call: ({ token, args: called, id: callId }) => this.#token(token, called ?? {}, callId),
+      call: ({ token, method: asked, args: called, id: callId, after, home }) => this.#token(token, { method: asked, args: called ?? {}, id: callId, after, home }, offer),
+      describe: ({ token }) => this.#tokenDescribe(token, offer),
     };
-    const answered = await (offer.object as Record<string, (args: Json, context: FacultyContext) => Promise<unknown>>)[method](args, context);
+    // Her need let the args pass, and the offer may be narrower: covering is decided on names, and types on each call.
+    const spec = offer.bp.methods[method];
+    const refused = spec === undefined ? `the offer ${offer.bp.name} has no method ${method}` : this.#tools.check(spec.args, args);
+    if (refused !== null) return errorOf(refused);
+    let answered: unknown;
+    try {
+      answered = await (offer.object as Record<string, (args: Json, context: FacultyContext) => Promise<unknown>>)[method](args, context);
+    } catch {
+      // A throw is a failure to answer, and transient: silence, which no cause is read from.
+      return null;
+    }
     if (typeof answered !== 'object' || answered === null) return errorOf('the faculty answered no answer');
     if ('error' in answered) {
       const message = (answered as { error?: { message?: unknown } }).error?.message;
@@ -962,23 +1053,63 @@ class House {
     return why === null ? { result } : errorOf(why);
   }
 
-  // A faculty calls a handle it was handed, by its token.
-  async #token(token: string, args: Json, id: string): Promise<Answer> {
+  // The occupant a faculty's token reaches, and the one ask a handle's
+  // token is admitted to. A token answers the faculty it was handed to
+  // alone: another holding the string is told there is no such token.
+  async #tokenHolder(token: string, offer: Offer & { bp: Blueprint }): Promise<{ being: string; occupant: string; ask?: string } | null> {
     // A token her ask handed out before it landed answers once it has.
     await this.#tokening.get(token);
     const owner = await this.#rows.get<OwnerRow>(await this.#tokenPlace(token));
-    if (owner === null) return errorOf('no such token');
-    const row = await this.#rows.get<BeingRow>(await this.#place(owner.being));
-    const method = row?.occupants[owner.occupant]?.ask;
-    if (method === undefined) return errorOf('no such token');
-    const outcome = await this.ask({ being: owner.being, occupant: owner.occupant, method, args, call: `token:${id}`, reader: 'faculty' });
+    if (owner === null || owner.faculty !== offer.bp.name) return null;
+    const found = await this.#being(owner.being);
+    if (found === null || !Object.values(found.resolved.faculties).includes(offer)) return null;
+    const held = (await this.#rows.get<BeingRow>(await this.#place(owner.being)))?.occupants[owner.occupant];
+    if (held === undefined) return null;
+    return { being: owner.being, occupant: owner.occupant, ...(held.ask === undefined ? {} : { ask: held.ask }) };
+  }
+
+  // A faculty asks through a token it was handed: a handle's one ask, or
+  // any ask its occupant may call, as that occupant.
+  async #token(token: string, { method: asked, args, id, after, home }: { method?: string; args: Json; id: string; after?: Answer; home?: boolean }, offer: Offer & { bp: Blueprint }): Promise<Answer> {
+    const holder = await this.#tokenHolder(token, offer);
+    if (holder === null) return errorOf('no such token');
+    const method = holder.ask ?? asked;
+    if (method === undefined) return errorOf('a call on an occupant names its method');
+    if (asked !== undefined && asked !== method) return errorOf('no such ask');
+    const watch = after === undefined ? {} : { after: await this.digest(after) };
+    // A door carried home leaves for a house, as an invitation; every other for this faculty, as a token.
+    const reader: Reader = home === true ? 'house' : { faculty: offer.bp.name };
+    const outcome = await this.ask({ being: holder.being, occupant: holder.occupant, method, args, call: `token:${id}`, reader, ...watch });
     return outcome !== null && 'answer' in outcome ? outcome.answer : errorOf('the house answered nothing');
+  }
+
+  // What the occupant behind a token may ask now: her describe, as that occupant sees it.
+  async #tokenDescribe(token: string, offer: Offer & { bp: Blueprint }): Promise<{ describe: Json } | { error: { message: string } }> {
+    const holder = await this.#tokenHolder(token, offer);
+    if (holder === null) return errorOf('no such token') as { error: { message: string } };
+    const outcome = await this.ask({ being: holder.being, occupant: holder.occupant, reader: { faculty: offer.bp.name } });
+    if (outcome !== null && 'describe' in outcome) return { describe: outcome.describe };
+    return errorOf('the house answered nothing') as { error: { message: string } };
   }
 
   // ---- what a transaction reaches ----
 
   get tools() {
     return this.#tools;
+  }
+  get marks() {
+    return this.#marks;
+  }
+
+  /** A promise raced against the house's clock: `null` where the wait runs out first. */
+  async within<T>(ms: number, promise: Promise<T>): Promise<T | null> {
+    const id = `within:${++this.#withins}`;
+    const timeout = this.#clock.wait({ id, ms }).then((fired) => (fired ? null : new Promise<never>(() => undefined)));
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      this.#clock.cancel({ id });
+    }
   }
   get crypto() {
     return this.#crypto;
@@ -991,6 +1122,11 @@ class House {
   }
   get carry() {
     return this.#carry;
+  }
+
+  /** The key this house signs with as a stranger to one far ward: its own for that ward, the same every time. */
+  async strangerSecret(ward: string): Promise<string> {
+    return this.#tools.hex(await this.#keys.derive(`stranger:${ward}`, 32));
   }
   get wardPlace() {
     return this.#wardPlace;
@@ -1069,65 +1205,6 @@ class House {
   }
   shownTo(entry: TableEntry, asker: Asker & { handle?: OccupantRow }, roles: Set<string>, position: Position) {
     return this.#shown(entry, asker, roles, position);
-  }
-
-  // ---- the bench's reach ----
-
-  async benchCells(being: string): Promise<Record<string, Json> | null> {
-    const found = await this.#being(being);
-    const row = await this.#rows.get<BeingRow>(await this.#place(being));
-    if (found === null || row === null) return null;
-    return { ...(copy(found.resolved.table.cells) as Record<string, Json>), ...row.cells };
-  }
-
-  async benchPatch(being: string, change: (row: BeingRow) => void): Promise<boolean> {
-    const place = await this.#place(being);
-    return this.#rows.transact(async (draft) => {
-      const row = await draft.get<BeingRow>(place);
-      if (row !== null) change(row);
-    });
-  }
-
-  async benchBear(kind: string, id: string, born?: Json): Promise<void> {
-    if (!BEING_ID.test(id) || RESERVED_BEINGS.has(id)) throw new Error(`${id} is no being id`);
-    const resolved = await this.#resolve(kind);
-    if ('absent' in resolved) throw new Error(resolved.absent);
-    const borne = resolved.table.asks.born !== undefined;
-    let fresh = false;
-    const landed = await this.#rows.transact(async (draft) => {
-      const ward = await draft.get<WardRow>(this.#wardPlace);
-      if (ward === null || ward.beings[id] !== undefined) return;
-      fresh = true;
-      ward.beings[id] = { kind };
-      draft.set(await this.#place(id), { ...emptyRow(kind, copy(resolved.table.cells)), ...(borne ? { born: born ?? {} } : {}) });
-    });
-    if (!landed) throw new Error('memory refused the being');
-    if (fresh && borne) await this.bornOf(id);
-  }
-
-  async benchRoles(being: string, occupant: 'root' | 'stranger'): Promise<readonly string[]> {
-    const found = await this.#being(being);
-    const row = await this.#rows.get<BeingRow>(await this.#place(being));
-    if (found === null || row === null) return [];
-    const asker = this.#asker(being, row, occupant, false);
-    if (asker === undefined) return [];
-    const table = found.resolved.table;
-    const cells = { ...(copy(table.cells) as Record<string, Json>), ...row.cells };
-    return [...this.#roles(table, asker, { id: being, position: positionOf(being), cells })];
-  }
-
-  async benchOccupant(being: string, occupant: string, held: OccupantRow): Promise<string> {
-    const place = await this.#place(being);
-    const { invitation, occupant: end } = await this.#room.invite(this.#carry.at({}));
-    const landed = await this.#rows.transact(async (draft) => {
-      const row = await draft.get<BeingRow>(place);
-      if (row === null) throw new Error(`${being} is not here`);
-      const told = { ...row.occupants[occupant]?.told, [invitation.heir]: invitation.at ?? [] };
-      row.occupants[occupant] = { ...held, quo: { ...row.occupants[occupant]?.quo, [invitation.heir]: end }, told };
-      draft.set(await this.#heirPlace(invitation.heir), { being, occupant } satisfies OwnerRow);
-    });
-    if (!landed) throw new Error('memory refused the occupant');
-    return this.#tools.hex(this.#tools.utf8(this.#tools.canonical(invitation)));
   }
 
   // ---- the door ----
@@ -1245,7 +1322,10 @@ class House {
   }
 }
 
-export const targetKey = (to: Target): string => ('need' in to ? `need:${to.need}` : 'standing' in to ? `standing:${to.standing}` : `being:${to.being}`);
+const targetKey = (to: Target): string => ('need' in to ? `need:${to.need}` : 'standing' in to ? `standing:${to.standing}` : `being:${to.being}`);
+
+// The lane an entry leaves in: its receiver's, one at a time and in order, or a watch's own beside it.
+const laneOf = (entry: OutboxEntry): string => (entry.after === undefined ? targetKey(entry.to) : `${targetKey(entry.to)}\nwatch:${entry.method}`);
 
 type Op = (draft: Draft, row: BeingRow) => Promise<void> | void;
 
@@ -1265,6 +1345,10 @@ class Tx {
   readonly #invited = new Set<string>();
   readonly #pending: Promise<unknown>[] = [];
   readonly #after: (() => Promise<void>)[] = [];
+  /** Invitations she took before their mint landed, each put back where her ask lands nothing. */
+  readonly #untaken: (() => void)[] = [];
+  /** Far standings she took in this ask, which she asks from the next. */
+  readonly #taken = new Set<string>();
   cells: Record<string, Json> = {};
   #effects = false;
 
@@ -1286,6 +1370,11 @@ class Tx {
 
   end(): void {
     this.#end();
+  }
+
+  /** Her ask landed nothing, so what she took was never taken. */
+  untake(): void {
+    for (const back of this.#untaken.splice(0)) back();
   }
 
   /** Waits for every call she made and did not await. */
@@ -1318,16 +1407,23 @@ class Tx {
     if (this.#row.standings[id] !== undefined) return id;
     if (invitation.ward === (await house.room.ward())) {
       const minting = house.minting.get(invitation.heir);
-      const owner = (await house.heir(invitation.heir))?.owner ?? (minting !== undefined && (minting.until ?? Number.POSITIVE_INFINITY) > house.clock.now() ? minting : undefined);
+      const landed = (await house.heir(invitation.heir))?.owner;
+      const owner = landed ?? (minting !== undefined && (minting.until ?? Number.POSITIVE_INFINITY) > house.clock.now() ? minting : undefined);
       if (owner === undefined) throw new Fail('the invitation is spent or unknown');
       if (owner.being === this.#being) throw new Fail('she takes no invitation to herself');
+      // Taken while its mint has not landed, it is spent before it lands: the mint writes nothing of it.
+      // Where her ask fails, it was never taken, and goes back.
       house.minting.delete(invitation.heir);
+      if (landed === undefined) this.#untaken.push(() => house.minting.set(invitation.heir, owner));
       const standing: StandingRow = { notes: {}, steward: {}, local: { being: owner.being, occupant: owner.occupant } };
       this.#op(
         async (draft, row) => {
+          const heirPlace = await house.heirPlace(invitation.heir);
+          // Read in her write, so a taker who landed first leaves this one nothing to bind.
+          if (landed !== undefined && (await draft.get<OwnerRow>(heirPlace)) === null) throw new Fail('the invitation is spent or unknown');
           row.standings[id] = standing;
           const target = owner.being === this.#being ? row : await draft.get<BeingRow>(await house.place(owner.being));
-          draft.set(await house.heirPlace(invitation.heir), null);
+          draft.set(heirPlace, null);
           const occupant = target?.occupants[owner.occupant];
           if (occupant?.quo !== undefined) delete occupant.quo[invitation.heir];
           if (occupant?.told !== undefined) delete occupant.told[invitation.heir];
@@ -1340,6 +1436,8 @@ class Tx {
       return id;
     }
     const standing: StandingRow = { notes: {}, steward: {}, quo: house.room.standing(invitation) };
+    this.#taken.add(id);
+    this.#after.push(() => house.vouch(this.#being, id));
     this.#op(
       (_draft, row) => {
         row.standings[id] = standing;
@@ -1352,12 +1450,12 @@ class Tx {
   }
 
   /** A handle she holds made what its reader can call: an invitation's hex, or a token. */
-  async mint({ being, occupant, expires }: { being: string; occupant: string; expires?: number }, reader: 'house' | 'faculty'): Promise<string> {
+  async mint({ being, occupant, expires }: { being: string; occupant: string; expires?: number }, reader: Reader): Promise<string> {
     const house = this.#house;
     const own = being === this.#being;
     if (own ? this.#row.occupants[occupant] === undefined : !this.#invited.has(`${being}\n${occupant}`)) throw new Fail('the handle was let go');
     const target = async (draft: Draft, row: BeingRow) => (own ? row : draft.get<BeingRow>(await house.place(being)));
-    if (reader === 'faculty') {
+    if (reader !== 'house') {
       const token = house.tools.hex(house.crypto.random(16));
       this.tokens.push(token);
       house.tokening.set(token, this.ended);
@@ -1365,7 +1463,7 @@ class Tx {
         const held = (await target(draft, row))?.occupants[occupant];
         if (held === undefined) return;
         held.tokens = [...(held.tokens ?? []), token];
-        draft.set(await house.tokenPlace(token), { being, occupant } satisfies OwnerRow);
+        draft.set(await house.tokenPlace(token), { being, occupant, faculty: reader.faculty } satisfies OwnerRow);
       });
       return token;
     }
@@ -1378,7 +1476,8 @@ class Tx {
       if (minted === null) return;
       await house.sweep(draft, minted);
       const held = minted.occupants[occupant];
-      if (held === undefined) return;
+      // A being of this house took it while this ask ran, so it lands spent.
+      if (held === undefined || !house.minting.has(invitation.heir)) return;
       held.quo = { ...held.quo, [invitation.heir]: end };
       held.told = { ...held.told, [invitation.heir]: invitation.at ?? [] };
       if (until !== undefined) held.until = { ...held.until, [invitation.heir]: until };
@@ -1391,6 +1490,11 @@ class Tx {
     return `${prefix}${this.#house.tools.hex(this.#house.crypto.random(8))}`;
   }
 
+  // A far standing she took in this ask: its knock would spend the heir on an ask that may land nothing.
+  #untakenYet(standing: string) {
+    if (this.#taken.has(standing)) throw new Fail(`${standing} was taken in this ask, and is asked from the next`);
+  }
+
   #checkReply(reply: string | undefined) {
     if (reply !== undefined && this.#resolved.table.asks[reply] === undefined) throw new Fail(`she has no ask ${reply} to reply to`);
   }
@@ -1398,17 +1502,19 @@ class Tx {
   // A call out: awaited now, or an effect queued to leave once she lands.
   #call(to: Target, method: string, args: unknown, awaited: boolean, reply: string | undefined, schema: { args?: unknown; result?: unknown; wait?: number } | undefined, watch?: { readonly held: unknown }): Promise<unknown> | undefined {
     const house = this.#house;
-    const reader = 'need' in to ? 'faculty' : 'house';
+    const reader: Reader = 'need' in to ? { faculty: this.#resolved.faculties[to.need].bp.name } : 'house';
     const wire = async () => {
       try {
-        return (await outward(house.tools, schema?.args as never, args ?? {}, this.#being, (handle) => this.mint(handle, reader))) as Json;
+        return (await outward(house.tools, house.marks, schema?.args as never, args ?? {}, this.#being, (handle) => this.mint(handle, reader))) as Json;
       } catch (error) {
         if (error instanceof Crossing) throw new Fail(error.message);
         throw error;
       }
     };
-    if (awaited) {
+    // A watch given a reply leaves after she lands, as an effect does, and its answer asks her reply.
+    if (awaited && !(watch !== undefined && reply !== undefined)) {
       return (async () => {
+        if ('standing' in to) this.#untakenYet(to.standing);
         const sent = await wire();
         const id = house.tools.hex(house.crypto.random(16));
         // A watch carries the digest of the result she holds.
@@ -1416,11 +1522,11 @@ class Tx {
         // The callee's wait, and never past what is left of her own.
         const wait = Math.min(schema?.wait ?? WAIT, this.#deadline - house.clock.now());
         // The callee has what she waits for, and not a moment more, near or far.
-        const answer = wait <= 0 ? null : await within(house.clock, wait, house.deliver(this.#being, this.#row, to, method, sent, id, house.clock.now() + wait, after));
+        const answer = wait <= 0 ? null : await house.within(wait, house.deliver(this.#being, this.#row, to, method, sent, id, house.clock.now() + wait, after));
         // Silence has no cause she may read: a dead address, a spent heir and a late reply are one.
         if (answer === null) throw new Fail(`${method} answered nothing`);
         if ('error' in answer) throw new Fail(answer.error.message);
-        return inward(house.tools, schema?.result as never, answer.result, (hex) => this.accept(hex));
+        return inward(house.tools, house.marks, schema?.result as never, answer.result, (hex) => this.accept(hex));
       })();
     }
     this.#checkReply(reply);
@@ -1428,7 +1534,8 @@ class Tx {
       const sent = await wire();
       const now = house.clock.now();
       const window = 'need' in to ? (this.#resolved.faculties[to.need]?.window ?? WEEK) : WEEK;
-      const entry: OutboxEntry = { id: house.tools.hex(house.crypto.random(16)), to, method, args: sent, ...(reply === undefined ? {} : { reply }), queued: now, deadline: now + window, next: now, tries: 0 };
+      const watching = watch === undefined ? {} : { after: await house.digest({ result: (watch.held ?? null) as Json }), wait: schema?.wait ?? WAIT };
+      const entry: OutboxEntry = { id: house.tools.hex(house.crypto.random(16)), to, method, args: sent, ...(reply === undefined ? {} : { reply }), ...watching, queued: now, deadline: now + window, next: now, tries: 0 };
       this.#effects = true;
       this.#op((_draft, row) => {
         row.outbox.push(entry);
@@ -1453,16 +1560,125 @@ class Tx {
     return Object.freeze(face);
   }
 
+  // What a standing shows her now: a far one's describe, kept until its mark moves, or a near one's.
+  async #describeOf(standing: string): Promise<{ state: string; asks: readonly DescribedAsk[] }> {
+    const house = this.#house;
+    const held = standingOf(this.#being, this.#row, standing);
+    if (held === undefined) throw new Fail(`she holds no standing ${standing}`);
+    this.#untakenYet(standing);
+    const left = this.#deadline - house.clock.now();
+    const read =
+      left <= 0
+        ? null
+        : await house.within(
+            left,
+            held.local === undefined
+              ? house.far(this.#being, standing, undefined, {}, undefined, this.#deadline)
+              : house.ask({ being: held.local.being, occupant: held.local.occupant, until: this.#deadline }).then((outcome) => (outcome !== null && 'describe' in outcome ? { describe: outcome.describe } : null)),
+          );
+    if (read === null || !('describe' in read)) throw new Fail(`${standing} answered nothing`);
+    const describe = read.describe as { state?: unknown; asks?: unknown };
+    // Data that holds no list of asks is data, and no describe.
+    if (!Array.isArray(describe.asks) || typeof describe.state !== 'string') throw new Fail(`${standing} answered no describe`);
+    return { state: describe.state, asks: describe.asks as DescribedAsk[] };
+  }
+
+  // A standing asked with no need: her describe first, then any ask it shows, awaited or an effect as it says.
+  #undeclared(standing: string) {
+    const shown = new Map<string, DescribedAsk>();
+    return Object.freeze({
+      describe: async () => {
+        const described = await this.#describeOf(standing);
+        for (const entry of described.asks) shown.set(entry.method, entry);
+        return described;
+      },
+      ask: (method: string, args?: unknown, options?: { reply?: string; after?: unknown }) => {
+        const entry = shown.get(method);
+        if (entry === undefined) throw new Fail(`${method} is not in the describe she read of ${standing}`);
+        const hints = { readOnly: entry.hints?.readOnly === true, idempotent: entry.hints?.readOnly === true || entry.hints?.idempotent === true };
+        const watching = options !== undefined && 'after' in options;
+        if (watching && !hints.readOnly) throw new Fail(`${method} is not readOnly, so it is never watched`);
+        const spec = { args: entry.args, result: entry.result, wait: typeof entry.wait === 'number' ? entry.wait : WAIT };
+        return this.#call({ standing }, method, args, hints.idempotent, options?.reply, spec, watching ? { held: options.after } : undefined);
+      },
+    });
+  }
+
+  // A far house's public being, asked as a stranger: every ask awaited, on the zero head, signed with this house's key for that ward.
+  #stranger(card: unknown, need: unknown) {
+    const blueprint = blueprintOf(need);
+    if (blueprint === undefined) throw new Fail('stranger takes a need');
+    const reached = cardOf(card);
+    const face: Record<string, (args?: unknown) => Promise<unknown>> = {};
+    for (const [method, spec] of Object.entries(blueprint.methods)) {
+      face[method] = async (args) => {
+        // A stranger's every ask is idempotent, so she awaits each one.
+        if (!spec.hints.idempotent) throw new Fail(`${method} is no idempotent ask, and a stranger asks no other`);
+        return this.#asStranger(reached, method, args, spec);
+      };
+    }
+    return Object.freeze(face);
+  }
+
+  // A far public being asked as a stranger with no need declared: her describe first, then any ask it shows, each awaited.
+  #strangerUndeclared(card: unknown) {
+    const reached = cardOf(card);
+    const shown = new Map<string, DescribedAsk>();
+    return Object.freeze({
+      describe: async () => {
+        const described = (await this.#zero(reached, undefined, {}, WAIT, 'the public being')) as { state?: unknown; asks?: unknown } | null;
+        // Data that holds no list of asks is data, and no describe.
+        if (described === null || typeof described !== 'object' || !Array.isArray(described.asks) || typeof described.state !== 'string') throw new Fail('the public being answered no describe');
+        for (const entry of described.asks as DescribedAsk[]) shown.set(entry.method, entry);
+        return { state: described.state, asks: described.asks as DescribedAsk[] };
+      },
+      ask: async (method: string, args?: unknown) => {
+        const entry = shown.get(method);
+        if (entry === undefined) throw new Fail(`${method} is not in the describe she read of the public being`);
+        return this.#asStranger(reached, method, args, { args: entry.args, result: entry.result, wait: typeof entry.wait === 'number' ? entry.wait : WAIT });
+      },
+    });
+  }
+
+  // One ask of a far public being as a stranger: her args out, and her result in.
+  async #asStranger(card: { ward: string; at: readonly string[] }, method: string, args: unknown, spec: { args?: unknown; result?: unknown; wait?: number }): Promise<unknown> {
+    const house = this.#house;
+    let sent: Json;
+    try {
+      sent = (await outward(house.tools, house.marks, spec.args as never, args ?? {}, this.#being, (handle) => this.mint(handle, 'house'))) as Json;
+    } catch (error) {
+      throw error instanceof Crossing ? new Fail(error.message) : error;
+    }
+    const answer = (await this.#zero(card, method, sent, spec.wait ?? WAIT, method)) as { result?: Json; error?: { message?: unknown } } | null;
+    if (answer !== null && typeof answer === 'object' && typeof answer.error?.message === 'string') throw new Fail(answer.error.message);
+    if (answer === null || typeof answer !== 'object' || !('result' in answer)) throw new Fail(`${method} answered no answer`);
+    return inward(house.tools, house.marks, spec.result as never, answer.result, (hex) => this.accept(hex));
+  }
+
+  // One box on the zero head, signed with this house's key for that ward, and what it answered: her describe where no method is named.
+  async #zero({ ward, at }: { ward: string; at: readonly string[] }, method: string | undefined, sent: Json, wait: number, what: string): Promise<unknown> {
+    const house = this.#house;
+    const { box, lid } = await house.room.stranger(ward, await house.strangerSecret(ward), { ...(method === undefined ? {} : { method }), args: house.tools.canonical(sent) });
+    const left = Math.min(wait, this.#deadline - house.clock.now());
+    const carried = left <= 0 ? null : await house.within(left, house.carry.send({ ward, at, box, wait: left }));
+    const reply = carried === null ? null : carried.reply;
+    const read = reply === null ? null : await house.room.strangerRead(ward, lid, reply);
+    // Silence has no cause she may read, near or far.
+    if (read === null || !('object' in read)) throw new Fail(`${what} answered nothing`);
+    return read.object;
+  }
+
   // A standing of this house matched to a need through her describe.
   async #covered(standing: string, blueprint: Blueprint): Promise<void> {
     const house = this.#house;
     const held = standingOf(this.#being, this.#row, standing);
     if (held === undefined) throw new Fail(`she holds no standing ${standing}`);
+    this.#untakenYet(standing);
     if (held.local === undefined) {
       // A far standing's describe, asked with the empty ask.
       // The describe is asked within what is left of her ask, as any call of hers is.
       const left = this.#deadline - house.clock.now();
-      const described = left <= 0 ? null : await within(house.clock, left, house.far(this.#being, standing, undefined, {}, undefined, this.#deadline));
+      const described = left <= 0 ? null : await house.within(left, house.far(this.#being, standing, undefined, {}, undefined, this.#deadline));
       if (described === null || !('describe' in described)) throw new Silent(`${standing} answered nothing`);
       const asks = (described.describe as { asks?: unknown }).asks;
       // Data that holds no list of asks is data, and no describe.
@@ -1544,7 +1760,10 @@ class Tx {
       ),
       standings: value(
         Object.freeze({
-          list: () => [...(position === 'steward' ? [] : [relation(STEWARD, { notes: {}, steward: {} })]), ...Object.entries(this.#row.standings).map(([id, held]) => relation(id, held))],
+          list: () => [
+            ...(position === 'steward' ? [] : [{ ...relation(STEWARD, { notes: {}, steward: {} }), vouched: [] }]),
+            ...Object.entries(this.#row.standings).map(([id, held]) => ({ ...relation(id, held), vouched: [...(held.vouched ?? [])] })),
+          ],
           note: (id: string, notes: Notes) => {
             if (this.#row.standings[id] === undefined) throw new Fail(`she holds no standing ${id}`);
             this.#op(
@@ -1594,7 +1813,8 @@ class Tx {
           },
         }),
       ),
-      held: value((id: string, need: unknown) => {
+      held: value((id: string, need?: unknown) => {
+        if (need === undefined) return this.#undeclared(id);
         const blueprint = blueprintOf(need);
         if (blueprint === undefined) throw new Fail('held takes a need');
         const face = this.#face({ standing: id }, blueprint);
@@ -1618,7 +1838,9 @@ class Tx {
                   check().catch((error: unknown) => {
                     throw error instanceof Silent ? new Fail(`${method} answered nothing`) : error;
                   });
-                if (spec.hints.idempotent) return covered().then(() => call(args, options));
+                // A watch given a reply leaves as an effect does, so it too never waits on the far side.
+                const effect = !spec.hints.idempotent || (options !== undefined && 'after' in options && options.reply !== undefined);
+                if (!effect) return covered().then(() => call(args, options));
                 if (far) return call(args, options);
                 this.#pending.push(covered());
                 return call(args, options);
@@ -1627,6 +1849,7 @@ class Tx {
           ),
         );
       }),
+      stranger: value((card: unknown, need?: unknown) => (need === undefined ? this.#strangerUndeclared(card) : this.#stranger(card, need))),
       handle: value((ask: string, options: { bind?: Json; notes?: Notes; once?: boolean; expires?: number } = {}) => {
         if (position === 'public') throw new Fail('a public being holds no handle to her own asks');
         const expires = expiresOf(options.expires);
@@ -1642,7 +1865,7 @@ class Tx {
             row.occupants[id] = held;
           },
         );
-        return new HandleRef(being, id, being, expires);
+        return house.marks.handle(being, id, being, expires);
       }),
       invite: value((id: string, { notes = {}, expires: given }: { notes?: Notes; expires?: number } = {}) => {
         if (position === 'public') throw new Fail('a public being cannot invite');
@@ -1658,7 +1881,7 @@ class Tx {
             row.occupants[id] = held;
           },
         );
-        return new HandleRef(being, id, being, expires);
+        return house.marks.handle(being, id, being, expires);
       }),
       fail: value((message: string) => {
         throw new Fail(message);
@@ -1701,6 +1924,16 @@ class Tx {
     return result;
   }
 
+  // A being of this house described to her steward, within what is left of the steward's ask.
+  async #shownToSteward(id: string): Promise<{ state: string; asks: readonly DescribedAsk[] }> {
+    const house = this.#house;
+    const left = this.#deadline - house.clock.now();
+    const outcome = left <= 0 ? null : await house.within(left, house.ask({ being: id, occupant: STEWARD, until: this.#deadline }));
+    if (outcome === null || !('describe' in outcome)) throw new Fail(`${id} answered nothing`);
+    const describe = outcome.describe as unknown as { state: string; asks: readonly DescribedAsk[] };
+    return { state: describe.state, asks: describe.asks };
+  }
+
   #powers() {
     const house = this.#house;
     const guard = (id: string) => {
@@ -1738,7 +1971,7 @@ class Tx {
           if (row.occupants[occupant] !== undefined) throw new Fail(`${id} holds ${occupant} already`);
           row.occupants[occupant] = { notes: {}, steward: notes };
         });
-        return new HandleRef(id, occupant, this.#being, expires);
+        return house.marks.handle(id, occupant, this.#being, expires);
       },
       remove: ({ id }: { id: string }) => {
         guard(id);
@@ -1761,29 +1994,20 @@ class Tx {
         }
         return out;
       },
-      ask: ({ id, method, args }: { id: string; method: string; args?: Json }, options?: { reply?: string }) => this.#byFlag({ being: id }, id, method, args, options?.reply),
+      // With no method, the empty ask: what she shows her steward now.
+      ask: ({ id, method, args }: { id: string; method?: string; args?: Json }, options?: { reply?: string }) => (method === undefined ? this.#shownToSteward(id) : this.#byFlag({ being: id }, id, method, args, options?.reply)),
       introduce: ({ from, to, notes = {} }: { from: string; to: string; notes?: Notes }) => {
+        if (from === to) throw new Fail('no being stands on herself');
         this.#op(async (draft, row) => {
           const fromRow = from === STEWARD ? row : await draft.get<BeingRow>(await house.place(from));
           const toRow = to === STEWARD ? row : await draft.get<BeingRow>(await house.place(to));
           if (fromRow === null || toRow === null) throw new Error('introduce names a being that is not here');
-          fromRow.standings[to] = { notes: {}, steward: notes, local: { being: to, occupant: `being:${from}` } };
-          toRow.occupants[`being:${from}`] = { notes: {}, steward: notes };
+          // Introduced again, each side keeps the notes she wrote: the steward writes only her own.
+          fromRow.standings[to] = { notes: fromRow.standings[to]?.notes ?? {}, steward: notes, local: { being: to, occupant: `being:${from}` } };
+          toRow.occupants[`being:${from}`] = { ...toRow.occupants[`being:${from}`], notes: toRow.occupants[`being:${from}`]?.notes ?? {}, steward: notes };
         });
       },
     });
   }
 }
 
-/** A promise raced against the clock: `null` where the wait runs out first. */
-const within = async <T>(clock: Clock, ms: number, promise: Promise<T>): Promise<T | null> => {
-  const id = `within:${Math.random()}`;
-  const timeout = clock.wait({ id, ms }).then((fired) => (fired ? null : new Promise<never>(() => undefined)));
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clock.cancel({ id });
-  }
-};
-
-export { Carried, HandleRef, handleOf };

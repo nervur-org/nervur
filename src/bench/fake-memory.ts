@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Memory in the process: places in a map, each with a version that moves
 // on every write that touches it.
-import type { Memory, PlaceRead } from '../foundation.ts';
+import type { Memory } from '../index.ts';
+
+type PlaceRead = Awaited<ReturnType<Memory['read']>>;
 
 interface Place {
   readonly entries: Map<string, Uint8Array>;

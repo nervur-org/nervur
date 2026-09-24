@@ -9,6 +9,7 @@
 //   nervur help                                what the ground holds: its faculties, their methods, its houses
 //   nervur <faculty> [<method> [args]]         a faculty's method; with none, its methods
 //   nervur ask <house> [--id <being>] [<method> [args]]   an ask of a being; with no method, its describe
+//   nervur ask <house> [--id <being>] --cells            her cells, read and nothing asked
 //
 // Args are one JSON object, or words `key=value`, each value read as JSON
 // where it reads and as text where it does not. `--at <socket>` or
@@ -24,7 +25,7 @@ import { handAt } from './hand.ts';
 import { NodeGround } from './node-ground.ts';
 import { notifyReady } from './notify.ts';
 
-const USAGE = 'nervur up <folder> | service <folder> | [--at <socket>] help | ask <house> [--id <being>] [<method> [args]] | <faculty> [<method> [args]]';
+const USAGE = 'nervur up <folder> | service <folder> | [--at <socket>] help | ask <house> [--id <being>] [--cells | <method> [args]] | <faculty> [<method> [args]]';
 
 const fail = (message: string): never => {
   process.stderr.write(`${message}\n${USAGE}\n`);
@@ -67,7 +68,8 @@ const send = (at: string | undefined, line: Record<string, unknown>, shape: (ans
     socket.end();
     const answer = shape(JSON.parse(text) as Record<string, unknown>);
     process.stdout.write(`${JSON.stringify(answer)}\n`);
-    process.exitCode = 'result' in answer ? 0 : 1;
+    // A result and a describe are what was asked; an error answered is the one refusal.
+    process.exitCode = 'error' in answer ? 1 : 0;
   });
 };
 
@@ -152,8 +154,13 @@ else if (command === 'ask') {
     id = more[1] ?? fail('--id names no being');
     more.splice(0, 2);
   }
-  const [method, ...args] = more;
-  send(at, { house, ...(id === undefined ? {} : { id }), ...(method === undefined ? {} : { method }), ...(args.length === 0 ? {} : { args: argsOf(args) }) });
+  if (more[0] === '--cells') {
+    if (more.length > 1) fail('--cells reads her cells alone');
+    send(at, { house, ...(id === undefined ? {} : { id }), cells: true });
+  } else {
+    const [method, ...args] = more;
+    send(at, { house, ...(id === undefined ? {} : { id }), ...(method === undefined ? {} : { method }), ...(args.length === 0 ? {} : { args: argsOf(args) }) });
+  }
 } else {
   const [method, ...args] = rest;
   // A faculty named alone shows its methods, read from what the ground describes.

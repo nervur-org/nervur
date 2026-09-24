@@ -1,5 +1,6 @@
 // Classes the house refuses when it first resolves them, one defect each,
-// and one it accepts though no ask leaves its last state.
+// and two it accepts at the edge: one whose last state no ask leaves, and
+// one whose view is exactly its bound.
 import { Being, s, need } from 'nervur/being';
 
 const Pay = need('payments', { charge: {} });
@@ -10,6 +11,23 @@ export class BadKind extends Being.of({ kind: 'Order', asks: { go: {} } }) {
 
 // A view is text a screen holds: at most 64 KiB.
 export class WideView extends Being.of({ kind: 'org.example.wide', view: 'x'.repeat(65_537), asks: { go: {} } }) {
+  go() {}
+}
+
+// A need is held as its author wrote it: a field that is none, or a wait past the bound, refuses her.
+const Misspelled = need('misspelled', { go: { wiat: 5 } as never, far: { wait: 400_000 } });
+
+export class WrittenNeed extends Being.of({ kind: 'org.example.written', needs: { m: Misspelled }, asks: { go: {} } }) {
+  go() {}
+}
+
+// Its bound is bytes, not characters: 21,846 euro signs are 65,538 bytes.
+export class WideInBytes extends Being.of({ kind: 'org.example.wide.bytes', view: '€'.repeat(21_846), asks: { go: {} } }) {
+  go() {}
+}
+
+// A view of exactly 64 KiB is held, a pair of surrogates taking four bytes.
+export class FullView extends Being.of({ kind: 'org.example.wide.full', view: `${'😀'.repeat(16_383)}xxxx`, asks: { go: {} } }) {
   go() {}
 }
 

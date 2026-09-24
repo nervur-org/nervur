@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { LedgerMemory } from '../../../src/node/ledger-memory.ts';
-import { memorySuite } from '../suites/memory.ts';
+import { memorySuite } from '../../suites/memory.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'nervur-ledger-'));
 after(() => rmSync(root, { recursive: true, force: true }));

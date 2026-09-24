@@ -9,11 +9,16 @@ import type { Json } from '../being/being.ts';
 import { blueprintOf } from '../being/need.ts';
 
 /** What a served method receives beside its args. */
-export interface ServeContext {
+interface ServeContext {
   /** The call id: the same on every attempt of one call, so a repeat acts once. */
   readonly id: string;
-  /** A handle the program was handed, called; its answer, or its error. */
-  call(token: string, args?: Json): Promise<{ result: Json } | { error: { message: string } }>;
+  /**
+   * A handle the program was handed, called; its answer, or its error. Its
+   * call id is `id` where given, and otherwise this call's own id and the
+   * count of handles it has called, so the same on every attempt of this
+   * call, in any life of the program.
+   */
+  call(token: string, args?: Json, id?: string): Promise<{ result: Json } | { error: { message: string } }>;
 }
 
 type Method = (args: { readonly [key: string]: Json }, context: ServeContext) => Json | Promise<Json>;
@@ -44,13 +49,16 @@ export const serve = (need: unknown, methods: Readonly<Record<string, Method>>, 
       return;
     }
     const method = methods[message.method];
+    const served = message.call ?? '';
+    let called = 0;
     const context: ServeContext = {
-      id: message.call ?? '',
-      call: (token, args = {}) =>
+      id: served,
+      call: (token, args = {}, id = served === '' ? '' : `${served}:${++called}`) =>
         new Promise((resolve) => {
-          const id = `p${++next}`;
-          waiting.set(id, resolve);
-          write({ id, token, args });
+          if (id === '') return resolve({ error: { message: 'a handle is called with a call id of the program’s own' } });
+          const sent = `p${++next}`;
+          waiting.set(sent, resolve);
+          write({ id: sent, token, args, call: id });
         }),
     };
     void (async () => {

@@ -5,13 +5,14 @@ import { NobleCrypto } from './bodies/noble-crypto.ts';
 import { StrictTools } from './bodies/strict-tools.ts';
 import { WebClock } from './bodies/web-clock.ts';
 import type { Carry, Classes, Clock, Crypto, Keys, Memory, Tools } from './foundation.ts';
-import { openHouse, type Offer, type Opened, type Options } from './house/house.ts';
+import { openHouse, type Offer, type Opened } from './house/house.ts';
 
 export type { Carry, Classes, Clock, Crypto, Keys, Memory, Sent, Tools } from './foundation.ts';
 export { JoinedCarry } from './bodies/joined-carry.ts';
-export { WebCarry, type Handler, type Held, type HeldSocket } from './bodies/web-carry.ts';
-export type { Answer, FacultyContext, Offer, Opened, Options } from './house/house.ts';
-export { Ground, type Bodies, type BodyArgs, type Custody, type Entry, type Faculty, type GroundOptions, type Hooked, type Standing } from './ground/ground.ts';
+export { WebCarry, type Handler } from './bodies/web-carry.ts';
+export { vouchesOf } from './bodies/vouch.ts';
+export type { FacultyContext, Offer, Opened } from './house/house.ts';
+export { Ground, type Bodies, type Custody, type Faculty, type Hooked } from './ground/ground.ts';
 export { ClassList } from './bodies/class-list.ts';
 export { NobleCrypto } from './bodies/noble-crypto.ts';
 export { SeedKeys } from './bodies/seed-keys.ts';
@@ -26,9 +27,9 @@ export const House = Object.freeze({
    * hold less than an entry asks.
    */
   open(
-    foundation: { keys: Keys; memory: Memory; classes: Classes; carry?: Carry; clock?: Clock; crypto?: Crypto; tools?: Tools },
+    foundation: { keys: Keys; memory: Memory; classes: Classes; carry: Carry; clock?: Clock; crypto?: Crypto; tools?: Tools },
     offers: readonly Offer[] = [],
-    options: Options = {},
+    options: { readonly wait?: number } = {},
   ): Promise<Opened> {
     return openHouse({ ...foundation, clock: foundation.clock ?? new WebClock(), crypto: foundation.crypto ?? new NobleCrypto(), tools: foundation.tools ?? new StrictTools() }, offers, options);
   },

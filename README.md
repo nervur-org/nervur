@@ -6,8 +6,14 @@ a door is one function: bytes in, bytes or nothing out.
 
 This version is a prerelease, and the API moves until 1.0.0. Install it
 with `npm i nervur@next`. It runs on Node 22.18 or later.
-[AUTHORING.md](AUTHORING.md) teaches beings, faculties and grounds.
-[KIT-SPEC.md](KIT-SPEC.md) answers every choice Quo leaves to a kit.
+[Reading a world](WORLD.md) reads a real situation into the four pieces.
+[Writing for nervur](AUTHORING.md) teaches beings and grounds.
+[Writing a faculty](FACULTIES.md) teaches faculties, in any language.
+[Faces](FACES.md) teaches the sites, APIs and tools people reach a being
+through. [Grounds](GROUNDS.md) says what each terrain's ground does, and
+[the command](COMMAND.md) drives one on your machine.
+[nervur's answers to KIT-SPEC](KIT-SPEC.md) answers every choice Quo
+leaves to a kit.
 
 ## Words
 
@@ -15,8 +21,9 @@ A **being** is an instance of a class you write. She keeps **cells**,
 which are JSON values, and answers **asks**, which are the methods others
 may call. The **house** holds beings, keeps their cells, and seals every
 ask that crosses its door. A **ground** is the process houses run in. It
-hands each house a seed, somewhere to keep rows, its classes, a way to
-carry bytes, and the **faculties** its beings may call.
+hands each house its keys, somewhere to keep rows, its classes, a way to
+carry bytes, and the **faculties** its beings may call. The seed behind
+the keys stays with the ground, and never enters the house.
 
 ## A being
 
@@ -35,7 +42,7 @@ export class Greeter extends Being.of({
     hello: {
       args: s.object({ name: s.string() }),
       result: s.string(),
-      examples: [{ cells: { greeted: 2 }, args: { name: 'Ada' }, gives: { result: 'Hello, Ada. You are number 3.' } }],
+      examples: [{ given: [{ ask: 'hello', args: { name: 'Bo' } }, { ask: 'hello', args: { name: 'Cy' } }], args: { name: 'Ada' }, gives: { result: 'Hello, Ada. You are number 3.' } }],
     },
   },
 }) {
@@ -67,7 +74,7 @@ test('Greeter counts whoever she greets', async () => {
   const bench = await Bench.open({ classes: [Greeter] });
   const greeter = await bench.place(Greeter);
   assert.deepEqual(await greeter.ask('hello', { name: 'Ada' }), { result: 'Hello, Ada. You are number 1.' });
-  assert.deepEqual(await greeter.cells(), { greeted: 1 });
+  assert.deepEqual(await greeter.ask('hello', { name: 'Bo' }), { result: 'Hello, Bo. You are number 2.' });
 });
 ```
 
@@ -138,19 +145,19 @@ security policy. The page and the house's module must share one copy of
 
 An app on a phone opens the same ground with `AppGround` from
 `nervur/app`, on the Keychain or the Keystore and a store the system
-keeps. `AUTHORING.md` shows both.
+keeps. [Writing for nervur](AUTHORING.md) shows both.
 
 ## Entries
 
 | Entry | For |
 | --- | --- |
-| `nervur/being` | writing a being: `Being`, `s`, `need`, `Args`, `Result` |
+| `nervur/being` | writing a being: `Being`, `s`, `need`, `tableOf`, `Args`, `Result`, `Json`, `Table` |
 | `nervur` | any engine: `Ground`, `House` and the bodies they take |
 | `nervur/node` | a ground on Node: `NodeGround`, the `nervur` command, and its bodies |
 | `nervur/browser` | a ground in a page or its service worker: `BrowserGround` and its bodies |
 | `nervur/app` | a ground in a phone's app: `AppGround`, and the two interfaces its shell fills |
 | `nervur/serve` | a faculty's program in JavaScript: `serve` |
-| `nervur/bench` | tests: `Bench`, `BenchGround`, `FakeNetwork` and the fakes of every body |
+| `nervur/bench` | tests: `Bench`, `BenchGround` and `FakeNetwork` |
 
 ## License
 

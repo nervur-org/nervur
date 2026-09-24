@@ -53,4 +53,8 @@ export class CountingCarry implements Hooked {
   at(options: { toward?: string } = {}): readonly string[] {
     return this.#sending.at(options);
   }
+
+  vouched(options: { ward: string; at: readonly string[] }): Promise<readonly string[]> {
+    return this.#sending.vouched(options);
+  }
 }

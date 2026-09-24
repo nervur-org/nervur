@@ -8,8 +8,13 @@
 //
 //   in   { id, method, args, call }          a call to the program
 //   out  { id, result } | { id, error }      its answer
-//   out  { id, token, args }                 the program calls a handle
+//   out  { id, token, args, call }           the program calls a handle
 //   in   { id, result } | { id, error }      the house's answer to that
+//
+// `id` pairs a line with its answer, and a program numbers its own lines.
+// `call` is the call id: the house's on a call in, and the program's own
+// on a call out, the same every time that call is sent, in any life of
+// the program, so a handle called twice acts once.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
 import { delimiter, isAbsolute, join } from 'node:path';
@@ -62,6 +67,8 @@ class Bridge {
   #blueprint: string | undefined;
   #contexts: FacultyContext[] = [];
   #stopped = false;
+  /** Why it was stopped for good: a program that described another blueprint than it did at the boot. */
+  #refused: string | undefined;
   #failures = 0;
   #up: Promise<{ blueprint: Json; window?: number }> | undefined;
 
@@ -80,14 +87,24 @@ class Bridge {
       const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
       lines.on('line', (line) => this.#read(line));
       child.once('exit', () => this.#exited(child));
-      const described = await this.#send('describe', {}, undefined, this.#options.wait ?? 10_000);
-      if ('error' in described) throw new Error(`the program ${this.#options.command} described nothing: ${described.error.message}`);
-      const result = described.result as { blueprint?: { name?: unknown; methods?: unknown }; window?: unknown };
-      if (typeof result?.blueprint?.name !== 'string' || typeof result.blueprint.methods !== 'object') throw new Error(`the program ${this.#options.command} described no blueprint`);
-      const text = JSON.stringify(result.blueprint);
-      if (this.#blueprint !== undefined && this.#blueprint !== text) {
+      // A program that describes nothing, or runs past the describe's wait, is ended, so its exit starts it again.
+      const failed = (why: string) => {
         child.kill('SIGKILL');
-        throw new Error(`the program ${this.#options.command} describes another blueprint than it did at the boot`);
+        return new Error(`the program ${this.#options.command} ${why}`);
+      };
+      const described = await this.#send('describe', {}, undefined, this.#options.wait ?? 10_000).catch((error: unknown) => {
+        throw failed(`described nothing: ${error instanceof Error ? error.message : String(error)}`);
+      });
+      if ('error' in described) throw failed(`described nothing: ${described.error.message}`);
+      const result = described.result as { blueprint?: { name?: unknown; methods?: unknown }; window?: unknown };
+      if (typeof result?.blueprint?.name !== 'string' || typeof result.blueprint.methods !== 'object') throw failed('described no blueprint');
+      const text = JSON.stringify(result.blueprint);
+      // Another blueprint than at the boot is refused and stopped for good: new code arrives with a restart of its ground.
+      if (this.#blueprint !== undefined && this.#blueprint !== text) {
+        this.#stopped = true;
+        this.#refused = `the program ${this.#options.command} describes another blueprint than it did at the boot, and is stopped`;
+        process.stderr.write(`[${this.#options.command}] ${this.#refused}\n`);
+        throw failed('describes another blueprint than it did at the boot');
       }
       this.#blueprint = text;
       this.#failures = 0;
@@ -101,7 +118,7 @@ class Bridge {
       this.#child?.kill('SIGKILL');
       return;
     }
-    let message: { id?: unknown; token?: unknown; args?: unknown; result?: unknown; error?: { message?: unknown } };
+    let message: { id?: unknown; token?: unknown; args?: unknown; call?: unknown; result?: unknown; error?: { message?: unknown } };
     try {
       message = JSON.parse(line) as typeof message;
     } catch {
@@ -110,7 +127,8 @@ class Bridge {
     }
     // The program calls a handle it was handed.
     if (typeof message.token === 'string') {
-      void this.#callBack(message.id, message.token, message.args);
+      if (typeof message.call === 'string' && message.call !== '') void this.#callBack(message.id, message.token, message.args, message.call);
+      else this.#write({ id: message.id, error: { message: 'a handle is called with a call id of the program’s own' } });
       return;
     }
     const waiting = typeof message.id === 'number' ? this.#calls.get(message.id) : undefined;
@@ -121,10 +139,10 @@ class Bridge {
   }
 
   // A token is answered by the house that handed it, found among the contexts of recent calls.
-  async #callBack(id: unknown, token: string, args: unknown): Promise<void> {
+  async #callBack(id: unknown, token: string, args: unknown, call: string): Promise<void> {
     let answer: Answer = { error: { message: 'no such token' } };
     for (const context of [...this.#contexts].reverse()) {
-      answer = await context.call({ token, args: (args ?? {}) as Json, id: `bridge:${String(id)}` });
+      answer = await context.call({ token, args: (args ?? {}) as Json, id: call });
       if (!('error' in answer) || answer.error.message !== 'no such token') break;
     }
     this.#write({ id, ...answer });
@@ -136,7 +154,7 @@ class Bridge {
 
   #send(method: string, args: Json, call: string | undefined, wait?: number): Promise<Answer> {
     const child = this.#child;
-    if (child === undefined || child.exitCode !== null) return Promise.reject(new Error(`the program ${this.#options.command} is down`));
+    if (child === undefined || child.exitCode !== null || child.signalCode !== null) return Promise.reject(new Error(`the program ${this.#options.command} is down`));
     const id = ++this.#next;
     return new Promise<Answer>((resolve, reject) => {
       const timer = wait === undefined ? undefined : setTimeout(() => reject(new Error(`the program ${this.#options.command} did not describe itself in time`)), wait);
@@ -170,14 +188,23 @@ class Bridge {
   /** One call, as the house makes it. A throw is a failure to answer, and the house tries again. */
   async call(method: string, args: Json, context: FacultyContext): Promise<Answer> {
     this.#contexts = [...this.#contexts.filter((held) => held !== context), context].slice(-CONTEXTS);
-    await this.#up;
-    return this.#send(method, args, context.id);
+    // A program refused for good answers why, which is final: asking again changes nothing until its ground restarts.
+    const refused = () => (this.#refused === undefined ? undefined : { error: { message: this.#refused } });
+    try {
+      await this.#up;
+    } catch (error) {
+      const why = refused();
+      if (why !== undefined) return why;
+      throw error;
+    }
+    return refused() ?? this.#send(method, args, context.id);
   }
 
   async stop(): Promise<void> {
     this.#stopped = true;
     const child = this.#child;
-    if (child === undefined || child.exitCode !== null) return;
+    // A program ended by a signal has no exit code, and has exited all the same.
+    if (child === undefined || child.exitCode !== null || child.signalCode !== null) return;
     const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
     child.stdin?.end();
     const term = setTimeout(() => child.kill('SIGTERM'), 2_000);
@@ -195,7 +222,11 @@ class Bridge {
  */
 export const bridge = async (options: BridgeOptions): Promise<Faculty> => {
   const held = new Bridge(options);
-  const { blueprint, window } = await held.start();
+  // A program that never described itself is offered to no one, so nothing starts it again.
+  const { blueprint, window } = await held.start().catch(async (error: unknown) => {
+    await held.stop();
+    throw error;
+  });
   const { name, methods } = blueprint as { name: string; methods: Record<string, object> };
   const object = Object.fromEntries(Object.keys(methods).map((method) => [method, (args: Json, context: FacultyContext) => held.call(method, args, context)]));
   return { blueprint: need(name, methods), object, ...(window === undefined ? {} : { window }), stop: () => held.stop() };

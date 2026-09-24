@@ -10,9 +10,9 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { NodeGround } from 'nervur/node';
+import { cli } from '../fixtures/node/grounds.ts';
 
 const folder = fileURLToPath(new URL('../fixtures/node-ground/', import.meta.url));
-const cli = fileURLToPath(new URL('../../src/node/cli.ts', import.meta.url));
 const run = promisify(execFile);
 const env = { NERVUR_TCP_PORT: '0', NERVUR_HTTP_PORT: '0', NERVUR_BIND: '127.0.0.1', NERVUR_ALLOW_PRIVATE: '1', ECHO_PREFIX: '~' };
 
@@ -41,6 +41,8 @@ test('A NodeGround opens houses from its folder, serves its faculties, and keeps
   const ward = (added.answer.result as { ward: string }).ward;
   assert.equal((await nervur(first.hand, 'ask', 'shop', 'bear', 'kind=org.example.parrot', 'id=polly')).code, 0);
   assert.deepEqual((await nervur(first.hand, 'ask', 'shop', '--id', 'polly', 'repeat', '{"text":"hi"}')).answer, { result: '~hi' }, 'the recipe’s faculty, with its setting');
+  const shown = await nervur(first.hand, 'ask', 'shop', '--id', 'polly');
+  assert.ok(shown.code === 0 && 'describe' in shown.answer, 'with no method, what she shows, and what was asked exits 0');
   const echoed = await fetch(`http://127.0.0.1:${first.httpPort}/echo?text=hello`);
   assert.equal(await echoed.text(), 'hello', 'the faculty’s handler on the ground’s listener');
 
@@ -61,7 +63,7 @@ test('The command reads every word from what the ground describes', { timeout: 2
 
   const help = await nervur(ground.hand, 'help');
   const faculties = (help.answer.result as { faculties: Record<string, { methods: Record<string, unknown> }> }).faculties;
-  assert.deepEqual(Object.keys(faculties).sort(), ['echo', 'houses']);
+  assert.deepEqual(Object.keys(faculties).sort(), ['echo', 'houses', 'moves']);
   assert.deepEqual(Object.keys(faculties.houses.methods).sort(), ['add', 'list', 'remove']);
   assert.deepEqual(Object.keys((await nervur(ground.hand, 'echo')).answer.result as { methods: object }), ['blueprint', 'methods']);
   assert.deepEqual((await nervur(ground.hand, 'echo', 'say', 'text=yo')).answer, { result: '~yo' }, 'any faculty, called as its owner');

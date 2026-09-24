@@ -1,10 +1,11 @@
 // A stranger across a door: the zero head, the public being and signup.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Json } from '../../../src/being/being.ts';
-import { FakeCarry, type Door } from '../../../src/bench/fake-carry.ts';
+import type { Json } from 'nervur/being';
+import { FakeNetwork } from 'nervur/bench';
 import { FakeClock } from '../../../src/bench/fake-clock.ts';
 import { FakeMemory } from '../../../src/bench/fake-memory.ts';
+import type { Door } from '../../../src/ground/ground.ts';
 import { ClassList } from '../../../src/bodies/class-list.ts';
 import { NobleCrypto } from '../../../src/bodies/noble-crypto.ts';
 import { SeedKeys } from '../../../src/bodies/seed-keys.ts';
@@ -17,10 +18,10 @@ import { Member } from '../fixtures/member.ts';
 
 const crypto = new NobleCrypto();
 const tools = new StrictTools();
-const network = new Map<string, Door>();
+const network = new FakeNetwork();
 
 const open = async (name: string, seed: string, withLobby: boolean) => {
-  const carry = new FakeCarry({ network, address: `fake://${name}` });
+  const carry = network.join(name, { names: [name] });
   const classes = new ClassList({ steward: Steward, ...(withLobby ? { public: Lobby } : {}), beings: [Member] });
   const memory = new FakeMemory();
   const house = await openHouse({ keys: new SeedKeys(seed, crypto), memory, classes, carry, clock: new FakeClock(), crypto, tools }, []);
@@ -85,7 +86,7 @@ test('Where memory refuses the public being’s write, the zero head answers not
   assert.deepEqual(read.object, { result: 1 }, 'the number went unspent, and asking again lands once');
 });
 
-test('An ask a stranger reaches is idempotent, or it is not shown to them', async () => {
+test('It refuses an ask a stranger reaches that is not idempotent: it is not shown to them', async () => {
   const a = await open('a3', 'd'.repeat(64), true);
   const { read } = await stranger().ask(a.house, 'effect');
   assert.ok('object' in read);

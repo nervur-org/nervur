@@ -16,7 +16,7 @@ test('One builder gives the schema and the type', () => {
   assert.deepEqual(s.boolean(), { type: 'boolean' });
 });
 
-test('The subset the house checks is closed', () => {
+test('It refuses a schema keyword outside the subset: the subset the house checks is closed', () => {
   const written = [
     s.object({ a: s.optional(s.bytes({ maxLength: 64 })), b: s.handle(), c: s.invitation(), d: s.enum([1, 'x', true, null]) }),
     s.reply({ result: s.object({ pending: s.boolean() }) }),

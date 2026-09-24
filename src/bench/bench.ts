@@ -1,27 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
-// The bench: a terrain of two houses in one process. The author's house
-// holds her classes and the fakes she hands it. The bench's own house
-// holds a handle to each being she places and asks through it, so every
-// ask crosses as a box, on fake bodies and one clock the test moves.
-import type { Json, Position } from '../being/being.ts';
-import { resolve, type Table, type TableEntry } from '../being/table.ts';
-import { blueprintOf, type Blueprint } from '../being/need.ts';
-import { StrictTools } from '../bodies/strict-tools.ts';
-import { ClassList } from '../bodies/class-list.ts';
-import type { BeingClass } from '../foundation.ts';
-import { openForBench, type Answer, type BenchAccess, type Offer, type Opened } from '../house/house.ts';
-import { Room } from '../quo/room.ts';
-import { FakeCarry, type Door } from './fake-carry.ts';
-import { FakeClock } from './fake-clock.ts';
-import { FakeKeys } from './fake-keys.ts';
-import { FakeMemory } from './fake-memory.ts';
-import { SeededCrypto } from './seeded.ts';
-import { settle } from './settle.ts';
-import { BenchSteward, BenchTester } from './stewards.ts';
+// The bench: two houses on one BenchGround, reached as any owner reaches
+// hers. The author's house holds her classes and the fakes she hands it,
+// as faculties granted to it alone. The bench's own house holds a caller,
+// who asks her through a standing or as a stranger, so every ask crosses a
+// door as it would in production. Nothing here reaches inside a house: a
+// role is played by whoever an owner could have play it.
+import { tableOf, type Json, type Table } from '../being/index.ts';
+import type { ClassList, Offer } from '../index.ts';
+import { BenchGround, Machine } from './bench-ground.ts';
+import { FakeNetwork } from './fake-network.ts';
+import { BenchCaller, BenchSteward } from './stewards.ts';
+
+type BeingClass = ConstructorParameters<typeof ClassList>[0]['steward'];
+type Entry = Table['asks'][string];
+type Position = 'normal' | 'steward' | 'public';
+
+/** What an ask answered. */
+export type Answer = { readonly result: Json } | { readonly error: { readonly message: string } };
 
 const STEWARD = 'steward';
 const PUBLIC = 'public';
-const tools = new StrictTools();
+const AUTHOR = 'author';
+const TESTER = 'bench';
+const HOST = 'bench';
+/** The being of the author's house that plays a being introduced to her. */
+const NEIGHBOUR = 'bench-neighbour';
 
 export interface BenchOptions {
   /** Her classes, and any other class her beings meet. */
@@ -52,176 +55,258 @@ export interface Finding {
   readonly why?: string;
 }
 
+/** One ask of an example's history, before the ask it shows. */
+interface Step {
+  readonly ask: string;
+  readonly args?: Json;
+  readonly role?: string;
+}
+
 interface Example {
   readonly description?: string;
-  readonly cells?: Record<string, Json>;
+  readonly given?: readonly Step[];
   readonly role?: string;
-  readonly args?: Record<string, Json>;
+  readonly args?: Json;
   readonly fakes?: Record<string, Record<string, Json>>;
   readonly gives?: Json;
 }
 
-/** A being the bench placed, asked through a handle as any role. */
+/** What a being shows one asker. */
+interface Described {
+  readonly state: string;
+  readonly asks: readonly { readonly method: string }[];
+}
+
+/**
+ * Who plays a role: the hand, a stranger, her steward, a being introduced
+ * to her, or an occupant whose steward notes hold the role.
+ */
+type Player = 'hand' | 'stranger' | 'steward' | 'neighbour' | { readonly notes: string } | { readonly unplayed: string };
+
+/** An asker as her roles read one. */
+interface Asker {
+  readonly id: string;
+  readonly notes: Readonly<Record<string, Json>>;
+  readonly steward: Readonly<Record<string, Json>>;
+}
+
+/** Who an asker the house makes is to her roles. */
+const ROOT: Asker = Object.freeze({ id: 'root', notes: {}, steward: {} });
+const STRANGER: Asker = Object.freeze({ id: 'stranger', notes: {}, steward: {} });
+
+/** A being the bench placed, asked and described as any role the bench can play. */
 export class Placed {
   readonly id: string;
+  readonly position: Position;
   readonly #bench: Bench;
   readonly #table: Table;
 
-  constructor(bench: Bench, id: string, table: Table) {
+  constructor(bench: Bench, id: string, position: Position, table: Table) {
     this.#bench = bench;
     this.id = id;
+    this.position = position;
     this.#table = table;
   }
 
-  /** The role an ask's entry names first; `steward` where it names every occupant. */
+  /** The role an ask's entry names first; `root` where it names every occupant. */
   roleFor(method: string): string {
-    const entry = this.#table.asks[method];
-    return entry?.for?.[0] ?? STEWARD;
+    return this.#table.asks[method]?.for?.[0] ?? 'root';
   }
 
-  /** One ask, crossing as a box, as the occupant who plays `role`. `null` is silence or nothing. */
-  async ask(method: string, args: Json = {}, { role = this.roleFor(method) }: { role?: string } = {}): Promise<Answer | null> {
-    const answered = await this.#bench.through(this.id, role, method, method, args);
-    return answered === null || 'describe' in answered ? null : answered;
+  /**
+   * One ask, as whoever plays `role`. An effect's answer is the reply it
+   * brings once it lands, and `null` is silence.
+   */
+  ask(method: string, args: Json = {}, { role = this.roleFor(method) }: { role?: string } = {}): Promise<Answer | null> {
+    return this.#bench.asked(this, this.#table, role, method, args);
   }
 
-  /** Her describe as `role` sees it: `root` where she is the steward, her steward otherwise. */
-  async describe({ role = this.id === STEWARD ? 'root' : STEWARD }: { role?: string } = {}): Promise<{ state: string; asks: { method: string }[] } | null> {
-    const answered = await this.#bench.through(this.id, role, undefined, undefined, {});
-    return answered !== null && 'describe' in answered ? (answered.describe as { state: string; asks: { method: string }[] }) : null;
+  /** Her describe as `role` sees it: her state and the asks it shows. */
+  describe({ role = 'root' }: { role?: string } = {}): Promise<Described | null> {
+    return this.#bench.described(this, this.#table, role);
   }
 
-  /** Her cells as they stand. */
-  cells(): Promise<Record<string, Json> | null> {
-    return this.#bench.cellsOf(this.id);
+  /** Her cells as last landed, read through the hand, as her owner reads them. */
+  cells(): Promise<Record<string, Json>> {
+    return this.#bench.cellsOf(this);
   }
 }
 
 export class Bench {
-  readonly clock: FakeClock;
-  readonly #author: { opened: Opened; access: BenchAccess };
-  readonly #tester: { opened: Opened; access: BenchAccess };
-  readonly #standings = new Map<string, string>();
+  readonly #network: FakeNetwork;
+  readonly #ground: BenchGround;
+  /** The author's house's ward, which a stranger's card names. */
+  readonly #ward: string;
+  /** The author's house is kept by the bench's own steward. */
+  readonly #own: boolean;
   readonly #steward: BeingClass | undefined;
   readonly #public: BeingClass | undefined;
-  readonly #stranger: { room: Room; secret: string };
+  /** The caller's standing on each being, by the role it plays. */
+  readonly #doors = new Map<string, string>();
+  /** The beings the neighbour stands on. */
+  readonly #introduced = new Set<string>();
   #count = 0;
 
-  private constructor(
-    clock: FakeClock,
-    author: { opened: Opened; access: BenchAccess },
-    tester: { opened: Opened; access: BenchAccess },
-    placed: { steward: BeingClass | undefined; public: BeingClass | undefined },
-    stranger: { room: Room; secret: string },
-  ) {
-    this.clock = clock;
-    this.#author = author;
-    this.#tester = tester;
+  private constructor(network: FakeNetwork, ground: BenchGround, ward: string, placed: { steward: BeingClass | undefined; public: BeingClass | undefined }) {
+    this.#network = network;
+    this.#ground = ground;
+    this.#ward = ward;
+    this.#own = placed.steward === undefined;
     this.#steward = placed.steward;
     this.#public = placed.public;
-    this.#stranger = stranger;
   }
 
   static async open({ classes, offers = [], seed = 'bench', steward, public: open }: BenchOptions): Promise<Bench> {
-    const clock = new FakeClock();
-    const network = new Map<string, Door>();
-    const house = async (name: string, list: ClassList, handed: readonly Offer[]) => {
-      const crypto = new SeededCrypto(`${seed}:${name}`);
-      const carry = new FakeCarry({ network, address: `bench://${name}` });
-      const opened = await openForBench({ keys: new FakeKeys(`${seed}:${name}`, crypto), memory: new FakeMemory(), classes: list, carry, clock, crypto, tools }, handed);
-      carry.listen(opened.opened);
-      return opened;
-    };
-    const author = await house('author', new ClassList({ steward: steward ?? BenchSteward, ...(open === undefined ? {} : { public: open }), beings: classes }), offers);
-    const tester = await house('bench', new ClassList({ steward: BenchTester }), []);
-    // The stranger's key, drawn from the seed, so a re-run signs as the first run did.
-    const crypto = new SeededCrypto(`${seed}:stranger`);
-    const stranger = { room: new Room(new FakeKeys(`${seed}:stranger`, crypto), crypto, tools), secret: tools.hex(crypto.random(32)) };
-    return new Bench(clock, author, tester, { steward, public: open }, stranger);
+    const network = new FakeNetwork({ seed });
+    // Her fakes, each a faculty of the ground granted to her house alone.
+    const faculties = Object.fromEntries(offers.map((offer, index) => [`offer-${index}`, offer]));
+    const ground = await BenchGround.open({
+      network,
+      host: HOST,
+      names: [HOST],
+      machine: new Machine(seed),
+      faculties,
+      modules: {
+        [AUTHOR]: { steward: steward ?? BenchSteward, ...(open === undefined ? {} : { public: open }), beings: [...classes, BenchCaller] },
+        [TESTER]: { steward: BenchCaller },
+      },
+    });
+    const author = await ground.add(AUTHOR, AUTHOR, { faculties: Object.keys(faculties) });
+    const tester = await ground.add(TESTER, TESTER);
+    for (const standing of [author, tester]) if (standing.ward === undefined) throw new Error(`the bench's house did not open: ${standing.why}`);
+    return new Bench(network, ground, author.ward!, { steward, public: open });
   }
 
   /**
    * Her class here: the steward or the public being where the bench opened
-   * with her there, and otherwise borne, from her `born` or from the cells
-   * an example starts from.
+   * with her there, and otherwise borne by the bench's own steward, from
+   * her `born`.
    */
-  async place(Class: BeingClass, { id, cells, born }: { id?: string; cells?: Record<string, Json>; born?: Record<string, Json> } = {}): Promise<Placed> {
-    const table = resolve(Class);
-    const position = Class === this.#steward ? STEWARD : Class === this.#public ? PUBLIC : undefined;
-    const name = position ?? id ?? `placed-${++this.#count}`;
-    if (position === undefined) await this.#author.access.bear(table.kind, name, born);
+  async place(Class: BeingClass, { id, born }: { id?: string; born?: Record<string, Json> } = {}): Promise<Placed> {
+    const table = tableOf(Class);
+    if (Class === this.#steward) return new Placed(this, STEWARD, 'steward', table);
+    if (Class === this.#public) return new Placed(this, PUBLIC, 'public', table);
+    if (!this.#own) throw new Error('the bench bears a being beside its own steward alone');
+    const name = id ?? `placed-${++this.#count}`;
+    await this.#rooted(AUTHOR, STEWARD, 'bear', { kind: table.kind, id: name, ...(born === undefined ? {} : { args: born }) });
     await this.settle();
-    if (cells !== undefined) {
-      const patched = await this.#author.access.patch(name, (row) => {
-        row.cells = { ...row.cells, ...cells };
-      });
-      if (!patched) throw new Error('memory refused the example’s cells');
-    }
-    return new Placed(this, name, table);
+    return new Placed(this, name, 'normal', table);
   }
 
   /** Lets every ask, effect and reply the houses started run to its end. */
-  async settle(): Promise<void> {
-    await settle();
+  settle(): Promise<void> {
+    return this.#network.settle();
   }
 
   /** The clock moved on, and what came due run. */
-  async advance(ms: number): Promise<void> {
-    this.clock.advance(ms);
-    await this.settle();
+  advance(ms: number): Promise<void> {
+    return this.#network.advance(ms);
   }
 
-  cellsOf(being: string): Promise<Record<string, Json> | null> {
-    return this.#author.access.cells(being);
+  /** A placed being's cells, read through the hand. */
+  async cellsOf(placed: Placed): Promise<Record<string, Json>> {
+    const read = await this.#ground.ask({ house: AUTHOR, id: placed.id, cells: true });
+    if (!('result' in read)) throw new Error(`the bench could not read the cells of ${placed.id}: ${JSON.stringify(read)}`);
+    return read.result as Record<string, Json>;
   }
 
-  // Who plays a role. On the public being, a role `stranger` holds is played
-  // by a box with the zero head. A role `root` holds is played through the
-  // hand, on any being. Otherwise an occupant named for it plays it, the
-  // role true in both sets of notes. A handle is admitted to one ask;
-  // `being` is introduced; `steward` is hers.
-  async through(being: string, role: string, ask: string | undefined, method: string | undefined, args: Json): Promise<Answer | { describe: Json } | null> {
-    const holds = async (asker: 'root' | 'stranger') => role === asker || (await this.#author.access.roles(being, asker)).includes(role);
-    const played = being === PUBLIC && (await holds('stranger')) ? this.#zero(method, args) : (await holds('root')) ? this.#hand(being, method, args) : undefined;
-    if (played !== undefined) {
-      const answered = await played;
+  // Who plays a role on her, judged on her cells as they stand. `root` and
+  // a role root holds are the hand's, on any being. On the public being,
+  // `stranger` and a role a stranger holds are a stranger's. The rest need
+  // the bench's own steward: hers for `steward`, a neighbour it introduces
+  // for `being`, and an occupant it invites, the role true in its steward
+  // notes, for any other her table names and that occupant holds.
+  async #player(placed: Placed, table: Table, role: string): Promise<Player> {
+    const me = { id: placed.id, position: placed.position, cells: await this.cellsOf(placed) };
+    const holds = (asker: Asker) => {
+      const test = table.roles[role] as ((asker: Asker, me: unknown) => boolean) | undefined;
+      try {
+        return test?.(asker, me) === true;
+      } catch {
+        return false;
+      }
+    };
+    if (role === 'root' || holds(ROOT)) return 'hand';
+    if (placed.position === 'public' && (role === 'stranger' || holds(STRANGER))) return 'stranger';
+    if (role === 'handle') return { unplayed: 'a handle is minted by her own ask' };
+    if (!this.#own) return { unplayed: `the bench plays ${role} beside its own steward alone` };
+    if (role === STEWARD) return placed.position === 'steward' ? { unplayed: 'the steward has no steward' } : 'steward';
+    if (role === 'being') return 'neighbour';
+    if (role in table.roles && !holds({ id: `bench-${role}`, notes: {}, steward: { [role]: true } })) return { unplayed: `no one it makes holds ${role} here` };
+    return { notes: role };
+  }
+
+  /** One ask of a placed being, as whoever plays the role. */
+  async asked(placed: Placed, table: Table, role: string, method: string, args: Json): Promise<Answer | null> {
+    const player = await this.#player(placed, table, role);
+    if (typeof player === 'object' && 'unplayed' in player) throw new Error(`the bench cannot play ${role} on ${placed.id}: ${player.unplayed}`);
+    if (player === 'hand') {
+      const answered = await this.#ground.ask({ house: AUTHOR, id: placed.id, method, args });
       await this.settle();
-      return answered;
+      return 'describe' in answered ? null : answered;
     }
-    const occupant = role === 'handle' ? `handle:bench-${ask}` : role === 'being' ? 'being:bench' : role;
-    const key = `${being}\n${occupant}`;
-    let standing = this.#standings.get(key);
-    if (standing === undefined) {
-      const notes = role === STEWARD || role === 'being' || role === 'handle' ? {} : { [role]: true };
-      const invitation = await this.#author.access.occupant(being, occupant, { notes, steward: notes, ...(role === 'handle' ? { ask: ask! } : {}) });
-      const adopted = await this.#tester.opened.ask({ method: 'adopt', args: { invitation } });
-      if (!('result' in adopted)) throw new Error(`the bench could not hold ${role}: ${JSON.stringify(adopted)}`);
-      standing = adopted.result as string;
-      this.#standings.set(key, standing);
-    }
-    const answered = await this.#tester.access.far(STEWARD, standing, method, args);
+    if (player === 'stranger') return this.#outcome(TESTER, STEWARD, 'visit', { ward: this.#ward, at: [`bench://${HOST}`], method, args });
+    if (player === 'steward') return this.#outcome(AUTHOR, STEWARD, 'ask', { id: placed.id, method, args });
+    if (player === 'neighbour') return this.#outcome(AUTHOR, NEIGHBOUR, 'ask', { standing: await this.#neighbour(placed.id), method, args });
+    return this.#outcome(TESTER, STEWARD, 'ask', { standing: await this.#door(placed.id, player.notes), method, args });
+  }
+
+  /** What a placed being shows whoever plays the role. */
+  async described(placed: Placed, table: Table, role: string): Promise<Described | null> {
+    const player = await this.#player(placed, table, role);
+    if (typeof player === 'object' && 'unplayed' in player) throw new Error(`the bench cannot play ${role} on ${placed.id}: ${player.unplayed}`);
+    let read: Json;
+    if (player === 'hand') {
+      const answered = await this.#ground.ask({ house: AUTHOR, id: placed.id });
+      if (!('describe' in answered)) return null;
+      read = answered.describe;
+    } else if (player === 'stranger') read = await this.#rooted(TESTER, STEWARD, 'looks', { ward: this.#ward, at: [`bench://${HOST}`] });
+    else if (player === 'steward') read = await this.#rooted(AUTHOR, STEWARD, 'shows', { id: placed.id });
+    else if (player === 'neighbour') read = await this.#rooted(AUTHOR, NEIGHBOUR, 'describe', { standing: await this.#neighbour(placed.id) });
+    else read = await this.#rooted(TESTER, STEWARD, 'describe', { standing: await this.#door(placed.id, player.notes) });
+    const described = read as unknown as Described;
+    return typeof described?.state === 'string' && Array.isArray(described.asks) ? described : null;
+  }
+
+  // One of the bench's own beings asked through the hand, which fails the test where she answers an error.
+  async #rooted(house: string, id: string, method: string, args: Json): Promise<Json> {
+    const answered = await this.#ground.ask({ house, id, method, args });
     await this.settle();
-    return answered;
+    if (!('result' in answered)) throw new Error(`the bench's ${id} could not ${method}: ${JSON.stringify(answered)}`);
+    return answered.result;
   }
 
-  // A being asked by the holder of the house's hand, which no box carries.
-  #hand(being: string, method: string | undefined, args: Json): Promise<Answer | { describe: Json }> {
-    return this.#author.opened.ask({ id: being, ...(method === undefined ? {} : { method, args }) });
+  // One ask through one of the bench's beings: its answer, or the reply its effect brought once it landed, or silence.
+  async #outcome(house: string, id: string, method: string, args: Json): Promise<Answer | null> {
+    const replies = async () => (await this.#rooted(house, id, 'replies', {})) as Answer[];
+    const before = (await replies()).length;
+    const read = (await this.#rooted(house, id, method, args)) as { answer?: Answer; queued?: true };
+    if (read.answer !== undefined) return read.answer;
+    return (await replies())[before] ?? null;
   }
 
-  // The public being asked by a stranger: a box with the zero head, signed with the bench's stranger key.
-  async #zero(method: string | undefined, args: Json): Promise<Answer | { describe: Json } | null> {
-    const { room, secret } = this.#stranger;
-    const ward = this.#author.opened.ward;
-    const sealed = await room.stranger(ward, secret, { ...(method === undefined ? {} : { method }), args: tools.canonical(args) });
-    const read = await room.strangerRead(ward, sealed.lid, await this.#author.opened.door(sealed.box));
-    if (!('object' in read)) return null;
-    return method === undefined ? { describe: read.object as Json } : (read.object as Answer);
+  // The caller's standing on her as an occupant whose steward notes hold the role.
+  async #door(being: string, role: string): Promise<string> {
+    const key = `${being}\n${role}`;
+    const held = this.#doors.get(key);
+    if (held !== undefined) return held;
+    const { door } = (await this.#rooted(AUTHOR, STEWARD, 'door', { id: being, occupant: `bench-${role}`, role })) as { door: string };
+    const standing = (await this.#rooted(TESTER, STEWARD, 'adopt', { invitation: door })) as string;
+    this.#doors.set(key, standing);
+    return standing;
+  }
+
+  // The neighbour, borne once and introduced to her; its standing on her is named for her.
+  async #neighbour(being: string): Promise<string> {
+    if (this.#introduced.size === 0) await this.#rooted(AUTHOR, STEWARD, 'bear', { kind: 'org.nervur.bench.caller', id: NEIGHBOUR });
+    if (being !== STEWARD && !this.#introduced.has(being)) await this.#rooted(AUTHOR, STEWARD, 'introduce', { from: NEIGHBOUR, to: being });
+    this.#introduced.add(being);
+    return being;
   }
 
   /** Every example of her class run, twice, on two fresh benches. */
   static async examples(Class: BeingClass, options: CheckOptions = {}): Promise<Finding[]> {
-    const table = resolve(Class);
+    const table = tableOf(Class);
     const where = { ...options, seed: options.seed ?? 'examples' };
     const findings: Finding[] = [];
     for (const entry of Object.values(table.asks)) {
@@ -231,10 +316,12 @@ export class Bench {
         try {
           const first = await Bench.#run(Class, table, entry, example, where);
           const second = await Bench.#run(Class, table, entry, example, where);
-          if (example.gives !== undefined && tools.canonical(first.answer) !== tools.canonical(example.gives)) {
+          if (example.gives !== undefined && canonical(first.answer) !== canonical(example.gives)) {
             findings.push({ ok: false, what, why: `it gives ${JSON.stringify(first.answer)}, and the example says ${JSON.stringify(example.gives)}` });
-          } else if (tools.canonical(first) !== tools.canonical(second)) {
-            findings.push({ ok: false, what, why: 'a re-run on the same cells answered differently' });
+          } else if (canonical(first.answer) !== canonical(second.answer)) {
+            findings.push({ ok: false, what, why: 'a re-run of the same history answered differently' });
+          } else if (canonical(first.cells) !== canonical(second.cells)) {
+            findings.push({ ok: false, what, why: 'a re-run of the same history left her cells differently' });
           } else findings.push({ ok: true, what });
         } catch (error) {
           findings.push({ ok: false, what, why: error instanceof Error ? error.message : String(error) });
@@ -255,43 +342,59 @@ export class Bench {
     });
   }
 
-  static async #run(Class: BeingClass, table: Table, entry: TableEntry, example: Example, options: CheckOptions) {
+  // Her history asked in its order: each ask of it must answer, or the example names where it stopped.
+  static async #replay(placed: Placed, given: readonly Step[]): Promise<void> {
+    for (const [index, step] of given.entries()) {
+      const answered = await placed.ask(step.ask, step.args ?? {}, step.role === undefined ? {} : { role: step.role });
+      if (answered === null || 'error' in answered) throw new Error(`given ${index + 1}, ${step.ask}, answered ${JSON.stringify(answered)}`);
+    }
+  }
+
+  static async #run(Class: BeingClass, table: Table, entry: Entry, example: Example, options: CheckOptions) {
     const bench = await Bench.#opening(Class, table, example, options);
-    const placed = await bench.place(Class, example.cells === undefined ? {} : { cells: example.cells });
+    const placed = await bench.place(Class);
+    await Bench.#replay(placed, example.given ?? []);
     const answer = await placed.ask(entry.method, example.args ?? {}, example.role === undefined ? {} : { role: example.role });
     return { answer: answer ?? { nothing: true }, cells: await placed.cells() };
   }
 
   /**
-   * Every state her default cells and her examples reach, described to
-   * every role she names: what each is shown is what her table says.
+   * Every state her `born` and her examples' histories reach, described to
+   * every role the bench can play: what each is shown is what her table owes.
    */
   static async walk(Class: BeingClass, options: CheckOptions = {}): Promise<Finding[]> {
-    const table = resolve(Class);
+    const table = tableOf(Class);
     const where = { ...options, seed: options.seed ?? 'walk' };
     const position = options.position ?? 'normal';
     const findings: Finding[] = [];
-    const starts = [undefined, ...Object.values(table.asks).flatMap((entry) => entry.examples.map((example) => (example as Example).cells))];
+    const histories = [[], ...Object.values(table.asks).flatMap((entry) => entry.examples.map((example) => (example as Example).given ?? []))];
     const seen = new Set<string>();
     // Each role her position lets someone hold: the steward has no steward, and only the public being has strangers.
     const roles = [...new Set([STEWARD, ...Object.keys(table.roles), ...Object.values(table.asks).flatMap((entry) => entry.for ?? [])])].filter(
       (role) => role !== 'handle' && (role !== 'stranger' || position === 'public') && (role !== STEWARD || position !== 'steward'),
     );
-    for (const cells of starts) {
-      // One visit a state, from the first cells that reach it.
-      const state = table.state({ id: '', position, cells: { ...table.cells, ...cells } });
-      if (seen.has(state)) continue;
-      seen.add(state);
+    for (const given of histories) {
       const bench = await Bench.#opening(Class, table, {}, where);
-      const placed = await bench.place(Class, cells === undefined ? {} : { cells });
-      // The roles a stranger holds, to whom a public being never shows an effect.
-      const strange = position === 'public' ? await bench.#author.access.roles(PUBLIC, 'stranger') : [];
+      const placed = await bench.place(Class);
+      try {
+        await Bench.#replay(placed, given);
+      } catch {
+        // A history that stops is its example's finding, and reaches no state here.
+        continue;
+      }
+      // One visit a state, from the first history that reaches it.
+      const state = (await placed.describe())?.state;
+      if (state === undefined || seen.has(state)) continue;
+      seen.add(state);
       for (const role of roles) {
+        const player = await bench.#player(placed, table, role);
+        if (typeof player === 'object' && 'unplayed' in player) continue;
         const what = `${state}, as ${role}`;
         const described = await placed.describe({ role });
         const shown = (described?.asks ?? []).map((entry) => entry.method).sort();
+        // A stranger is never shown an effect.
         const owed = Object.values(table.asks)
-          .filter((entry) => !(entry.effect && (role === 'stranger' || strange.includes(role))))
+          .filter((entry) => !(entry.effect && player === 'stranger'))
           .filter((entry) => (entry.for === null ? true : entry.for.includes(role)))
           .map((entry) => entry.method)
           .sort();
@@ -313,11 +416,17 @@ export class Bench {
   }
 }
 
+// One JSON value as text with its keys in order, so two answers compare by what they hold.
+const canonical = (value: unknown): string =>
+  JSON.stringify(value, (_key, held: unknown) =>
+    typeof held === 'object' && held !== null && !Array.isArray(held) ? Object.fromEntries(Object.entries(held).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : held,
+  );
+
 // A fake of each faculty her needs name, answering what an example says,
 // and `{ result: null }` where it says nothing.
 const fakes = (table: Table, example: Example): Offer[] =>
-  Object.entries(table.needs).map(([member, blueprint]: [string, Blueprint]) => {
+  Object.entries(table.needs).map(([member, blueprint]) => {
     const said = example.fakes?.[member] ?? {};
     const object = Object.fromEntries(Object.keys(blueprint.methods).map((method) => [method, async () => said[method] ?? { result: null }]));
-    return { blueprint: blueprintOf(blueprint) ?? blueprint, object, kinds: [table.kind] };
+    return { blueprint, object, kinds: [table.kind] };
   });

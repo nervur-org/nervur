@@ -3,15 +3,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ClassList, House, NobleCrypto, SeedKeys, StrictTools } from 'nervur';
-import { FakeClock, FakeMemory } from 'nervur/bench';
+import { FakeNetwork } from 'nervur/bench';
+import { FakeClock } from '../../../src/bench/fake-clock.ts';
+import { FakeMemory } from '../../../src/bench/fake-memory.ts';
 import { Room } from '../../../src/quo/room.ts';
 import { Steward } from '../../fixtures/world/steward.ts';
 
 const crypto = new NobleCrypto();
 const tools = new StrictTools();
+// A carry on a network of its own, so the house's sends reach nothing.
+const carry = () => new FakeNetwork().join('house');
 
 test('Two boxes on one relation in flight together, out of order, and one replayed: each number acts once', async () => {
-  const house = await House.open({ keys: new SeedKeys('7'.repeat(64)), memory: new FakeMemory(), classes: new ClassList({ steward: Steward }), clock: new FakeClock() });
+  const house = await House.open({ keys: new SeedKeys('7'.repeat(64)), memory: new FakeMemory(), classes: new ClassList({ steward: Steward }), carry: carry(), clock: new FakeClock() });
   const offered = await house.ask({ method: 'offer' });
   assert.ok('result' in offered);
   const room = new Room(new SeedKeys('8'.repeat(64)), crypto, tools);
@@ -36,7 +40,7 @@ test('Two boxes on one relation in flight together, out of order, and one replay
 });
 
 test('Args that repeat a key are refused before anything runs, with the mark the asker’s describe carries', async () => {
-  const house = await House.open({ keys: new SeedKeys('7'.repeat(64)), memory: new FakeMemory(), classes: new ClassList({ steward: Steward }), clock: new FakeClock() });
+  const house = await House.open({ keys: new SeedKeys('7'.repeat(64)), memory: new FakeMemory(), classes: new ClassList({ steward: Steward }), carry: carry(), clock: new FakeClock() });
   const offered = await house.ask({ method: 'offer' });
   assert.ok('result' in offered);
   const room = new Room(new SeedKeys('8'.repeat(64)), crypto, tools);

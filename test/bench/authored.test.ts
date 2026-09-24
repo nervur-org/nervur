@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ClassList, type Classes } from 'nervur';
-import { BenchGround, FakeClock, FakeNetwork } from 'nervur/bench';
+import { BenchGround, FakeNetwork } from 'nervur/bench';
 import * as next from '../fixtures/world/host-next.ts';
 import * as shop from '../fixtures/world/shop.ts';
 
@@ -16,8 +16,7 @@ test('A custom registry brings new code to a house, which keeps its rows', async
     const module = versions[live];
     return new ClassList({ steward: module.steward, beings: module.beings });
   };
-  const clock = new FakeClock();
-  const ground = await BenchGround.open({ network: new FakeNetwork({ clock }), clock, host: 'shop', names: ['shop.example'], bodies: { classes: { registry } } });
+  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'shop', names: ['shop.example'], bodies: { classes: { registry } } });
   const entry = { memory: { body: 'fake' }, classes: { body: 'registry' } };
   const first = await ground.add('store', entry);
   await ground.ask({ house: 'store', method: 'bear', args: { kind: 'org.example.host', id: 'bob' } });
@@ -31,9 +30,8 @@ test('A custom registry brings new code to a house, which keeps its rows', async
 });
 
 test('A custom body never takes the place of the bench’s own', async () => {
-  const clock = new FakeClock();
   await assert.rejects(
-    BenchGround.open({ network: new FakeNetwork({ clock }), clock, host: 'x', bodies: { memory: { fake: () => { throw new Error('never made'); } } } }),
+    BenchGround.open({ network: new FakeNetwork(), host: 'x', bodies: { memory: { fake: () => { throw new Error('never made'); } } } }),
     /the body fake is the bench's own/,
   );
 });

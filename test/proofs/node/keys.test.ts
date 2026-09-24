@@ -10,7 +10,7 @@ import { NobleCrypto } from '../../../src/bodies/noble-crypto.ts';
 import { FileKeys } from '../../../src/node/file-keys.ts';
 import { KeychainKeys } from '../../../src/node/keychain-keys.ts';
 import { notifyReady } from '../../../src/node/notify.ts';
-import { keysSuite } from '../suites/keys.ts';
+import { keysSuite } from '../../suites/keys.ts';
 
 const crypto = new NobleCrypto();
 const folder = mkdtempSync(join(tmpdir(), 'nervur-keys-'));

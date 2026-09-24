@@ -29,3 +29,17 @@ export class Pilot extends Being.of({
     await this.houses.remove({ name });
   }
 }
+
+/** A class of another kind whose need `houses` covers too, in the same house as the pilot. */
+export class Stowaway extends Being.of({
+  kind: 'org.example.stowaway',
+  needs: { houses: Houses },
+  asks: {
+    open: { hints: { idempotent: true }, args: s.object({ name: s.string(), set: s.string() }), result: s.string() },
+  },
+}) {
+  async open({ name, set }: Args<Stowaway, 'open'>) {
+    const { ward } = await this.houses.add({ name, memory: { body: 'fake' }, classes: { body: 'list', set } });
+    return ward;
+  }
+}

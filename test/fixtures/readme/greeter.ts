@@ -9,7 +9,7 @@ export class Greeter extends Being.of({
     hello: {
       args: s.object({ name: s.string() }),
       result: s.string(),
-      examples: [{ cells: { greeted: 2 }, args: { name: 'Ada' }, gives: { result: 'Hello, Ada. You are number 3.' } }],
+      examples: [{ given: [{ ask: 'hello', args: { name: 'Bo' } }, { ask: 'hello', args: { name: 'Cy' } }], args: { name: 'Ada' }, gives: { result: 'Hello, Ada. You are number 3.' } }],
     },
   },
 }) {

@@ -3,7 +3,7 @@
 // one, and its lobby enrols a stranger once, however often they ask.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Bench, BenchGround, FakeClock, FakeNetwork } from 'nervur/bench';
+import { Bench, BenchGround, FakeNetwork } from 'nervur/bench';
 import { FolderClasses } from 'nervur/node';
 import { Lobby } from '../fixtures/guides/classes/lobby.ts';
 import { Order } from '../fixtures/guides/classes/order.ts';
@@ -17,18 +17,16 @@ type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
 
 // The shop's ground, its code taken from the guides' folder as `nervur up` takes it, and the courier's beside it.
 const world = async () => {
-  const clock = new FakeClock();
-  const network = new FakeNetwork({ clock });
+  const network = new FakeNetwork();
   const shop = await BenchGround.open({
     network,
-    clock,
     host: 'shop',
     names: ['shop.example'],
     faculties: faculties(),
     bodies: { classes: { folder: () => FolderClasses.open(new URL('../fixtures/guides/classes/', import.meta.url)) } },
   });
   await shop.add('shop', { memory: { body: 'fake' }, classes: { body: 'folder' }, faculties: ['payments'] });
-  const courier = await BenchGround.open({ network, clock, host: 'courier', names: ['courier.example'], modules: { courier: { steward: Steward, beings: [Depot] } } });
+  const courier = await BenchGround.open({ network, host: 'courier', names: ['courier.example'], modules: { courier: { steward: Steward, beings: [Depot] } } });
   await courier.add('courier');
   const ask = (method: string, args: Json = {}) => shop.ask({ house: 'shop', method, args });
   const result = async (method: string, args: Json = {}) => {

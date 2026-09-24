@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // A clock the test moves. Nothing waits on real time.
-import type { Clock } from '../foundation.ts';
+import type { Clock } from '../index.ts';
 
 interface Waiting {
   readonly at: number;

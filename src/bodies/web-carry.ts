@@ -5,6 +5,7 @@
 // listener chains; as a dialer it posts and opens held lines itself.
 import type { Carry, Sent } from '../foundation.ts';
 import { ASK, NOTHING, PK, REPLY, body, privateHost, read } from '../quo/frame.ts';
+import { vouchesOf } from './vouch.ts';
 
 /** A WebSocket the ground's listener opened: bytes out, and closing. */
 export interface HeldSocket {
@@ -14,7 +15,8 @@ export interface HeldSocket {
 
 /** What a handler does with a WebSocket once it is open. */
 export interface Held {
-  message(data: Uint8Array | string): void;
+  /** Settles once what the message asked is answered, so a ground woken per event holds its wake until then. */
+  message(data: Uint8Array | string): void | Promise<void>;
   close(): void;
 }
 
@@ -95,11 +97,28 @@ export class WebCarry implements Carry, Handler {
     return typeof this.#addresses === 'function' ? this.#addresses() : this.#addresses;
   }
 
+  /** The hosts of its `https` and `wss` addresses that vouch for the ward, each read over TLS. */
+  vouched({ ward, at }: { ward: string; at: readonly string[] }): Promise<readonly string[]> {
+    return vouchesOf({ fetcher: (url, init) => fetch(url, init), ward, at, schemes: ['https', 'wss'], allowPrivate: this.#allowPrivate, wait: this.#wait });
+  }
+
   // ---- the listener ----
 
   #cors(request: Request): Record<string, string> {
     const origin = request.headers.get('origin');
     return origin !== null && (this.#origins.has(origin) || this.#origins.has('*')) ? { 'access-control-allow-origin': origin, vary: 'origin' } : {};
+  }
+
+  // A page reaches the door from its own host, or from an origin the carry
+  // names. A request that names no origin is no page's, and is let in.
+  #admits(request: Request): boolean {
+    const origin = request.headers.get('origin');
+    if (origin === null || this.#origins.has(origin) || this.#origins.has('*')) return true;
+    try {
+      return new URL(origin).host === new URL(request.url).host;
+    } catch {
+      return false;
+    }
   }
 
   async fetch(request: Request): Promise<Response | null> {
@@ -109,6 +128,7 @@ export class WebCarry implements Carry, Handler {
       return new Response(null, { status: 204, headers: { ...cors, 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'content-type' } });
     }
     if (request.method !== 'POST') return new Response(null, { status: 405, headers: cors });
+    if (!this.#admits(request)) return new Response(null, { status: 403 });
     const bytes = new Uint8Array(await request.arrayBuffer());
     if (bytes.length <= PK || bytes.length > LONGEST_POST) return new Response(null, { status: 400, headers: cors });
     const door = this.#doors.get(hex(bytes.subarray(0, PK)));
@@ -121,7 +141,7 @@ export class WebCarry implements Carry, Handler {
   upgrade(request: Request): { protocol: string; open(socket: HeldSocket): Held } | null {
     if (new URL(request.url).pathname !== this.#path) return null;
     const offered = (request.headers.get('sec-websocket-protocol') ?? '').split(',').map((protocol) => protocol.trim());
-    if (!offered.includes(PROTOCOL)) return null;
+    if (!offered.includes(PROTOCOL) || !this.#admits(request)) return null;
     return {
       protocol: PROTOCOL,
       open: (socket) => ({
@@ -131,7 +151,7 @@ export class WebCarry implements Carry, Handler {
           // A reply or a nothing frame is not a listener's to read.
           if (frame.kind !== ASK) return;
           const door = this.#doors.get(hex(frame.rest.subarray(0, PK)));
-          void (door === undefined ? Promise.resolve(null) : door(frame.rest.slice(PK)).catch(() => null)).then((reply) => {
+          return (door === undefined ? Promise.resolve(null) : door(frame.rest.slice(PK)).catch(() => null)).then((reply) => {
             try {
               socket.send(reply === null ? body(NOTHING, frame.id, new Uint8Array()) : body(REPLY, frame.id, reply));
             } catch {
@@ -146,7 +166,7 @@ export class WebCarry implements Carry, Handler {
 
   // ---- the dialer ----
 
-  async send({ ward, at, box }: { ward: string; at: readonly string[]; box: Uint8Array }): Promise<Sent> {
+  async send({ ward, at, box, wait = this.#wait }: { ward: string; at: readonly string[]; box: Uint8Array; wait?: number }): Promise<Sent> {
     // A ward this carry listens for is on this ground: its door takes the box by pointer.
     const door = this.#doors.get(ward);
     if (door !== undefined) {
@@ -162,7 +182,7 @@ export class WebCarry implements Carry, Handler {
       }
       if (!this.#allowPrivate && privateHost(url.hostname)) continue;
       const scheme = url.protocol.slice(0, -1);
-      const answer = scheme === 'http' || scheme === 'https' ? await this.#post(address, ward, box) : scheme === 'ws' || scheme === 'wss' ? await this.#held(address, ward, box) : 'unheard';
+      const answer = scheme === 'http' || scheme === 'https' ? await this.#post(address, ward, box, wait) : scheme === 'ws' || scheme === 'wss' ? await this.#held(address, ward, box, wait) : 'unheard';
       // A reply ends it; an ask that may have been heard is not carried again.
       if (answer === 'heard') return { reply: null, heard: true };
       if (answer !== 'unheard') return { reply: answer, via: address };
@@ -170,11 +190,12 @@ export class WebCarry implements Carry, Handler {
     return { reply: null, heard: false };
   }
 
-  async #post(address: string, ward: string, box: Uint8Array): Promise<Answer> {
+  async #post(address: string, ward: string, box: Uint8Array, wait: number): Promise<Answer> {
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), this.#wait);
+    const timer = setTimeout(() => abort.abort(), wait);
     try {
-      const response = await fetch(address, { method: 'POST', body: joined(unhex(ward), box), signal: abort.signal });
+      // A redirect is never followed, so no answer leads the box to an address its check never read.
+      const response = await fetch(address, { method: 'POST', body: joined(unhex(ward), box), signal: abort.signal, redirect: 'error' });
       if (response.status !== 200) {
         await response.body?.cancel();
         return 'unheard';
@@ -191,7 +212,7 @@ export class WebCarry implements Carry, Handler {
     }
   }
 
-  async #held(address: string, ward: string, box: Uint8Array): Promise<Answer> {
+  async #held(address: string, ward: string, box: Uint8Array, wait: number): Promise<Answer> {
     let line: Line;
     try {
       line = await this.#line(address);
@@ -208,7 +229,7 @@ export class WebCarry implements Carry, Handler {
       return 'unheard';
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), this.#wait)));
+    const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), wait)));
     const frame = await Promise.race([answered, late]);
     clearTimeout(timer);
     line.pending.delete(id);

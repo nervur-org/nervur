@@ -3,6 +3,7 @@
 // herself and on the beings she stewards, forwards one ask to a being, and
 // enrols a stranger her public being signs up.
 import { Being, s, need, type Args } from 'nervur/being';
+import type { Gauge } from './gauge.ts';
 
 /** What one steward calls on another, across houses. */
 export const Visit = need('visit', {
@@ -30,6 +31,13 @@ export class Steward extends Being.of({
     // An invitation to a new occupant of a being she stewards.
     offerFor: { for: 'pilot', args: s.object({ being: s.string(), occupant: s.string() }), result: s.object({ handle: s.handle() }) },
     adopt: { for: 'pilot', args: s.object({ invitation: s.handle() }), result: s.string() },
+    // An invitation minted on one being, carried by a second and taken by a
+    // third, all inside this ask, and answered to the owner as it stands.
+    spend: {
+      for: 'pilot',
+      args: s.object({ on: s.string(), carrier: s.string(), taker: s.string() }),
+      result: s.object({ invitation: s.invitation(), taken: s.string() }),
+    },
     relay: { for: 'pilot', args: s.object({ standing: s.string() }), result: s.string() },
     pingFar: { for: 'pilot', args: s.object({ standing: s.string() }) },
     ping: { for: 'visitor' },
@@ -49,6 +57,8 @@ export class Steward extends Being.of({
       }),
       result: s.object({ answered: s.optional(s.string()) }),
     },
+    // What a being shows her steward: the asks of the empty ask.
+    shows: { for: 'pilot', hints: { idempotent: true }, args: s.object({ id: s.string() }), result: s.array(s.string()) },
     whoami: { for: ['pilot', 'being', 'visitor'], hints: { readOnly: true }, result: s.string() },
     enroll: { for: 'being', hints: { idempotent: true }, args: s.object({ signer: s.bytes() }), result: s.object({ invitation: s.invitation() }) },
   },
@@ -91,6 +101,13 @@ export class Steward extends Being.of({
     return invitation;
   }
 
+  async spend({ on, carrier, taker }: Args<Steward, 'spend'>) {
+    const handle = this.powers!.invite({ id: on, occupant: 'spent' });
+    const { invitation } = (await this.powers!.ask({ id: carrier, method: 'carry', args: { invitation: handle } })) as Args<Gauge, 'carry'>;
+    const taken = await this.powers!.ask({ id: taker, method: 'take', args: { invitation } });
+    return { invitation, taken: String(taken) };
+  }
+
   async relay({ standing }: Args<Steward, 'relay'>) {
     return this.held(standing, Visit).whoami({});
   }
@@ -110,6 +127,11 @@ export class Steward extends Being.of({
   async forward({ id, method, args }: Args<Steward, 'forward'>) {
     const answered = await this.powers!.ask({ id, method, ...(args === undefined ? {} : { args }) });
     return answered === undefined ? {} : { answered: JSON.stringify(answered) };
+  }
+
+  async shows({ id }: Args<Steward, 'shows'>) {
+    const { asks } = await this.powers!.ask({ id });
+    return asks.map(({ method }) => method).sort();
   }
 
   whoami() {

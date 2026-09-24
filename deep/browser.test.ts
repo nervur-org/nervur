@@ -16,7 +16,7 @@ import { extname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import type { Memory } from 'nervur';
-import { memorySuite } from '../test/proofs/suites/memory.ts';
+import { memorySuite } from '../test/suites/memory.ts';
 import { buildOrigin } from './fixtures/browser/build.ts';
 
 const out = mkdtempSync(join(tmpdir(), 'nervur-browser-'));

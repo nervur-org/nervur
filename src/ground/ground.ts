@@ -7,6 +7,7 @@
 import type { Json } from '../being/being.ts';
 import { need, s } from '../being/index.ts';
 import { blueprintOf, type Blueprint } from '../being/need.ts';
+import { offered } from '../being/table.ts';
 import { NobleCrypto } from '../bodies/noble-crypto.ts';
 import { StrictTools } from '../bodies/strict-tools.ts';
 import { WebClock } from '../bodies/web-clock.ts';
@@ -20,6 +21,17 @@ export type Door = (box: Uint8Array) => Promise<Uint8Array | null>;
 /** The ground's seeds, one for each house by its name. A seed is drawn on first use. */
 export interface Custody {
   keys(options: { house: string }): Promise<Keys> | Keys;
+  /**
+   * A house's seed as sixty-four hex digits, for the hand's `moves` alone;
+   * drawn where none is kept. A custody without it moves no house out.
+   */
+  seed?(options: { house: string }): Promise<string> | string;
+  /**
+   * A seed kept for a house, as a move brings it in. The same seed again
+   * changes nothing; a house that holds another is refused. A custody
+   * without it moves no house in.
+   */
+  keep?(options: { house: string; seed: string }): Promise<void> | void;
 }
 
 /** A carry the ground hooks doors to, and unhooks them from. */
@@ -76,6 +88,8 @@ export interface HandAsk {
   readonly args?: Json;
   /** The answer the owner holds, which makes a `readOnly` ask a watch. */
   readonly after?: Answer;
+  /** Her cells read, and nothing asked. */
+  readonly cells?: true;
 }
 
 /** What `Ground.open` takes. Custody and memory are the terrain's defaults, never a custom body. */
@@ -84,17 +98,38 @@ export interface GroundOptions {
   readonly memory: Memory;
   readonly carry: Hooked;
   readonly bodies: Bodies;
-  /** The faculties the ground made from its recipe, by name, already living. */
+  /** Faculties handed already living, by name, as a test hands its fakes. */
   readonly faculties?: Readonly<Record<string, Faculty>>;
+  /**
+   * The recipe's faculties, made at the boot once the record is read. Each
+   * is awaited up in the order the recipe names it, and one that fails
+   * stops the boot, named, with those already up stopped.
+   */
+  readonly recipe?: () => Readonly<Record<string, Faculty | Promise<Faculty>>>;
   readonly clock?: Clock;
   readonly crypto?: Crypto;
   readonly tools?: Tools;
   /** The ground's bound on every ask of every house, in milliseconds. */
   readonly wait?: number;
+  /**
+   * The kinds that hold the ground's own `houses`, as its recipe names
+   * them, so one pilot being alone possesses the ground. Where omitted,
+   * every class of a granted house whose need it covers holds it.
+   */
+  readonly houses?: { readonly kinds: readonly string[] };
+  /**
+   * A ground woken per event opens a house only when something reaches it:
+   * a box for its ward, or the hand. A house whose ward it never learned
+   * opens at the boot. `wake()` opens every one.
+   */
+  readonly lazy?: boolean;
 }
 
 const RECORD = 'houses';
+// Each house's ward by its name, once it has opened, so a lazy ground hooks its door unopened.
+const WARDS = 'wards';
 const HOUSES = 'houses';
+const MOVES = 'moves';
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const body = { type: 'object', properties: { body: { type: 'string' } }, required: ['body'], additionalProperties: true } as const;
 
@@ -124,12 +159,43 @@ export const HousesBlueprint = need(HOUSES, {
   },
 });
 
+// Every place of a memory, by its name: each entry's bytes as hex.
+const PLACES = { type: 'object', properties: {}, additionalProperties: true } as const;
+
+/** The blueprint of the ground's own faculty for moving a house, which the hand alone calls. */
+export const MovesBlueprint = need(MOVES, {
+  out: {
+    description: 'Closes a house and drops its entry, and answers its seed and every place of its memory.',
+    args: s.object({ name: s.string() }),
+    result: s.object({ seed: s.string(), places: PLACES }),
+    hints: { destructive: true },
+  },
+  in: {
+    description: 'Keeps a moved seed, writes its places into an empty memory, and opens the house on the bodies its entry names.',
+    args: s.object({
+      name: s.string(),
+      memory: body,
+      classes: body,
+      faculties: s.optional(s.array(s.string())),
+      wait: s.optional(s.integer({ minimum: 1 })),
+      seed: s.string(),
+      places: PLACES,
+    }),
+    result: s.object({ ward: s.string() }),
+  },
+});
+
 // The ground's clock as one house sees it: its waits named apart from every
-// other house's, and all cancelled when the ground closes it.
-class HouseClock implements Clock {
+// other house's. When the ground closes it, every wait runs out, and each
+// wait asked after runs out once, so every ask in flight on the house ends
+// and none waits again. No entry exports it; its contract's suite runs
+// against it.
+export class HouseClock implements Clock {
   readonly #clock: Clock;
   readonly #prefix: string;
-  readonly #waits = new Map<string, number>();
+  readonly #waits = new Map<string, { readonly turn: number; readonly run: (fired: boolean) => void }>();
+  /** The waits that ran out after the close, each once. */
+  readonly #spent = new Set<string>();
   #turn = 0;
   #closed = false;
 
@@ -142,15 +208,21 @@ class HouseClock implements Clock {
     return this.#clock.now();
   }
 
-  async wait({ id, ms }: { id: string; ms: number }): Promise<boolean> {
-    if (this.#closed) return false;
-    const turn = ++this.#turn;
-    this.#waits.set(id, turn);
-    try {
-      return await this.#clock.wait({ id: this.#prefix + id, ms });
-    } finally {
-      if (this.#waits.get(id) === turn) this.#waits.delete(id);
+  wait({ id, ms }: { id: string; ms: number }): Promise<boolean> {
+    if (this.#closed) {
+      if (this.#spent.has(id)) return Promise.resolve(false);
+      this.#spent.add(id);
+      return Promise.resolve(true);
     }
+    const turn = ++this.#turn;
+    return new Promise((run) => {
+      this.#waits.get(id)?.run(false);
+      this.#waits.set(id, { turn, run });
+      void this.#clock.wait({ id: this.#prefix + id, ms }).then((fired) => {
+        if (this.#waits.get(id)?.turn === turn) this.#waits.delete(id);
+        run(fired);
+      });
+    });
   }
 
   cancel({ id }: { id: string }): void {
@@ -159,12 +231,18 @@ class HouseClock implements Clock {
 
   close(): void {
     this.#closed = true;
-    for (const id of this.#waits.keys()) this.#clock.cancel({ id: this.#prefix + id });
+    for (const [id, { run }] of this.#waits) {
+      this.#spent.add(id);
+      run(true);
+      this.#clock.cancel({ id: this.#prefix + id });
+    }
+    this.#waits.clear();
   }
 }
 
-// The ground's carry as one house sees it: silent once the ground closes it.
-class HouseCarry implements Carry {
+// The ground's carry as one house sees it: silent once the ground closes
+// it. No entry exports it; its contract's suite runs against it.
+export class HouseCarry implements Carry {
   readonly #carry: Carry;
   #closed = false;
 
@@ -172,12 +250,16 @@ class HouseCarry implements Carry {
     this.#carry = carry;
   }
 
-  send(options: { ward: string; at: readonly string[]; box: Uint8Array }): Promise<Sent> {
+  send(options: { ward: string; at: readonly string[]; box: Uint8Array; wait?: number }): Promise<Sent> {
     return this.#closed ? Promise.resolve({ reply: null, heard: false }) : this.#carry.send(options);
   }
 
   at(options: { toward?: string } = {}): readonly string[] {
     return this.#carry.at(options);
+  }
+
+  vouched(options: { ward: string; at: readonly string[] }): Promise<readonly string[]> {
+    return this.#closed ? Promise.resolve([]) : this.#carry.vouched(options);
   }
 
   close(): void {
@@ -191,6 +273,10 @@ interface Held {
   readonly clock?: HouseClock;
   readonly carry?: HouseCarry;
   readonly why?: string;
+  /** The door's and the hand's calls on it not yet ended, which closing waits for. */
+  readonly flight?: Set<Promise<unknown>>;
+  /** Its ward, where it stands closed until something reaches it. */
+  readonly asleep?: string;
 }
 
 const entryOf = (value: unknown): Entry | string => {
@@ -215,7 +301,8 @@ export class Ground {
   readonly #memory: Memory;
   readonly #carry: Hooked;
   readonly #bodies: Bodies;
-  readonly #faculties: ReadonlyMap<string, Faculty>;
+  readonly #options: GroundOptions;
+  readonly #faculties = new Map<string, Faculty>();
   readonly #clock: Clock;
   readonly #crypto: Crypto;
   readonly #tools: Tools;
@@ -223,7 +310,11 @@ export class Ground {
   readonly #houses = new Map<string, Held>();
   // Changes of the record, one at a time, each on the version the last left.
   #turn: Promise<unknown> = Promise.resolve();
+  /** The last change to each house by name, which the next one waits for. */
+  readonly #changing = new Map<string, Promise<unknown>>();
   #version: string | null = null;
+  readonly #wards = new Map<string, string>();
+  #wardsVersion: string | null = null;
 
   private constructor(options: GroundOptions) {
     this.#custody = options.custody;
@@ -234,10 +325,7 @@ export class Ground {
     this.#crypto = options.crypto ?? new NobleCrypto();
     this.#tools = options.tools ?? new StrictTools();
     this.#wait = options.wait;
-    const faculties = new Map(Object.entries(options.faculties ?? {}));
-    if (faculties.has(HOUSES)) throw new TypeError(`the faculty ${HOUSES} is the ground's own`);
-    faculties.set(HOUSES, { blueprint: HousesBlueprint, object: this.#housesFaculty() });
-    this.#faculties = faculties;
+    this.#options = options;
   }
 
   /** A ground on its own custody and memory, every house of its record opened. */
@@ -247,9 +335,15 @@ export class Ground {
     return ground;
   }
 
+  // The boot after the lock and its own custody and memory: the record, the
+  // faculties, then the houses. The ground's hook and ready are its terrain's.
   async #boot(): Promise<void> {
     const read = await this.#memory.read({ place: RECORD });
     this.#version = read.version;
+    const wards = await this.#memory.read({ place: WARDS });
+    this.#wardsVersion = wards.version;
+    for (const [name, bytes] of Object.entries(wards.entries)) this.#wards.set(name, this.#tools.hex(bytes));
+    await this.#make();
     for (const [name, bytes] of Object.entries(read.entries)) {
       const parsed = this.#tools.parse(this.#tools.text(bytes) ?? '');
       const entry = parsed === null ? 'the record holds no JSON for it' : entryOf(parsed.value);
@@ -257,8 +351,90 @@ export class Ground {
         this.#houses.set(name, { entry: { memory: { body: '' }, classes: { body: '' } }, why: entry });
         continue;
       }
+      const ward = this.#wards.get(name);
+      if (this.#options.lazy === true && ward !== undefined) {
+        // Its door is hooked unopened: the first box opens it, then goes in.
+        this.#houses.set(name, { entry, asleep: ward });
+        await this.#carry.listen({ ward, door: (box) => this.#door(name, box) });
+        continue;
+      }
       this.#houses.set(name, await this.#open(name, entry));
     }
+  }
+
+  // A house that stands closed until something reaches it, opened once, in its name's turn.
+  #woken(name: string): Promise<Held | undefined> {
+    const held = this.#houses.get(name);
+    if (held?.asleep === undefined) return Promise.resolve(held);
+    return this.#byName(name, async () => {
+      const now = this.#houses.get(name);
+      if (now?.asleep === undefined) return now;
+      const opened = await this.#open(name, now.entry);
+      this.#houses.set(name, opened);
+      return opened;
+    });
+  }
+
+  /** Every house that stands closed until reached, opened now, as a wake by alarm needs: each arms its own times again. */
+  async wake(): Promise<void> {
+    await Promise.all([...this.#houses.keys()].map((name) => this.#woken(name)));
+  }
+
+  // A house's ward kept by its name, so the next boot of a lazy ground hooks its door unopened.
+  #known(name: string, ward: string): Promise<void> {
+    if (this.#wards.get(name) === ward) return Promise.resolve();
+    const change = this.#turn.then(async () => {
+      const landed = await this.#memory.write({ writes: { [WARDS]: { [name]: this.#tools.bytes(ward) } }, expect: { [WARDS]: this.#wardsVersion } });
+      if (landed === null) throw new Error('the ground’s memory moved under it: another instance writes here');
+      this.#wardsVersion = landed[WARDS] ?? null;
+      this.#wards.set(name, ward);
+    });
+    this.#turn = change.catch(() => undefined);
+    return change;
+  }
+
+  // Its faculties: those handed living, then the recipe's, each awaited up
+  // in its order and held to the rules a need is. One that fails stops the
+  // boot, named, and every one already up is stopped in reverse.
+  async #make(): Promise<void> {
+    const options = this.#options;
+    const made = this.#faculties;
+    for (const [name, faculty] of Object.entries(options.faculties ?? {})) made.set(name, faculty);
+    const failed = async (name: string, why: unknown): Promise<never> => {
+      await this.#stopFaculties();
+      throw new Error(`the faculty ${name} did not start: ${why instanceof Error ? why.message : String(why)}`);
+    };
+    let recipe: Readonly<Record<string, Faculty | Promise<Faculty>>>;
+    try {
+      recipe = options.recipe?.() ?? {};
+    } catch (error) {
+      return failed('of the recipe', error);
+    }
+    const making = Object.entries(recipe);
+    for (const [index, [name, faculty]] of making.entries()) {
+      try {
+        made.set(name, await faculty);
+      } catch (error) {
+        // Those it started beside it are let come up, and stopped with the rest.
+        for (const [later, rest] of making.slice(index + 1)) await Promise.resolve(rest).then((up) => void made.set(later, up), () => undefined);
+        return failed(name, error);
+      }
+    }
+    try {
+      for (const own of [HOUSES, MOVES]) if (made.has(own)) throw new TypeError(`the faculty ${own} is the ground's own`);
+      for (const [name, faculty] of made) offered(faculty.blueprint, `the faculty ${name}`);
+    } catch (error) {
+      await this.#stopFaculties();
+      throw error;
+    }
+    made.set(HOUSES, { blueprint: HousesBlueprint, object: this.#housesFaculty(), ...(options.houses === undefined ? {} : { kinds: options.houses.kinds }) });
+    // The hand's alone: no kind holds it, so no being ever holds a seed.
+    made.set(MOVES, { blueprint: MovesBlueprint, object: this.#movesFaculty(), kinds: [] });
+  }
+
+  // Every faculty stopped, in the reverse of the order it came up.
+  async #stopFaculties(): Promise<void> {
+    for (const faculty of [...this.#faculties.values()].reverse()) await faculty.stop?.();
   }
 
   // One house opened on the bodies its entry names, or closed and why.
@@ -270,6 +446,7 @@ export class Ground {
       if (classes === undefined) return { entry, why: `no classes body ${entry.classes.body}` };
       const offers: Offer[] = [];
       for (const faculty of entry.faculties ?? []) {
+        if (faculty === MOVES) return { entry, why: `the faculty ${MOVES} is the hand’s alone` };
         const offer = this.#faculties.get(faculty);
         if (offer === undefined) return { entry, why: `no faculty ${faculty}` };
         offers.push(offer);
@@ -291,7 +468,8 @@ export class Ground {
         wait === undefined ? {} : { wait },
       );
       await this.#carry.listen({ ward: opened.ward, door: (box) => this.#door(name, box) });
-      return { entry, opened, clock, carry };
+      await this.#known(name, opened.ward);
+      return { entry, opened, clock, carry, flight: new Set() };
     } catch (error) {
       return { entry, why: error instanceof Error ? error.message : String(error) };
     }
@@ -299,14 +477,35 @@ export class Ground {
 
   // A box for a house the ground still holds open, and nothing for one it closed.
   async #door(name: string, box: Uint8Array): Promise<Uint8Array | null> {
-    const opened = this.#houses.get(name)?.opened;
-    return opened === undefined ? null : opened.door(box);
+    const held = await this.#woken(name);
+    return held?.opened === undefined ? null : this.#counted(held, held.opened.door(box));
   }
 
-  #close(held: Held): void {
-    held.clock?.close();
+  // A call on a house, in flight until it ends, so closing the house waits for it.
+  #counted<T>(held: Held, call: Promise<T>): Promise<T> {
+    held.flight?.add(call);
+    const done = () => void held.flight?.delete(call);
+    call.then(done, done);
+    return call;
+  }
+
+  // Its door unhooked, its sends stopped and its waits run out, then every call in flight on it ended.
+  async #close(held: Held): Promise<void> {
+    const ward = held.opened?.ward ?? held.asleep;
+    if (ward !== undefined) this.#carry.unlisten({ ward });
     held.carry?.close();
-    if (held.opened !== undefined) this.#carry.unlisten({ ward: held.opened.ward });
+    held.clock?.close();
+    await Promise.allSettled([...(held.flight ?? [])]);
+  }
+
+  // Changes to one house, one at a time: two of one name never pass each other.
+  #byName<T>(name: string, change: () => Promise<T>): Promise<T> {
+    const run = (this.#changing.get(name) ?? Promise.resolve()).then(change);
+    this.#changing.set(
+      name,
+      run.catch(() => undefined),
+    );
+    return run;
   }
 
   // The record changed by one entry, landing on the version last read.
@@ -326,7 +525,7 @@ export class Ground {
     return [...this.#houses].map(([name, held]) => ({
       name,
       entry: held.entry,
-      ...(held.opened === undefined ? {} : { ward: held.opened.ward }),
+      ...(held.opened === undefined ? (held.asleep === undefined ? {} : { ward: held.asleep }) : { ward: held.opened.ward }),
       ...(held.why === undefined ? {} : { why: held.why }),
     }));
   }
@@ -340,47 +539,64 @@ export class Ground {
     if (!NAME.test(name)) throw new TypeError('a house is named with lowercase letters, digits, dots, dashes and underscores, at most sixty-four');
     const entry = entryOf(given);
     if (typeof entry === 'string') throw new TypeError(entry);
-    const held = this.#houses.get(name);
-    if (held !== undefined) {
-      if (this.#tools.canonical(held.entry) !== this.#tools.canonical(entry)) throw new Error(`the house ${name} stands with another entry`);
-      // A house that did not open is tried again, as its entry stands.
-      if (held.opened === undefined) this.#houses.set(name, await this.#open(name, entry));
+    return this.#byName(name, async () => {
+      const held = this.#houses.get(name);
+      if (held !== undefined) {
+        if (this.#tools.canonical(held.entry) !== this.#tools.canonical(entry)) throw new Error(`the house ${name} stands with another entry`);
+        // A house that did not open is tried again, as its entry stands.
+        if (held.opened === undefined) this.#houses.set(name, await this.#open(name, entry));
+        return this.list().find((standing) => standing.name === name)!;
+      }
+      await this.#record(name, entry);
+      this.#houses.set(name, await this.#open(name, entry));
       return this.list().find((standing) => standing.name === name)!;
-    }
-    await this.#record(name, entry);
-    this.#houses.set(name, await this.#open(name, entry));
-    return this.list().find((standing) => standing.name === name)!;
+    });
   }
 
-  /** A house closed and dropped from the record. Its seed and memory stay, so adding it again opens the same ward. */
-  async remove(name: string): Promise<void> {
-    const held = this.#houses.get(name);
-    if (held === undefined) return;
-    this.#houses.delete(name);
-    this.#close(held);
-    await this.#record(name, null);
+  /**
+   * A house closed and dropped from the record, once every call in flight
+   * on it has ended. Its seed and memory stay, so adding it again opens the
+   * same ward, and never beside the one it replaces.
+   */
+  remove(name: string): Promise<void> {
+    return this.#byName(name, async () => {
+      const held = this.#houses.get(name);
+      if (held === undefined) return;
+      this.#houses.delete(name);
+      await this.#close(held);
+      await this.#record(name, null);
+    });
   }
 
   /** The hand: a house by its name, and a being in it by id, asked as `root`. */
   async ask({ house, ...request }: HandAsk): Promise<Answer | { readonly describe: Json }> {
-    const opened = this.#houses.get(house)?.opened;
-    if (opened === undefined) return { error: { message: `no house ${house} is open here` } };
-    return opened.ask(request);
+    const held = await this.#woken(house);
+    if (held?.opened === undefined) return { error: { message: `no house ${house} is open here` } };
+    return this.#counted(held, held.opened.ask(request));
   }
 
   /**
    * The ground's hand, one request at a time, as every terrain serves it:
    * `describe`, a faculty's method, or an ask of a being in a named house.
    */
-  hand(request: { readonly describe?: true; readonly faculty?: string; readonly house?: string; readonly id?: string; readonly method?: string; readonly args?: Json; readonly after?: Answer }): Promise<Answer | { readonly describe: Json }> {
-    const { describe, faculty, house, id, method, args, after } = request;
+  hand(request: {
+    readonly describe?: true;
+    readonly faculty?: string;
+    readonly house?: string;
+    readonly id?: string;
+    readonly method?: string;
+    readonly args?: Json;
+    readonly after?: Answer;
+    readonly cells?: true;
+  }): Promise<Answer | { readonly describe: Json }> {
+    const { describe, faculty, house, id, method, args, after, cells } = request;
     if (describe === true) return Promise.resolve({ result: this.describe() as unknown as Json });
     if (faculty !== undefined) {
       if (method === undefined) return Promise.resolve({ error: { message: `a call on ${faculty} names a method` } });
       return this.call({ faculty, method, ...(args === undefined ? {} : { args }), ...(id === undefined ? {} : { id }) });
     }
     if (house === undefined) return Promise.resolve({ error: { message: 'the hand names a house, a faculty, or describe' } });
-    return this.ask({ house, ...(id === undefined ? {} : { id }), ...(method === undefined ? {} : { method }), ...(args === undefined ? {} : { args }), ...(after === undefined ? {} : { after }) });
+    return this.ask({ house, ...(id === undefined ? {} : { id }), ...(method === undefined ? {} : { method }), ...(args === undefined ? {} : { args }), ...(after === undefined ? {} : { after }), ...(cells === undefined ? {} : { cells }) });
   }
 
   /**
@@ -422,6 +638,7 @@ export class Ground {
     const context: FacultyContext = {
       id: id ?? this.#tools.hex(this.#crypto.random(16)),
       call: () => Promise.resolve({ error: { message: 'the hand holds no token' } }),
+      describe: () => Promise.resolve({ error: { message: 'the hand holds no token' } }),
     };
     try {
       const answered = (await (run as (args: Json, context: FacultyContext) => Promise<unknown>).call(faculty.object, args, context)) as Answer;
@@ -438,9 +655,10 @@ export class Ground {
 
   /** Every house closed through its bodies, then every faculty stopped, in reverse. */
   async close(): Promise<void> {
-    for (const held of [...this.#houses.values()].reverse()) this.#close(held);
+    const held = [...this.#houses.values()].reverse();
     this.#houses.clear();
-    for (const faculty of [...this.#faculties.values()].reverse()) await faculty.stop?.();
+    for (const one of held) await this.#close(one);
+    await this.#stopFaculties();
   }
 
   // The ground's own faculty, answering whoever the record grants it to.
@@ -461,6 +679,68 @@ export class Ground {
         }),
       remove: ({ name }: { name: string }) => answer(async () => (await this.remove(name), null)),
       list: () => answer(async () => this.list().map(({ name, ward, why }) => ({ name, ...(ward === undefined ? {} : { ward }), ...(why === undefined ? {} : { why }) }))),
+    };
+  }
+
+  // The ground's own faculty for moving a house, which the hand alone calls.
+  #movesFaculty(): object {
+    const answer = async (work: () => Promise<Json>) => {
+      try {
+        return { result: await work() };
+      } catch (error) {
+        return { error: { message: error instanceof Error ? error.message : String(error) } };
+      }
+    };
+    const tools = this.#tools;
+    return {
+      out: ({ name }: { name: string }) =>
+        answer(async () => {
+          const held = this.#houses.get(name);
+          if (held === undefined) throw new Error(`no house ${name} is here`);
+          if (this.#custody.seed === undefined) throw new Error('this ground’s custody moves no seed');
+          const memory = this.#bodies.memory[held.entry.memory.body];
+          if (memory === undefined) throw new Error(`no memory body ${held.entry.memory.body}`);
+          const seed = await this.#custody.seed({ house: name });
+          // Closed and out of the record first, so nothing lands here after the copy and no ground runs it twice.
+          await this.remove(name);
+          const store = await memory({ house: name, args: argsOf(held.entry.memory) });
+          const places: Record<string, Record<string, string>> = {};
+          for (const place of await store.list()) {
+            const { entries } = await store.read({ place });
+            places[place] = Object.fromEntries(Object.entries(entries).map(([key, bytes]) => [key, tools.hex(bytes)]));
+          }
+          return { seed, places };
+        }),
+      in: ({ name, seed, places, ...given }: { name: string; seed: string; places: Record<string, Record<string, string>> } & Entry) =>
+        answer(async () => {
+          if (!NAME.test(name)) throw new TypeError('a house is named with lowercase letters, digits, dots, dashes and underscores, at most sixty-four');
+          if (this.#houses.has(name)) throw new Error(`the house ${name} stands here already`);
+          if (this.#custody.keep === undefined) throw new Error('this ground’s custody keeps no seed brought in');
+          const entry = entryOf(given);
+          if (typeof entry === 'string') throw new TypeError(entry);
+          const memory = this.#bodies.memory[entry.memory.body];
+          if (memory === undefined) throw new Error(`no memory body ${entry.memory.body}`);
+          const store = await memory({ house: name, args: argsOf(entry.memory) });
+          // A house moves into a memory of its own, never over another's rows.
+          if ((await store.list()).length > 0) throw new Error(`the memory for ${name} holds places already`);
+          const writes: Record<string, Record<string, Uint8Array | null>> = {};
+          for (const [place, entries] of Object.entries(places)) {
+            writes[place] = Object.fromEntries(
+              Object.entries(entries).map(([key, text]) => {
+                const bytes = tools.bytes(text);
+                if (bytes === null) throw new TypeError(`the place ${place} holds no hex under ${key}`);
+                return [key, bytes];
+              }),
+            );
+          }
+          await this.#custody.keep({ house: name, seed });
+          if (Object.keys(writes).length > 0 && (await store.write({ writes, expect: Object.fromEntries(Object.keys(writes).map((place) => [place, null])) })) === null) {
+            throw new Error(`the memory for ${name} refused the places`);
+          }
+          const standing = await this.add(name, entry);
+          if (standing.ward === undefined) throw new Error(`the house ${name} did not open: ${standing.why}`);
+          return { ward: standing.ward };
+        }),
     };
   }
 }

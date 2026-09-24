@@ -32,10 +32,14 @@ export interface Me<C> {
 
 type Names = string | readonly string[];
 
-/** One example of an ask, run by the bench and nowhere else. */
+/**
+ * One example of an ask, run by the bench and nowhere else. `given` is the
+ * history of her own asks that brings her from her `born` to where the
+ * example starts.
+ */
 export interface Example {
   readonly description?: string;
-  readonly cells?: Json;
+  readonly given?: readonly { readonly ask: string; readonly args?: Json; readonly role?: string }[];
   readonly role?: string;
   readonly args?: Json;
   readonly fakes?: Json;
@@ -80,10 +84,11 @@ type Given<S, O extends unknown[]> = {} extends Sent<S> ? [args?: Sent<S>, ...O]
 
 type IsReadOnly<S> = S extends { readonly hints: { readonly readOnly: true } } ? true : false;
 
-// A readOnly ask is watched when she passes the result she holds as `after`.
+// A readOnly ask is watched when she passes the result she holds as `after`,
+// awaited, or as an effect whose answer asks her `reply`.
 export type Call<S, R extends string> =
   IsReadOnly<S> extends true
-    ? (...given: Given<S, [options?: { after?: Resolved<S> }]>) => Promise<Resolved<S>>
+    ? ((...given: Given<S, [options: { after: Resolved<S>; reply: R }]>) => void) & ((...given: Given<S, [options?: { after?: Resolved<S> }]>) => Promise<Resolved<S>>)
     : IsAwaited<S> extends true
       ? (...given: Given<S, []>) => Promise<Resolved<S>>
       : (...given: Given<S, [options?: { reply?: R }]>) => void;
@@ -93,6 +98,43 @@ export type Face<X, R extends string = string> = { readonly [K in Exclude<keyof 
 
 /** A standing asked with no need matched, such as her steward. */
 export type Untyped = Readonly<Record<string, (args?: Passed, options?: { reply?: string }) => Promise<unknown> | void>>;
+
+/** One ask as a far being's describe shows it: its schemas, its hints and its wait. */
+export interface Described {
+  readonly method: string;
+  readonly description?: string;
+  readonly in?: readonly string[];
+  readonly to?: readonly string[];
+  readonly args?: Json;
+  readonly result?: Json;
+  readonly hints?: { readonly readOnly?: boolean; readonly idempotent?: boolean; readonly destructive?: boolean };
+  readonly wait?: number;
+}
+
+/**
+ * A standing asked with no need declared. `describe` reads what it shows
+ * her now. `ask` names a method from the describe she read in this ask,
+ * which says whether it is awaited or an effect.
+ */
+export interface Undeclared<R extends string = string> {
+  describe(): Promise<{ readonly state: string; readonly asks: readonly Described[] }>;
+  ask(method: string, args?: Passed, options?: { reply?: R; after?: unknown }): Promise<unknown> | undefined;
+}
+
+/** What a far public being is reached by: her ward, and her addresses in order. */
+export interface Card {
+  readonly ward: string;
+  readonly at: readonly string[];
+}
+
+/**
+ * A far public being asked as a stranger with no need declared. `describe`
+ * reads what she shows a stranger now, and `ask` names a method from it.
+ */
+export interface Strange {
+  describe(): Promise<{ readonly state: string; readonly asks: readonly Described[] }>;
+  ask(method: string, args?: Passed): Promise<unknown>;
+}
 
 /** What `this.house` gives every being. */
 export interface HouseReach<R extends string = string> {
@@ -104,7 +146,8 @@ export interface HouseReach<R extends string = string> {
 
 /** Her standings. */
 export interface Standings {
-  list(): readonly Relation[];
+  /** Each standing, with the domains that vouch for a far one's ward. */
+  list(): readonly (Relation & { readonly vouched: readonly string[] })[];
   note(id: string, notes: Notes): void;
   drop(id: string): void;
 }
@@ -126,6 +169,8 @@ export interface Powers {
   list(): Promise<readonly { id: string; kind: string; absent: boolean; dead: readonly { ask: string; args: Json; at: number; why: string }[] }[]>;
   /** Her args may carry a handle she holds or an invitation she carries, as any call outward. */
   ask(call: { id: string; method: string; args?: Passed }, options?: { reply?: string }): Promise<unknown> | void;
+  /** With no method, the empty ask: what the being shows her steward now. */
+  ask(call: { id: string }): Promise<{ readonly state: string; readonly asks: readonly Described[] }>;
   introduce(options: { from: string; to: string; notes?: Notes }): void;
 }
 
@@ -159,8 +204,18 @@ export abstract class Being<C = Record<string, Json>, R extends string = string>
   /** The house's powers, where she is the steward. */
   declare readonly powers?: Powers;
 
-  /** A standing matched to a need. */
-  declare held: <X extends Need>(id: string, need: X) => Face<X, R>;
+  /**
+   * A standing matched to a need; with none, a standing she reads first,
+   * then asks by any ask its describe showed her.
+   */
+  declare held: (<X extends Need>(id: string, need: X) => Face<X, R>) & ((id: string) => Undeclared<R>);
+  /**
+   * A far house's public being, reached by its ward and its addresses and
+   * asked as a stranger. Every ask is awaited, and signed with a key her
+   * house keeps for that ward alone. With no need, she reads its describe
+   * first, then asks by any ask it showed her.
+   */
+  declare stranger: (<X extends Need>(card: Card, need: X) => Face<X, R>) & ((card: Card) => Strange);
   /**
    * A handle to one of her asks. Each invitation it leaves as is spent within
    * `expires` milliseconds of leaving, or never binds.
@@ -189,7 +244,7 @@ export type BeingClass<C, N, A> = (abstract new () => Being<C, keyof A & string>
 };
 
 /** The members of `Being` a class may not name. */
-export const MEMBERS: ReadonlySet<string> = new Set(['id', 'position', 'asker', 'cells', 'house', 'standings', 'occupants', 'steward', 'powers', 'held', 'handle', 'invite', 'fail']);
+export const MEMBERS: ReadonlySet<string> = new Set(['id', 'position', 'asker', 'cells', 'house', 'standings', 'occupants', 'steward', 'powers', 'held', 'stranger', 'handle', 'invite', 'fail']);
 
 /** The declaration a class carries, or nothing where it is no class of `Being.of`. */
 export const declarationOf = (value: unknown): Declaration | undefined => {

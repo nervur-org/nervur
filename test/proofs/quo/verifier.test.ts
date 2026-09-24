@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { test } from 'node:test';
-import { quo } from '../fixtures/quo.ts';
+import { quo } from '../../fixtures/quo.ts';
 
 const root = new URL('../', quo);
 const cli = new URL('verifier/cli.js', quo);

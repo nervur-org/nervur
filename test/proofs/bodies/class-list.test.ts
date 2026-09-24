@@ -4,7 +4,7 @@ import { ClassList } from '../../../src/bodies/class-list.ts';
 import { Counter } from '../../fixtures/world/counter.ts';
 import { Steward } from '../../fixtures/world/steward.ts';
 import { Lobby } from '../fixtures/lobby.ts';
-import { classesSuite } from '../suites/classes.ts';
+import { classesSuite } from '../../suites/classes.ts';
 
 classesSuite(
   'ClassList',

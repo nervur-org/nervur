@@ -30,6 +30,11 @@
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
     },
+    "./edge": {
+      "nervur-source": "./src/edge/index.ts",
+      "types": "./dist/edge/index.d.ts",
+      "default": "./dist/edge/index.js"
+    },
     "./app": {
       "nervur-source": "./src/app/index.ts",
       "types": "./dist/app/index.d.ts",
@@ -62,8 +67,13 @@
   "files": [
     "dist",
     "AUTHORING.md",
+    "COMMAND.md",
+    "FACES.md",
+    "FACULTIES.md",
+    "GROUNDS.md",
     "KIT-SPEC.md",
-    "NOTICE"
+    "NOTICE",
+    "WORLD.md"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",

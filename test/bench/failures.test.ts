@@ -3,17 +3,16 @@
 // awaited call answers within its wait or fails.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BenchGround, FakeClock, FakeNetwork } from 'nervur/bench';
+import { BenchGround, FakeNetwork } from 'nervur/bench';
 import * as shop from '../fixtures/world/shop.ts';
 
 const modules = { shop };
 
 // Acme's tally, and Alice's sender holding a standing on it.
 const world = async (seed?: string) => {
-  const clock = new FakeClock();
-  const network = new FakeNetwork({ clock, ...(seed === undefined ? {} : { seed }) });
-  const acme = await BenchGround.open({ network, clock, host: 'acme', names: ['acme.com'], modules });
-  const home = await BenchGround.open({ network, clock, host: 'home', names: ['alice.home'], modules });
+  const network = new FakeNetwork(seed === undefined ? {} : { seed });
+  const acme = await BenchGround.open({ network, host: 'acme', names: ['acme.com'], modules });
+  const home = await BenchGround.open({ network, host: 'home', names: ['alice.home'], modules });
   await acme.add('store', 'shop');
   await home.add('home', 'shop');
   await acme.ask({ house: 'store', method: 'bear', args: { kind: 'org.example.tally', id: 'tally' } });
@@ -27,14 +26,13 @@ const world = async (seed?: string) => {
     adds: ((await acme.ask({ house: 'store', id: 'tally', method: 'adds' })) as { result: number }).result,
   });
   const log = async () => ((await home.ask({ house: 'home', id: 'alice', method: 'log' })) as { result: { heard: number[]; failed: string[] } }).result;
-  return { clock, network, acme, home, send, tally, log };
+  return { network, acme, home, send, tally, log };
 };
 
 test('An effect on a standing never described waits out a cut, and one its far side lacks is refused where it lands', async () => {
-  const clock = new FakeClock();
-  const network = new FakeNetwork({ clock });
-  const acme = await BenchGround.open({ network, clock, host: 'acme', names: ['acme.com'], modules });
-  const home = await BenchGround.open({ network, clock, host: 'home', names: ['alice.home'], modules });
+  const network = new FakeNetwork();
+  const acme = await BenchGround.open({ network, host: 'acme', names: ['acme.com'], modules });
+  const home = await BenchGround.open({ network, host: 'home', names: ['alice.home'], modules });
   await acme.add('store', 'shop');
   await home.add('home', 'shop');
   await acme.ask({ house: 'store', method: 'bear', args: { kind: 'org.example.tally', id: 'tally' } });

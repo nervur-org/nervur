@@ -2,7 +2,7 @@
 // them through, so a test sees what lands while one write is held. One
 // read can be held too, answering late what it took early.
 import type { Memory } from 'nervur';
-import { FakeMemory } from 'nervur/bench';
+import { FakeMemory } from '../../../src/bench/fake-memory.ts';
 
 type Write = Parameters<Memory['write']>[0];
 

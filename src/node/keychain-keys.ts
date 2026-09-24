@@ -44,11 +44,16 @@ export class KeychainKeys extends HeldKeys {
     this.#crypto = crypto;
   }
 
-  protected async fetch(): Promise<string> {
-    const found = await find(this.#service, this.#account);
-    if (found !== null) return found;
-    // Where two made one at once, the keychain keeps the first, and both read it.
-    await add(this.#service, this.#account, freshSeed(this.#crypto)).catch(() => undefined);
-    return (await find(this.#service, this.#account)) ?? Promise.reject(new Error(`no seed under ${this.#service}/${this.#account}`));
+  protected fetch(): Promise<string> {
+    return seedInKeychain(this.#service, this.#account, freshSeed(this.#crypto));
   }
 }
+
+/** The seed the keychain holds under a service and an account, `fresh` kept there where it holds none. */
+export const seedInKeychain = async (service: string, account: string, fresh: string): Promise<string> => {
+  const found = await find(service, account);
+  if (found !== null) return found;
+  // Where two made one at once, the keychain keeps the first, and both read it.
+  await add(service, account, fresh).catch(() => undefined);
+  return (await find(service, account)) ?? Promise.reject(new Error(`no seed under ${service}/${account}`));
+};

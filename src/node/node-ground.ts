@@ -22,6 +22,8 @@ import { TcpCarry } from './tcp-carry.ts';
 export interface Recipe {
   readonly faculties?: (made: { env: Readonly<Record<string, string | undefined>>; dir: (name: string) => Promise<string> }) => Readonly<Record<string, Faculty | Promise<Faculty>>>;
   readonly bodies?: Partial<Bodies>;
+  /** The kinds that hold the ground's own `houses`: its pilot. */
+  readonly houses?: { readonly kinds: readonly string[] };
 }
 
 export interface NodeGroundOptions {
@@ -31,7 +33,7 @@ export interface NodeGroundOptions {
   readonly state?: string;
   /**
    * Its settings: `NERVUR_STATE`, `NERVUR_TCP_PORT`, `NERVUR_HTTP_PORT`, `NERVUR_BIND`,
-   * `NERVUR_ADDRESSES`, `NERVUR_ALLOW_PRIVATE`, `NERVUR_KEYCHAIN`,
+   * `NERVUR_ADDRESSES`, `NERVUR_ORIGINS`, `NERVUR_ALLOW_PRIVATE`, `NERVUR_KEYCHAIN`,
    * `NERVUR_HAND` and `NERVUR_WAIT`. The process's own where none are named.
    */
   readonly env?: Readonly<Record<string, string | undefined>>;
@@ -104,28 +106,36 @@ export class NodeGround {
       const allowPrivate = env.NERVUR_ALLOW_PRIVATE === '1';
       const bind = env.NERVUR_BIND ?? '0.0.0.0';
       const tcpNamed = ofScheme('tcp');
-      const tcp = new TcpCarry({ port: port(env.NERVUR_TCP_PORT, 7300), host: bind, allowPrivate, ...(tcpNamed.length === 0 ? {} : { addresses: tcpNamed }) });
+      const tcp = new TcpCarry({ port: port(env.NERVUR_TCP_PORT, 9110), host: bind, allowPrivate, ...(tcpNamed.length === 0 ? {} : { addresses: tcpNamed }) });
       const httpPort = port(env.NERVUR_HTTP_PORT, undefined);
       let http: Served | undefined;
-      const webNamed = ofScheme('https', 'http');
+      const webNamed = ofScheme('https', 'http', 'wss', 'ws');
+      // The pages of other origins it answers, by commas: a page of its own host needs none.
+      const origins = (env.NERVUR_ORIGINS ?? '')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter((origin) => origin !== '');
       const web = new WebCarry({
         allowPrivate,
+        origins,
         addresses: webNamed.length > 0 ? webNamed : () => (http === undefined ? [] : [`http://${bind === '0.0.0.0' ? '127.0.0.1' : bind}:${http.port}/quo`]),
       });
-      const carry = new JoinedCarry({ tcp, https: web, http: web });
+      // The web carries the post and the held line alike, so it speaks all four of its schemes.
+      const carry = new JoinedCarry({ tcp, https: web, http: web, wss: web, ws: web });
 
-      // 3 to 5. The recipe's faculties, awaited up in its order; then the record's houses.
+      // 3 to 5, which the Ground runs: the record, the recipe's faculties awaited up in its order, then the record's houses.
       const recipe = await found(folder);
-      const faculties: Record<string, Faculty> = {};
-      const made = recipe.faculties?.({
-        env,
-        dir: async (name) => {
-          const dir = join(state, 'faculties', name);
-          await mkdir(dir, { recursive: true, mode: 0o700 });
-          return dir;
-        },
-      });
-      for (const [name, faculty] of Object.entries(made ?? {})) faculties[name] = await faculty;
+      const made = () =>
+        recipe.faculties?.({
+          env,
+          // A place of the faculty's own, named as a house is, so no name reaches past its folder.
+          dir: async (name) => {
+            if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(name) || name.includes('..')) throw new TypeError(`no faculty's folder is named ${name}`);
+            const dir = join(state, 'faculties', name);
+            await mkdir(dir, { recursive: true, mode: 0o700 });
+            return dir;
+          },
+        }) ?? {};
       const bodies: Bodies = {
         memory: joined({ ledger: ({ house }) => new LedgerMemory(join(state, 'houses', `${house}.ledger`), { witness: join(state, 'houses', `${house}.witness`) }) }, recipe.bodies?.memory),
         classes: joined(
@@ -141,7 +151,8 @@ export class NodeGround {
         ),
       };
       const wait = env.NERVUR_WAIT === undefined ? undefined : Number(env.NERVUR_WAIT);
-      const ground = await Ground.open({ custody, memory, carry, bodies, faculties, ...(wait === undefined ? {} : { wait }) });
+      if (wait !== undefined && !(Number.isSafeInteger(wait) && wait > 0)) throw new TypeError('NERVUR_WAIT is whole milliseconds above zero');
+      const ground = await Ground.open({ custody, memory, carry, bodies, recipe: made, ...(wait === undefined ? {} : { wait }), ...(recipe.houses === undefined ? {} : { houses: recipe.houses }) });
 
       // 6. Hook: HTTP chains the web carry and every faculty's handler, and the hand takes its socket.
       if (httpPort !== undefined) http = await serveHttp({ port: httpPort, host: bind }, [web, ...ground.handlers]);

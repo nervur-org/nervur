@@ -47,7 +47,7 @@ test('An offer covers a need when four things hold', async (t) => {
     const wants = of(need('mail', { send: { args: s.object({ to: s.string(), body: s.optional(s.string()) }) } }));
     assert.deepEqual(covers(offer, wants), { covered: false, why: 'mail.send requires body, which the need does not send' });
   });
-  await t.test('Each method is idempotent in both, or in neither', () => {
+  await t.test('It refuses a need and an offer that disagree on idempotent: each method is idempotent in both, or in neither', () => {
     const wants = of(need('mail', { send: { args: s.object({ to: s.string(), body: s.string() }), hints: { idempotent: true } } }));
     assert.deepEqual(covers(offer, wants), { covered: false, why: 'mail.send is idempotent in one and not the other' });
   });

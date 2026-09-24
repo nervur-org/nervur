@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // What makes a bench run the same twice: bytes drawn from a seed, never
 // from the platform. They are for tests alone and guard nothing.
-import { NobleCrypto } from '../bodies/noble-crypto.ts';
+import { NobleCrypto } from '../index.ts';
 
 /** A stream of bytes from a name: the same name, the same bytes. */
 export const stream = (name: string) => {

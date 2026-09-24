@@ -3,16 +3,16 @@
 // through the hand, and by a device's being across a door on a handle.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BenchGround, FakeClock, FakeNetwork, settle } from 'nervur/bench';
+import { BenchGround, FakeNetwork } from 'nervur/bench';
 import * as watch from '../fixtures/watch/index.ts';
 
 const modules = { watch };
 
-const station = async (clock = new FakeClock(), network = new FakeNetwork()) => {
-  const ground = await BenchGround.open({ network, clock, host: 'acme', names: ['acme.com'], modules });
+const station = async (network = new FakeNetwork()) => {
+  const ground = await BenchGround.open({ network, host: 'acme', names: ['acme.com'], modules });
   await ground.add('chat', 'watch');
   await ground.ask({ house: 'chat', method: 'bear', args: { kind: 'org.example.room', id: 'lobby' } });
-  return { ground, clock, network };
+  return { ground, network };
 };
 
 // A promise and whether it has answered yet.
@@ -49,14 +49,14 @@ test('A watch whose answer already moved answers at once', async (t) => {
 });
 
 test('A watch answers as it stands when its wait runs out', async (t) => {
-  const { ground, clock } = await station();
+  const { ground, network } = await station();
   t.after(() => ground.down());
   const held = watched(ask(ground, 'messages', {}, { result: [] }));
   await ask(ground, 'retitle', { topic: 'quiet' });
   // The watch runs to where it waits on the clock before the clock moves.
-  await settle();
+  await network.settle();
   assert.equal(held.answered, false);
-  clock.advance(30_000);
+  await network.advance(30_000);
   assert.deepEqual(await held.value, { result: [] });
 });
 
@@ -76,8 +76,8 @@ test('A second watch from one asker answers the first at once', async (t) => {
 });
 
 test('A device watches across a door on a handle, a relation of its own', async (t) => {
-  const { ground: acme, clock, network } = await station();
-  const phone = await BenchGround.open({ network, clock, host: 'alice-phone', modules });
+  const { ground: acme, network } = await station();
+  const phone = await BenchGround.open({ network, host: 'alice-phone', modules });
   t.after(async () => {
     await phone.down();
     await acme.down();
@@ -96,8 +96,8 @@ test('A device watches across a door on a handle, a relation of its own', async 
 });
 
 test('A being watches only a readOnly ask', async (t) => {
-  const { ground: acme, clock, network } = await station();
-  const phone = await BenchGround.open({ network, clock, host: 'alice-phone', modules });
+  const { ground: acme, network } = await station();
+  const phone = await BenchGround.open({ network, host: 'alice-phone', modules });
   t.after(async () => {
     await phone.down();
     await acme.down();

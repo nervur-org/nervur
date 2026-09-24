@@ -8,9 +8,9 @@ import { test } from 'node:test';
 import { WebClock } from 'nervur';
 import { FileMemory, TcpCarry } from 'nervur/node';
 import { parseAddress, privateAddress } from '../../../src/node/tcp-carry.ts';
-import { carrySuite } from '../suites/carry.ts';
-import { clockSuite } from '../suites/clock.ts';
-import { memorySuite } from '../suites/memory.ts';
+import { carrySuite } from '../../suites/carry.ts';
+import { clockSuite } from '../../suites/clock.ts';
+import { memorySuite } from '../../suites/memory.ts';
 
 const folders: string[] = [];
 const folder = () => {
@@ -76,7 +76,7 @@ test('A tcp address is tcp://host:port and nothing after the port', () => {
   for (const bad of ['tcp://example.org:7000/', 'tcp://example.org', 'tcp://a:0', 'tcp://a:65536', 'tcp://u@a:1', 'http://a:1', 'tcp://a:1?x']) assert.equal(parseAddress(bad), null, bad);
 });
 
-test('A carry refuses to send to a private or loopback address unless its ground allows it', async (t) => {
+test('It refuses a send to a private address, unless its ground allows it: a carry refuses a private or loopback address', async (t) => {
   for (const ip of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1']) assert.ok(privateAddress(ip), ip);
   for (const ip of ['203.0.113.7', '8.8.8.8', '2001:db8::1']) assert.ok(!privateAddress(ip), ip);
   const two = new TcpCarry({ host: '127.0.0.1', allowPrivate: true });

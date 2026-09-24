@@ -16,15 +16,11 @@ export interface Pointed {
   readonly expires?: number;
 }
 
-const minted = new WeakMap<object, Pointed>();
-const carried = new WeakMap<object, string>();
-
 /** A reference to an occupant: one of her own, or one her steward minted on another being. It is no value. */
 export class HandleRef {
   readonly id: string;
-  constructor(being: string, occupant: string, holder: string = being, expires?: number) {
+  constructor(occupant: string) {
     this.id = occupant;
-    minted.set(this, { being, occupant, holder, ...(expires === undefined ? {} : { expires }) });
     Object.freeze(this);
   }
 }
@@ -32,8 +28,7 @@ export class HandleRef {
 /** An invitation carried unopened. It is no value. */
 export class Carried {
   readonly invitation = true;
-  constructor(hex: string) {
-    carried.set(this, hex);
+  constructor() {
     Object.freeze(this);
   }
 
@@ -42,8 +37,37 @@ export class Carried {
   }
 }
 
-/** Where a handle points, where it is one. */
-export const handleOf = (value: unknown) => (typeof value === 'object' && value !== null ? minted.get(value) : undefined);
+/**
+ * One house's marks on the objects it hands its beings: where each handle
+ * points, and the bytes of each invitation carried. An object another
+ * house marked is no handle and no invitation here.
+ */
+export class Marks {
+  readonly #minted = new WeakMap<object, Pointed>();
+  readonly #carried = new WeakMap<object, string>();
+
+  handle(being: string, occupant: string, holder: string = being, expires?: number): HandleRef {
+    const handle = new HandleRef(occupant);
+    this.#minted.set(handle, { being, occupant, holder, ...(expires === undefined ? {} : { expires }) });
+    return handle;
+  }
+
+  carried(hex: string): Carried {
+    const invitation = new Carried();
+    this.#carried.set(invitation, hex);
+    return invitation;
+  }
+
+  /** Where a handle points, where it is one of this house's. */
+  handleOf(value: unknown): Pointed | undefined {
+    return typeof value === 'object' && value !== null ? this.#minted.get(value) : undefined;
+  }
+
+  /** An invitation's bytes, where it is one this house carries. */
+  hexOf(value: unknown): string | undefined {
+    return typeof value === 'object' && value !== null ? this.#carried.get(value) : undefined;
+  }
+}
 
 /** A failure of a crossing, with the message the caller reads. */
 export class Crossing extends Error {}
@@ -57,9 +81,9 @@ const branchFits = (tools: Tools, branch: Node, value: unknown) => tools.check(b
  * An invitation carried under `s.handle` leaves as itself, for its receiver
  * to take.
  */
-export const outward = async (tools: Tools, schema: Node | undefined, value: unknown, owner: string, mint: (handle: Pointed) => Promise<string>): Promise<unknown> => {
+export const outward = async (tools: Tools, marks: Marks, schema: Node | undefined, value: unknown, owner: string, mint: (handle: Pointed) => Promise<string>): Promise<unknown> => {
   const held = (at: unknown) => {
-    const handle = handleOf(at);
+    const handle = marks.handleOf(at);
     return handle !== undefined && handle.holder === owner ? handle : undefined;
   };
   const walk = async (node: Node | undefined, at: unknown): Promise<unknown> => {
@@ -68,14 +92,14 @@ export const outward = async (tools: Tools, schema: Node | undefined, value: unk
       const handle = held(at);
       if (handle !== undefined) return mint(handle);
       // An invitation carried unopened is handed on, and its receiver takes it.
-      const hex = typeof at === 'object' && at !== null ? carried.get(at) : undefined;
+      const hex = marks.hexOf(at);
       if (hex === undefined) throw new Crossing('a handle is owed where a value stands');
       return hex;
     }
     if (node.contentMediaType === INVITATION_MEDIA) {
       const handle = held(at);
       if (handle !== undefined) return mint(handle);
-      const hex = typeof at === 'object' && at !== null ? carried.get(at) : undefined;
+      const hex = marks.hexOf(at);
       if (hex === undefined) throw new Crossing('an invitation is owed where a value stands');
       return hex;
     }
@@ -110,11 +134,11 @@ export const outward = async (tools: Tools, schema: Node | undefined, value: unk
 };
 
 /** Wire JSON made her value. `accept` turns an invitation's hex into a standing id. */
-export const inward = async (tools: Tools, schema: Node | undefined, value: unknown, accept: (hex: string) => Promise<string>): Promise<unknown> => {
+export const inward = async (tools: Tools, marks: Marks, schema: Node | undefined, value: unknown, accept: (hex: string) => Promise<string>): Promise<unknown> => {
   const walk = async (node: Node | undefined, at: unknown): Promise<unknown> => {
     if (node === undefined) return at;
     if (node.contentMediaType === HANDLE_MEDIA) return accept(at as string);
-    if (node.contentMediaType === INVITATION_MEDIA) return new Carried(at as string);
+    if (node.contentMediaType === INVITATION_MEDIA) return marks.carried(at as string);
     if (node.contentEncoding === 'base16') return tools.bytes(at as string);
     if (Array.isArray(node.anyOf)) {
       const branch = (node.anyOf as Node[]).find((option) => branchFits(tools, option, at));

@@ -35,6 +35,49 @@ export const read = (bytes: Uint8Array): Frame | null => {
   return { kind, id: new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(1), rest };
 };
 
+/** A frame as a stream carries it: its body's length in four bytes, then the body. */
+export const framed = (kind: number, id: number, rest: Uint8Array): Uint8Array<ArrayBuffer> => {
+  const inner = body(kind, id, rest);
+  const out = new Uint8Array(4 + inner.length);
+  new DataView(out.buffer).setUint32(0, inner.length);
+  out.set(inner, 4);
+  return out;
+};
+
+/** Frames read off a stream, as its chunks arrive. */
+export class Frames {
+  #held: Uint8Array = new Uint8Array(0);
+
+  /** Each whole frame in order; `false` where the stream sent something that is no frame, and closes. */
+  take(chunk: Uint8Array, each: (frame: Frame) => void): boolean {
+    const joined = new Uint8Array(this.#held.length + chunk.length);
+    joined.set(this.#held);
+    joined.set(chunk, this.#held.length);
+    let at = 0;
+    while (joined.length - at >= 4) {
+      const length = new DataView(joined.buffer, at, 4).getUint32(0);
+      if (length < 5 || length > LARGEST) return false;
+      if (joined.length - at < 4 + length) break;
+      const frame = read(joined.subarray(at + 4, at + 4 + length));
+      if (frame === null) return false;
+      at += 4 + length;
+      each(frame);
+    }
+    this.#held = joined.slice(at);
+    return true;
+  }
+}
+
+/** A `tcp://host:port` address read, or `null` where it is none of the TCP carrier's. */
+export const parseAddress = (address: string): { host: string; port: number } | null => {
+  const found = /^tcp:\/\/(\[[0-9a-fA-F:.]+\]|[^/?#@:[\]]+):([0-9]{1,5})$/i.exec(address);
+  if (found === null) return null;
+  const port = Number(found[2]);
+  if (port < 1 || port > 65_535) return null;
+  const host = found[1].startsWith('[') ? found[1].slice(1, -1) : found[1];
+  return { host, port };
+};
+
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
 /** Whether an IP address is loopback, private, shared, link-local or unspecified. */

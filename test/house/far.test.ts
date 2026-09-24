@@ -1,25 +1,18 @@
 // Two grounds on one network, a house on each, each asking the other through its door.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BenchGround, FakeClock, FakeNetwork, settle as turn } from 'nervur/bench';
+import { BenchGround, FakeNetwork } from 'nervur/bench';
 import { Counter } from '../fixtures/world/counter.ts';
 import { Steward } from '../fixtures/world/steward.ts';
 
 type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
 
-// Lets every promise both houses started run to its end, their crypto among them.
-const settle = async () => {
-  await turn();
-  await turn();
-};
-
 const modules = { house: { steward: Steward, beings: [Counter] } };
 
 const pair = async () => {
-  const clock = new FakeClock();
-  const network = new FakeNetwork({ clock });
+  const network = new FakeNetwork();
   const open = async (host: string) => {
-    const ground = await BenchGround.open({ network, clock, host, names: [`${host}.example`], modules });
+    const ground = await BenchGround.open({ network, host, names: [`${host}.example`], modules });
     await ground.add('house');
     const result = async (method: string, args: Json = {}) => {
       const answer = await ground.ask({ house: 'house', method, args });
@@ -36,7 +29,7 @@ const pair = async () => {
   return { network, a, b, standing, handle };
 };
 
-test('A handle leaves as an invitation, and arrives as a standing id', async () => {
+test('She never holds an invitation’s bytes: a handle leaves as an invitation, and arrives as a standing id', async () => {
   const { standing, handle } = await pair();
   assert.match(standing, /^standing:[0-9a-f]{16}$/);
   const invitation = JSON.parse(Buffer.from(handle, 'hex').toString('utf8'));
@@ -66,7 +59,7 @@ test('An effect crosses once, even where its reply was lost', async () => {
   await b.result('relay', { standing });
   network.loseNext();
   await b.result('pingFar', { standing });
-  await settle();
+  await network.settle();
   assert.equal(await a.result('pings'), 1, 'the far door answered and the reply was lost');
   await network.elapse(1000);
   assert.equal(await a.result('pings'), 1, 'the retry is a new box with the same call id, answered from the stored answer');

@@ -38,7 +38,7 @@ test('The packed tarball ships dist alone, and runs a written ground and the gui
   const shipped = packed.files.map((file) => file.path);
   assert.deepEqual(
     shipped.filter((path) => !path.startsWith('dist/')),
-    ['AUTHORING.md', 'KIT-SPEC.md', 'LICENSE', 'NOTICE', 'README.md', 'package.json'],
+    ['AUTHORING.md', 'COMMAND.md', 'FACES.md', 'FACULTIES.md', 'GROUNDS.md', 'KIT-SPEC.md', 'LICENSE', 'NOTICE', 'README.md', 'WORLD.md', 'package.json'],
   );
   for (const entry of ['index', 'being/index', 'node/index', 'bench/index', 'browser/index', 'app/index']) {
     assert.ok(shipped.includes(`dist/${entry}.js`) && shipped.includes(`dist/${entry}.d.ts`), entry);

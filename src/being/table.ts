@@ -58,8 +58,19 @@ const BLUEPRINT_NAME = /^[a-z][a-z0-9._-]*$/;
 const ENTRY_FIELDS = new Set(['in', 'for', 'to', 'args', 'result', 'hints', 'examples', 'description', 'wait']);
 const METHOD_FIELDS = new Set(['args', 'result', 'hints', 'description', 'wait']);
 const HINTS = new Set(['readOnly', 'idempotent', 'destructive']);
-const EXAMPLE_FIELDS = new Set(['description', 'cells', 'role', 'args', 'fakes', 'gives']);
+const EXAMPLE_FIELDS = new Set(['description', 'given', 'role', 'args', 'fakes', 'gives']);
+const STEP_FIELDS = new Set(['ask', 'args', 'role']);
 const EVERY_OBJECT = new Set(Object.getOwnPropertyNames(Object.prototype));
+
+// The bytes a text takes as UTF-8, where a lone surrogate takes the three of its replacement.
+const utf8Length = (text: string): number => {
+  let length = 0;
+  for (const char of text) {
+    const point = char.codePointAt(0)!;
+    length += point < 0x80 ? 1 : point < 0x800 ? 2 : point < 0x10000 ? 3 : 4;
+  }
+  return length;
+};
 
 const plain = (value: unknown): value is Record<string, unknown> => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -116,27 +127,65 @@ const methodChecked =(spec: unknown, fields: ReadonlySet<string>, where: string,
   return method(spec);
 };
 
-const blueprintChecked = (blueprint: Blueprint, where: string, reasons: string[]): Blueprint => {
-  if (typeof blueprint.name !== 'string' || !BLUEPRINT_NAME.test(blueprint.name)) reasons.push(`${where} has a name that is no blueprint name`);
-  for (const [name, spec] of Object.entries(blueprint.methods)) {
-    if (!NAME.test(name)) reasons.push(`${where}.${name} is no method name`);
-    methodChecked(spec, METHOD_FIELDS, `${where}.${name}`, reasons);
+// A blueprint held to its rules as its author wrote it: a need keeps her
+// methods as written beside the blueprint they settle into, and a program
+// describes one as JSON. Settling drops a field and bounds a wait, so the
+// written methods are what is checked.
+const blueprintChecked = (value: unknown, where: string, reasons: string[]): Blueprint | undefined => {
+  const settled = blueprintOf(value);
+  const written = settled === undefined ? value : { name: settled.name, methods: Object.fromEntries(Object.keys(settled.methods).map((name) => [name, (value as Record<string, unknown>)[name]])) };
+  if (!plain(written) || !plain(written.methods)) {
+    reasons.push(`${where} is not a need`);
+    return undefined;
   }
+  const { name } = written;
+  if (typeof name !== 'string' || !BLUEPRINT_NAME.test(name)) reasons.push(`${where} has a name that is no blueprint name`);
+  const methods: Record<string, BlueprintMethod> = {};
+  for (const [called, spec] of Object.entries(written.methods)) {
+    if (!NAME.test(called)) reasons.push(`${where}.${called} is no method name`);
+    const checked = methodChecked(spec, METHOD_FIELDS, `${where}.${called}`, reasons);
+    if (checked !== undefined) methods[called] = checked;
+  }
+  return settled ?? Object.freeze({ name: String(name), methods: Object.freeze(methods) });
+};
+
+/**
+ * An offer's blueprint as it arrives, from a need or from a program's
+ * describe, held to the rules a need is: a keyword outside the subset,
+ * or a field that is none, refuses it where it arrives.
+ */
+export const offered = (value: unknown, where = 'the offer'): Blueprint => {
+  const reasons: string[] = [];
+  const blueprint = blueprintChecked(value, where, reasons);
+  if (blueprint === undefined || reasons.length > 0) throw new Refused(where, reasons);
   return blueprint;
 };
 
-const examplesChecked = (examples: unknown, where: string, reasons: string[]): readonly Json[] => {
+// Her examples: each a history of her own asks, then the one it shows.
+const examplesChecked = (examples: unknown, where: string, asks: readonly string[], reasons: string[]): readonly Json[] => {
   if (examples === undefined) return [];
   if (!Array.isArray(examples)) {
     reasons.push(`${where}.examples is not a list`);
     return [];
   }
   examples.forEach((example, index) => {
+    const at = `${where}.examples[${index}]`;
     if (!plain(example) || !isJson(example)) {
-      reasons.push(`${where}.examples[${index}] is not a JSON object`);
+      reasons.push(`${at} is not a JSON object`);
       return;
     }
-    for (const key of Object.keys(example)) if (!EXAMPLE_FIELDS.has(key)) reasons.push(`${where}.examples[${index}] names ${key}, which is no field`);
+    for (const key of Object.keys(example)) if (!EXAMPLE_FIELDS.has(key)) reasons.push(`${at} names ${key}, which is no field`);
+    const given = (example as { given?: unknown }).given;
+    if (given === undefined) return;
+    if (!Array.isArray(given)) {
+      reasons.push(`${at}.given is not a list`);
+      return;
+    }
+    given.forEach((step: unknown, place) => {
+      const one = step as { ask?: unknown; args?: unknown; role?: unknown };
+      if (!plain(step) || typeof one.ask !== 'string' || !asks.includes(one.ask)) reasons.push(`${at}.given[${place}] names no ask of hers`);
+      else for (const key of Object.keys(step)) if (!STEP_FIELDS.has(key)) reasons.push(`${at}.given[${place}] names ${key}, which is no field`);
+    });
   });
   return Object.freeze([...examples]) as readonly Json[];
 };
@@ -151,7 +200,7 @@ export const resolve = (Class: unknown): Table => {
   const what = typeof kind === 'string' ? kind : 'the class';
   if (declaration.description !== undefined && typeof declaration.description !== 'string') reasons.push('its description is not a string');
   // A view is data a screen renders, never more than a screen holds.
-  if (declaration.view !== undefined && (typeof declaration.view !== 'string' || new TextEncoder().encode(declaration.view).length > VIEW_BYTES)) reasons.push('its view is not text of at most 64 KiB');
+  if (declaration.view !== undefined && (typeof declaration.view !== 'string' || utf8Length(declaration.view) > VIEW_BYTES)) reasons.push('its view is not text of at most 64 KiB');
 
   const cells = declaration.cells ?? {};
   if (!plain(cells) || !isJson(cells)) reasons.push('its cells are not a JSON object');
@@ -162,9 +211,12 @@ export const resolve = (Class: unknown): Table => {
   if (!plain(declaredNeeds)) reasons.push('its needs are not an object');
   else {
     for (const [member, value] of Object.entries(declaredNeeds)) {
-      const blueprint = blueprintOf(value);
-      if (blueprint === undefined) reasons.push(`its need ${member} is not a need`);
-      else needs[member] = blueprintChecked(blueprint, `its need ${member}`, reasons);
+      if (blueprintOf(value) === undefined) {
+        reasons.push(`its need ${member} is not a need`);
+        continue;
+      }
+      const blueprint = blueprintChecked(value, `its need ${member}`, reasons);
+      if (blueprint !== undefined) needs[member] = blueprint;
     }
   }
 
@@ -195,7 +247,7 @@ export const resolve = (Class: unknown): Table => {
       for: names(raw.for, `${where}.for`, reasons),
       to: names(raw.to, `${where}.to`, reasons),
       effect: raw.hints?.idempotent === false,
-      examples: examplesChecked(raw.examples, where, reasons),
+      examples: examplesChecked(raw.examples, where, plain(declaredAsks) ? Object.keys(declaredAsks) : [], reasons),
     });
   }
 

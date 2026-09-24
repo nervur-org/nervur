@@ -3,15 +3,10 @@
 # toggles the door, so a pulse sent twice would open it and close it
 # again. It keeps each call id before it pulses, and answers an id it has
 # seen with the answer it gave, so a pulse sent again never toggles twice.
-# The relay is simulated: each pulse is a line in the file RELAY_PULSES.
+# It runs in the folder the ground gives it, where it keeps what it saw.
 import json
 import os
 import sys
-
-SEEN = 'seen.json'
-PULSES = os.environ['RELAY_PULSES']
-# A pulse after which the program dies once, before it answers, as a crash would.
-CRASH_AFTER = os.environ.get('RELAY_CRASH_AFTER')
 
 BLUEPRINT = {
     'name': 'relay',
@@ -25,20 +20,18 @@ BLUEPRINT = {
 }
 
 
-def load():
-    try:
-        with open(SEEN) as held:
-            return json.load(held)
-    except FileNotFoundError:
-        return {}
+def pulse(call):
+    # The Pi drives its pin here. This relay writes a line, so a test counts pulses.
+    with open('pulses', 'a') as relay:
+        relay.write(call + '\n')
 
 
 def keep(seen):
-    with open(SEEN + '.tmp', 'w') as held:
+    with open('seen.json.tmp', 'w') as held:
         json.dump(seen, held)
         held.flush()
         os.fsync(held.fileno())
-    os.replace(SEEN + '.tmp', SEEN)
+    os.replace('seen.json.tmp', 'seen.json')
 
 
 def answer(id, **fields):
@@ -46,26 +39,26 @@ def answer(id, **fields):
     sys.stdout.flush()
 
 
-seen = load()
+seen = json.load(open('seen.json')) if os.path.exists('seen.json') else {}
+# Each life writes a line, so a test knows when the program started again.
+with open('lives', 'a') as lives:
+    lives.write(str(os.getpid()) + '\n')
 for line in sys.stdin:
     message = json.loads(line)
-    if message.get('method') == 'describe':
+    if message['method'] == 'describe':
         answer(message['id'], result={'blueprint': BLUEPRINT, 'window': 7 * 86_400_000})
-        continue
-    if message.get('method') != 'pulse':
+    elif message['method'] != 'pulse':
         answer(message['id'], error={'message': 'no such method'})
-        continue
-    call = message['call']
-    if call in seen:
-        answer(message['id'], result=seen[call])
-        continue
-    count = len(seen) + 1
-    # The call id is kept before the pulse, so a crash between them never pulses twice.
-    seen[call] = count
-    keep(seen)
-    with open(PULSES, 'a') as relay:
-        relay.write(call + '\n')
-    if CRASH_AFTER is not None and count == int(CRASH_AFTER) and not os.path.exists('crashed'):
-        open('crashed', 'w').close()
-        os._exit(1)
-    answer(message['id'], result=count)
+    elif message['call'] in seen:
+        answer(message['id'], result=seen[message['call']])
+    else:
+        count = len(seen) + 1
+        # The call id is kept before the pulse, so a crash between them never pulses twice.
+        seen[message['call']] = count
+        keep(seen)
+        pulse(message['call'])
+        # A test writes `crash-after`: the program dies once after that pulse, before it answers.
+        if os.path.exists('crash-after') and count == int(open('crash-after').read()):
+            os.remove('crash-after')
+            os._exit(1)
+        answer(message['id'], result=count)

@@ -32,10 +32,11 @@ export class JoinedCarry implements Carry {
     for (const carry of this.#each) (carry as Partial<Listening>).unlisten?.(options);
   }
 
-  async send({ ward, at, box }: { ward: string; at: readonly string[]; box: Uint8Array }): Promise<Sent> {
+  async send({ ward, at, box, wait }: { ward: string; at: readonly string[]; box: Uint8Array; wait?: number }): Promise<Sent> {
+    const waiting = wait === undefined ? {} : { wait };
     // A carry that listens for the ward hands it the box by pointer, and no address is dialled.
     for (const carry of this.#each) {
-      const sent = await carry.send({ ward, at: [], box });
+      const sent = await carry.send({ ward, at: [], box, ...waiting });
       if (sent.reply !== null) return sent;
     }
     for (const address of at) {
@@ -43,7 +44,7 @@ export class JoinedCarry implements Carry {
       const scheme = address.slice(0, Math.max(0, address.indexOf('://'))).toLowerCase();
       const carry = this.#carries.get(scheme);
       if (carry === undefined) continue;
-      const sent = await carry.send({ ward, at: [address], box });
+      const sent = await carry.send({ ward, at: [address], box, ...waiting });
       if (sent.reply !== null || sent.heard) return sent;
     }
     return { reply: null, heard: false };
@@ -51,5 +52,11 @@ export class JoinedCarry implements Carry {
 
   at(options: { toward?: string } = {}): readonly string[] {
     return this.#each.flatMap((carry) => carry.at(options));
+  }
+
+  /** Every domain any carry here reads as vouching, each once, in the carries' order. */
+  async vouched(options: { ward: string; at: readonly string[] }): Promise<readonly string[]> {
+    const each = await Promise.all(this.#each.map((carry) => carry.vouched(options)));
+    return [...new Set(each.flat())];
   }
 }

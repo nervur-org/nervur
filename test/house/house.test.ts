@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Faculty } from 'nervur';
-import { BenchGround, FakeClock, FakeMemory, FakeNetwork, Machine, settle as turn } from 'nervur/bench';
+import { BenchGround, FakeNetwork } from 'nervur/bench';
 import { Checkout } from '../fixtures/world/checkout.ts';
 import { Counter } from '../fixtures/world/counter.ts';
 import { FakePayments, PaymentsOffer } from '../fixtures/world/payments.ts';
@@ -14,16 +14,11 @@ import { hanging, Slow, Waiter } from '../fixtures/world/waiter.ts';
 
 type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
 
-// Lets every promise the house started run to its end, its crypto among them.
-const settle = async () => {
-  await turn();
-  await turn();
-};
-
 const modules = { house: { steward: Steward, beings: [Counter, Reader, Checkout, Waiter] } };
 
-const open = async ({ faculties = {}, machine = new Machine('home'), clock = new FakeClock() }: { faculties?: Record<string, Faculty>; machine?: Machine; clock?: FakeClock } = {}) => {
-  const ground = await BenchGround.open({ network: new FakeNetwork({ clock }), clock, host: 'home', modules, faculties, machine });
+const open = async ({ faculties = {} }: { faculties?: Record<string, Faculty> } = {}) => {
+  const network = new FakeNetwork();
+  const ground = await BenchGround.open({ network, host: 'home', modules, faculties });
   const standing = await ground.add('house', 'house', { faculties: Object.keys(faculties) });
   const ask = (request: { id?: string; method?: string; args?: Json }) => ground.ask({ house: 'house', ...request });
   const result = async (method: string, args: Json = {}) => {
@@ -38,14 +33,13 @@ const open = async ({ faculties = {}, machine = new Machine('home'), clock = new
   };
   const bear = async (kind: string, id: string, args: Json = {}) => {
     await result('bear', { kind, id, args });
-    await settle();
+    await network.settle();
   };
+  // Every ask, effect and reply started, run to its end.
+  const settle = () => network.settle();
   // The clock moved on, and everything it woke run to its end.
-  const tick = async (ms: number) => {
-    clock.advance(ms);
-    await settle();
-  };
-  return { ground, standing, machine, clock, ask, result, being, bear, tick };
+  const tick = (ms: number) => network.advance(ms);
+  return { ground, standing, ask, result, being, bear, settle, tick };
 };
 
 const payments = (fake: FakePayments) => ({ payments: { blueprint: PaymentsOffer, object: fake } });
@@ -80,8 +74,8 @@ test('Every ask to a new being waits for her born, readOnly ones too', async () 
   assert.equal(await being('c', 'total'), 5, 'the steward’s ask returned, and born had run before this read');
 });
 
-test('An effect leaves after her ask lands, and acts once', async () => {
-  const { being, bear } = await open();
+test('It refuses an effect sent before its ask landed, or sent again while a call for it is pending: it leaves after her ask lands, and acts once', async () => {
+  const { being, bear, settle } = await open();
   await bear('org.example.counter', 'c');
   assert.equal(await being('c', 'add', { by: 2 }), undefined, 'an effect returns nothing to its caller');
   await settle();
@@ -91,7 +85,7 @@ test('An effect leaves after her ask lands, and acts once', async () => {
 });
 
 test('An ask lands whole or not at all', async () => {
-  const { being, bear } = await open();
+  const { being, bear, settle } = await open();
   await bear('org.example.counter', 'c', { start: 1 });
   await being('c', 'refuse', { why: 'no' });
   await being('c', 'wrong');
@@ -99,7 +93,7 @@ test('An ask lands whole or not at all', async () => {
   assert.equal(await being('c', 'peek'), 1, 'a fail lands none of her cells, and neither does a state outside to');
 });
 
-test('readOnly is held', async () => {
+test('It refuses a readOnly ask that writes', async () => {
   const { ask, bear, being } = await open();
   await bear('org.example.counter', 'c', { start: 1 });
   assert.deepEqual(await ask({ method: 'forward', args: { id: 'c', method: 'sneaky' } }), { error: { message: 'the ask failed' } });
@@ -133,7 +127,7 @@ test('Args are checked at the call, inside her ask', async () => {
 
 test('A faculty is offered, a handle crosses to it as a token, and the reply comes back as an ask', async () => {
   const fake = new FakePayments();
-  const { bear, being } = await open({ faculties: payments(fake) });
+  const { bear, being, settle } = await open({ faculties: payments(fake) });
   await bear('org.example.shop', 'shop');
   await being('shop', 'checkout', { amount: 30 });
   await settle();
@@ -148,7 +142,7 @@ test('A faculty is offered, a handle crosses to it as a token, and the reply com
 test('An answer is final, and a failure to answer is tried again with the same call id', async () => {
   const fake = new FakePayments();
   fake.failures = 2;
-  const { bear, being, tick } = await open({ faculties: payments(fake) });
+  const { bear, being, settle, tick } = await open({ faculties: payments(fake) });
   await bear('org.example.shop', 'shop');
   await being('shop', 'checkout', { amount: 30 });
   await settle();
@@ -162,7 +156,7 @@ test('An answer is final, and a failure to answer is tried again with the same c
 test('An error the receiver answers reaches her reply', async () => {
   const fake = new FakePayments();
   fake.refusing = true;
-  const { bear, being } = await open({ faculties: payments(fake) });
+  const { bear, being, settle } = await open({ faculties: payments(fake) });
   await bear('org.example.shop', 'shop');
   await being('shop', 'checkout', { amount: 30 });
   await settle();
@@ -170,18 +164,18 @@ test('An error the receiver answers reaches her reply', async () => {
 });
 
 test('An awaited call waits what its callee names, and never past her own ask’s wait', async () => {
-  const { bear, being, clock } = await open({ faculties: { slow: { blueprint: Slow, object: hanging } } });
+  const { bear, being, settle, tick } = await open({ faculties: { slow: { blueprint: Slow, object: hanging } } });
   await bear('org.example.waiter', 'w');
   const poked = being('w', 'poke');
   await settle();
-  clock.advance(500);
+  await tick(500);
   assert.equal(await poked, 'gave up', 'the faculty named half a second, and she caught the failure');
 });
 
 test('A reply her table refuses is kept for her steward, and kept seven days', async () => {
   const fake = new FakePayments();
   fake.holding = true;
-  const { bear, being, result, tick } = await open({ faculties: payments(fake) });
+  const { bear, being, result, settle, tick } = await open({ faculties: payments(fake) });
   await bear('org.example.shop', 'shop');
   await being('shop', 'checkout', { amount: 30 });
   await settle();
@@ -196,6 +190,15 @@ test('A reply her table refuses is kept for her steward, and kept seven days', a
   assert.deepEqual((await shop()).dead, [], 'gone at her next write after seven days');
 });
 
+test('The steward’s empty ask reads what a being shows her steward', async () => {
+  const { bear, result } = await open();
+  await bear('org.example.counter', 'c');
+  const shown = (await result('shows', { id: 'c' })) as string[];
+  assert.ok(shown.includes('peek'), 'an ask for the steward');
+  assert.ok(shown.includes('total'), 'an ask for every occupant');
+  assert.ok(!shown.includes('punch'), 'no ask for a handle');
+});
+
 test('Every need is covered, or she is absent', async () => {
   const { ask, bear } = await open();
   await bear('org.example.counter', 'c');
@@ -204,7 +207,7 @@ test('Every need is covered, or she is absent', async () => {
 });
 
 test('An alarm is kept by the house, and asks her when its time comes', async () => {
-  const { ground, being, bear, tick } = await open();
+  const { ground, being, bear, settle, tick } = await open();
   await bear('org.example.counter', 'c');
   await being('c', 'ring', { in: 5000 });
   await settle();
@@ -223,17 +226,14 @@ test('remove leaves nothing of her', async () => {
   assert.deepEqual(answer, { error: { message: 'c has no ask peek' } });
 });
 
-test('The bound refuses a memory another set of keys wrote', async () => {
-  const clock = new FakeClock();
-  const network = new FakeNetwork({ clock });
-  const memory = new FakeMemory();
-  // Two grounds, each with its own seeds, handing one memory to a house of each.
-  const bodies = { memory: { shared: () => memory } };
-  const entry = { memory: { body: 'shared' }, classes: { body: 'module', name: 'house' } };
-  const first = await BenchGround.open({ network, clock, host: 'first', modules, bodies });
-  assert.ok((await first.add('house', entry)).ward !== undefined);
-  const second = await BenchGround.open({ network, clock, host: 'second', modules, bodies });
-  assert.match((await second.add('house', entry)).why ?? '', /bound to other keys/);
+test('It refuses a memory opened with keys that derive another bound: the bound refuses a memory another set of keys wrote', async () => {
+  const network = new FakeNetwork();
+  const first = await BenchGround.open({ network, host: 'first', modules });
+  assert.ok((await first.add('house')).ward !== undefined);
+  // A second ground, with its own seeds, handed the memory of the first's house.
+  const bodies = { memory: { shared: () => first.machine.memoryOf('house') } };
+  const second = await BenchGround.open({ network, host: 'second', modules, bodies });
+  assert.match((await second.add('house', { memory: { body: 'shared' }, classes: { body: 'module', name: 'house' } })).why ?? '', /bound to other keys/);
 });
 
 test('A restart loses nothing that landed', async () => {
@@ -246,8 +246,8 @@ test('A restart loses nothing that landed', async () => {
 });
 
 test('Where memory refuses a write, the ask answers nothing', async () => {
-  const { machine, ask, result } = await open();
-  (machine.memoryOf('house') as FakeMemory).refuseNext();
+  const { ground, ask, result } = await open();
+  ground.machine.memoryOf('house').refuseNext();
   assert.deepEqual(await ask({ method: 'bear', args: { kind: 'org.example.counter', id: 'c' } }), { error: { message: 'the house answered nothing' } });
   assert.equal(await result('count'), 0);
 });

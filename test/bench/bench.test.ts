@@ -4,7 +4,7 @@ import { Bench } from 'nervur/bench';
 import { Lobby } from '../fixtures/guides/classes/lobby.ts';
 import { Order } from '../fixtures/guides/classes/order.ts';
 import { Shop } from '../fixtures/guides/classes/shop.ts';
-import { Dice, Liar, Tally } from '../fixtures/bench/tally.ts';
+import { Dice, Keep, Liar, Stamp, Tally } from '../fixtures/bench/tally.ts';
 import { FakePayments, PaymentsOffer } from '../fixtures/world/payments.ts';
 
 test('The paper’s Order, driven through the bench: every ask crosses as a box', async () => {
@@ -15,10 +15,10 @@ test('The paper’s Order, driven through the bench: every ask crosses as a box'
   assert.deepEqual(await order.ask('add', { sku: 'tea', price: 4 }), { result: { total: 4 } });
   assert.deepEqual(await order.ask('checkout'), { result: null });
   assert.equal(payments.calls.length, 1, 'the charge left once checkout landed');
-  assert.equal((await order.cells())!.state, 'paying');
+  assert.equal((await order.describe())?.state, 'paying');
   assert.deepEqual(await payments.settle(), { result: null });
   await bench.settle();
-  assert.equal((await order.cells())!.state, 'paid');
+  assert.equal((await order.describe())?.state, 'paid');
   assert.deepEqual(await order.ask('add', { sku: 'jam', price: 1 }), { error: { message: 'not in this state' } });
 });
 
@@ -30,7 +30,7 @@ test('The bench runs every example, and the author’s documentation and her tes
       ['bump, example 1: adds to what stands', true],
       ['bump, example 2: refuses to go down', true],
       ['stop, example 1', true],
-      ['read, example 1', true],
+      ['read, example 1: stopped at seven', true],
     ],
   );
 });
@@ -45,25 +45,45 @@ test('The bench walks every state and role', async () => {
   await Bench.check(Tally);
 });
 
-test('The bench flags a class whose re-run on the same cells answers differently', async () => {
+test('The bench flags a class whose re-run of the same history answers differently', async () => {
   const [finding] = await Bench.examples(Dice);
-  assert.deepEqual(finding, { ok: false, what: 'roll, example 1: any face', why: 'a re-run on the same cells answered differently' });
+  assert.deepEqual(finding, { ok: false, what: 'roll, example 1: any face', why: 'a re-run of the same history answered differently' });
 });
 
-test('The bench names a role it cannot play', async () => {
-  await assert.rejects(Bench.check(Liar), /secret, example 1: it gives \{"error":\{"message":"no such ask"\}\}/);
+test('The bench flags a class whose re-run of the same history leaves her cells differently', async () => {
+  const [finding] = await Bench.examples(Stamp);
+  assert.deepEqual(finding, { ok: false, what: 'stamp, example 1: hides a nonce', why: 'a re-run of the same history left her cells differently' });
 });
 
-test('The bench walks a steward, playing root through the hand', async () => {
-  const findings = await Bench.check(Shop, { position: 'steward', classes: [Order] });
+test('The bench judges a role on her cells as they stand, so root plays a role her history gave it', async () => {
+  const findings = await Bench.check(Keep);
   assert.deepEqual(
     findings.map((finding) => finding.what),
-    ['ready, as pilot', 'ready, as being'],
+    ['claim, example 1', 'guard, example 1', 'open, as steward', 'kept, as steward', 'kept, as keeper'],
   );
 });
 
-test('The bench walks a public being, playing a stranger by the zero head', async () => {
-  const findings = await Bench.check(Lobby, { position: 'public', steward: Shop, classes: [Order] });
+test('A placed being’s cells are read through the hand', async () => {
+  const bench = await Bench.open({ classes: [Tally] });
+  const tally = await bench.place(Tally);
+  await tally.ask('bump', { by: 4 }, { role: 'keeper' });
+  assert.deepEqual(await tally.cells(), { count: 4, state: 'counting' });
+});
+
+test('The bench names a role it cannot play', async () => {
+  await assert.rejects(Bench.check(Liar), /secret, example 1: the bench cannot play friend on placed-1: no one it makes holds friend here/);
+});
+
+test('The bench walks a steward, playing root through the hand, and no role an owner could not play', async () => {
+  const findings = await Bench.check(Shop, { position: 'steward', classes: [Order] });
+  assert.deepEqual(
+    findings.map((finding) => finding.what),
+    ['ready, as pilot'],
+  );
+});
+
+test('The bench walks a public being, playing a stranger from a house of its own', async () => {
+  const findings = await Bench.check(Lobby, { position: 'public', classes: [Order] });
   assert.deepEqual(
     findings.map((finding) => finding.what),
     ['ready, as steward', 'ready, as stranger'],

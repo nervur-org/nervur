@@ -6,8 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { ClassList, Ground, WebCarry } from 'nervur';
-import { FakeCustody, FakeMemory } from 'nervur/bench';
-import { NodeGround } from 'nervur/node';
+import { FileMemory, FolderCustody, NodeGround } from 'nervur/node';
 import { Steward } from '../fixtures/world/steward.ts';
 
 const folder = new URL('../fixtures/node/', import.meta.url).pathname;
@@ -22,16 +21,16 @@ test('A holder that dials only the web reaches a NodeGround whose invitation nam
   // A ground whose one carry is the web, as a page or a service worker has.
   const web = new WebCarry({ allowPrivate: true });
   const near = await Ground.open({
-    custody: new FakeCustody('near'),
-    memory: new FakeMemory(),
+    custody: new FolderCustody(join(state, 'near', 'seeds')),
+    memory: new FileMemory(join(state, 'near', 'record')),
     carry: web,
-    bodies: { memory: { fake: () => new FakeMemory() }, classes: { steward: () => new ClassList({ steward: Steward }) } },
+    bodies: { memory: { file: ({ house }) => new FileMemory(join(state, 'near', `${house}.memory`)) }, classes: { steward: () => new ClassList({ steward: Steward }) } },
   });
   t.after(async () => {
     await near.close();
     await web.close();
   });
-  await near.add('near', { memory: { body: 'fake' }, classes: { body: 'steward' } });
+  await near.add('near', { memory: { body: 'file' }, classes: { body: 'steward' } });
 
   const offered = await far.ground.ask({ house: 'main', method: 'offer' });
   assert.ok('result' in offered);

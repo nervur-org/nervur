@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { WebCarry, type Handler } from 'nervur';
 import { serveHttp, type Served } from 'nervur/node';
-import { carrySuite } from '../suites/carry.ts';
+import { carrySuite } from '../../suites/carry.ts';
 
 const WARD = 'ab'.repeat(64);
 
@@ -77,6 +77,62 @@ test('The held line is refused to a handshake that does not offer the subprotoco
     socket.onerror = () => resolve(true);
   });
   assert.equal(refused, true);
+});
+
+test('A page reaches the door from its own host, or from an origin the carry names', async (t) => {
+  let reached = 0;
+  const carry = new WebCarry({ origins: ['https://shop.example'] });
+  carry.listen({
+    ward: WARD,
+    door: async () => {
+      reached++;
+      return new Uint8Array([9]);
+    },
+  });
+  const served = await serveHttp({ host: '127.0.0.1' }, [carry]);
+  t.after(() => served.close());
+  const at = `http://127.0.0.1:${served.port}/quo`;
+  const box = Uint8Array.from([...Array.from({ length: 64 }, () => 0xab), 1]);
+  const post = (origin?: string) => fetch(at, { method: 'POST', headers: origin === undefined ? {} : { origin }, body: box });
+  assert.equal((await post('https://elsewhere.example')).status, 403, 'a page of an origin no one named');
+  assert.equal(reached, 0, 'its box never reached the door');
+  assert.equal((await post('https://shop.example')).status, 200, 'a named origin');
+  assert.equal((await post(`http://127.0.0.1:${served.port}`)).status, 200, 'a page of its own host');
+  assert.equal((await post()).status, 200, 'no page at all');
+  assert.equal(reached, 3);
+  // The held line: a page of an origin no one named is refused its handshake.
+  const opens = (origin: string) =>
+    new Promise<boolean>((resolve) => {
+      const socket = new WebSocket(at.replace('http', 'ws'), { protocols: ['quo'], headers: { origin } } as unknown as string[]);
+      socket.onopen = () => {
+        socket.close();
+        resolve(true);
+      };
+      socket.onerror = () => resolve(false);
+    });
+  assert.equal(await opens('https://elsewhere.example'), false);
+  assert.equal(await opens('https://shop.example'), true);
+});
+
+test('A post never follows a redirect', async (t) => {
+  let followed = false;
+  const target = await serveHttp({ host: '127.0.0.1' }, [
+    {
+      fetch: async () => {
+        followed = true;
+        return new Response(new Uint8Array([9]), { status: 200 });
+      },
+    },
+  ]);
+  t.after(() => target.close());
+  const redirecting = await serveHttp({ host: '127.0.0.1' }, [
+    { fetch: async () => new Response(null, { status: 307, headers: { location: `http://127.0.0.1:${target.port}/quo` } }) },
+  ]);
+  t.after(() => redirecting.close());
+  const carry = new WebCarry({ allowPrivate: true });
+  const sent = await carry.send({ ward: WARD, at: [`http://127.0.0.1:${redirecting.port}/quo`], box: new Uint8Array([1]) });
+  assert.deepEqual(sent, { reply: null, heard: true }, 'the redirect answered, so the box may have been heard');
+  assert.equal(followed, false);
 });
 
 test('A post from a page of another origin is answered by CORS only where the carry names that origin', async (t) => {

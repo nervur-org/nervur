@@ -32,14 +32,25 @@ const header = (opcode: number, length: number): Buffer => {
   return out;
 };
 
-/** A socket past its handshake, held as frames. */
-export const hold = (socket: Socket, open: (held: HeldSocket) => Held, longest: number): void => {
+/**
+ * A socket past its handshake, held as frames. Every `ping` milliseconds it
+ * pings, so a router between keeps the line, and a line silent across two
+ * pings is closed, so its dialer dials again rather than wait on the dead.
+ */
+export const hold = (socket: Socket, open: (held: HeldSocket) => Held, longest: number, { ping = 25_000 }: { ping?: number } = {}): void => {
   let closed = false;
+  let quiet = 0;
   const write = (opcode: number, payload: Uint8Array) => {
     if (closed) return;
     socket.write(Buffer.concat([header(opcode, payload.length), payload]));
   };
+  const beat = setInterval(() => {
+    if (++quiet > 2) return end();
+    write(PING, new Uint8Array());
+  }, ping);
+  beat.unref();
   const end = () => {
+    clearInterval(beat);
     if (closed) return;
     write(CLOSE, new Uint8Array());
     closed = true;
@@ -52,6 +63,8 @@ export const hold = (socket: Socket, open: (held: HeldSocket) => Held, longest: 
   let partsKind = 0;
   let partsLength = 0;
   socket.on('data', (chunk: Buffer) => {
+    // Anything heard, a pong among it, says the line stands.
+    quiet = 0;
     buffered = Buffer.concat([buffered, chunk]);
     while (buffered.length >= 2) {
       const fin = (buffered[0] & 0x80) !== 0;
@@ -96,12 +109,14 @@ export const hold = (socket: Socket, open: (held: HeldSocket) => Held, longest: 
       const message = Buffer.concat(parts);
       parts = [];
       partsLength = 0;
-      if (partsKind === TEXT) held.message(message.toString('utf8'));
-      else if (partsKind === BINARY) held.message(new Uint8Array(message));
+      // An always-on ground holds no wake, so what a message asks is answered in its own time.
+      if (partsKind === TEXT) void held.message(message.toString('utf8'));
+      else if (partsKind === BINARY) void held.message(new Uint8Array(message));
       else return end();
     }
   });
   socket.on('close', () => {
+    clearInterval(beat);
     closed = true;
     held.close();
   });

@@ -133,10 +133,14 @@ An entry's `description` is the class author's text. Its `args` and
 entry shown to that asker names hears `{"error":{"message":"no such ask"}}`.
 
 ```text
-describe = { lang: "org.nervur.asks/1", kind, description?, state, asks }
+describe = { lang: "org.nervur.asks/1", kind?, description?, view?, state, asks }
 entry    = { method, in, to, description?, args, result?, hints, wait }
 answer   = { result } | { error: { message } }
 ```
+
+A stranger's describe names no `kind` and no `description`. A `view` is
+the being's markup as text, which a screen renders, and every asker is
+shown it.
 
 **Question 15.** A reply text holds no whitespace between tokens. An
 object reply writes `object` first and `seen` second. Its object is
@@ -284,3 +288,14 @@ Numbers are read as IEEE 754 doubles. So an integer beyond 2^53 loses
 precision before the schema holds it. Fields of the payload that the spec
 does not name, `call` and `within` apart, are ignored. Inside a reply's
 `object`, a standing takes a repeated key and keeps its last value.
+
+## What a kit shows
+
+**Question 28.** nervur reads a domain's vouch for every standing on a
+far ward. The domains it checks are the hosts of the invitation's
+`https` and `wss` addresses, so a domain that serves no web is never
+asked. It reads the file once the ask that takes the invitation lands, and
+again when the ward names new addresses in a reply. A being sees the
+domains that vouched beside each standing she holds, and shows them to
+the person as her class chooses. A domain that lists the ward is shown,
+and one that does not is not.
