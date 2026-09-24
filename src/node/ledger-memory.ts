@@ -10,6 +10,7 @@ import { mkdir, open, readFile, rename, truncate } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Memory, PlaceRead } from '../foundation.ts';
+import { syncFolder } from './sync-folder.ts';
 
 type Writes = Readonly<Record<string, Readonly<Record<string, Uint8Array | null>>>>;
 type Places = Map<string, { version: string; entries: Map<string, string> }>;
@@ -121,7 +122,7 @@ export class LedgerMemory implements Memory {
     const temporary = `${this.#witness!}.${process.pid}.tmp`;
     await synced(temporary, 'w', (handle) => handle.writeFile(JSON.stringify(head)));
     await rename(temporary, this.#witness!);
-    await synced(dirname(this.#witness!), 'r', async () => undefined);
+    await syncFolder(dirname(this.#witness!));
   }
 
   async read({ place }: { place: string }): Promise<PlaceRead> {
@@ -154,7 +155,7 @@ export class LedgerMemory implements Memory {
     const head = { n: line.n, hash: hash(raw) };
     try {
       await synced(this.#path, 'a', (handle) => handle.appendFile(`${raw}\n`));
-      if (line.n === 1) await synced(dirname(this.#path), 'r', async () => undefined);
+      if (line.n === 1) await syncFolder(dirname(this.#path));
       if (this.#witness !== undefined) await this.#attest(head);
     } catch (error) {
       // What landed is read again from the file: a torn line is cut, and a

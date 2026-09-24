@@ -31,6 +31,8 @@ export class Rows {
   readonly #placeNames = new Map<string, string>();
   /** The last write holding each row, which the next one to hold it waits for. */
   readonly #holds = new Map<string, Promise<void>>();
+  // How many times each row's cache has moved, so a read overtaken by a write never lands behind it.
+  readonly #moves = new Map<string, number>();
   #landed: ((place: string, row: unknown) => void) | undefined;
 
   private constructor(memory: Memory, crypto: Crypto, tools: Tools, names: Uint8Array, key: Uint8Array) {
@@ -56,20 +58,35 @@ export class Rows {
     return place;
   }
 
+  // A row's cache moved, by a write that landed or one refused: a read in flight across it is behind.
+  #moved(place: string) {
+    this.#moves.set(place, (this.#moves.get(place) ?? 0) + 1);
+  }
+
+  #forget(place: string) {
+    this.#moved(place);
+    this.#held.delete(place);
+  }
+
   async #read(place: string): Promise<Held> {
-    const cached = this.#held.get(place);
-    if (cached !== undefined) return cached;
-    const { entries, version } = await this.#memory.read({ place });
-    const sealed = entries[ENTRY];
-    let held: Held = { row: null, text: null, version };
-    if (sealed !== undefined) {
-      const opened = await this.#crypto.open(this.#key, sealed.subarray(0, 12), sealed.subarray(12), this.#tools.utf8(place));
-      const text = opened === null ? null : this.#tools.text(opened);
-      if (text === null) throw new Error('a row does not open under these keys');
-      held = { row: JSON.parse(text), text, version };
+    for (;;) {
+      const cached = this.#held.get(place);
+      if (cached !== undefined) return cached;
+      const move = this.#moves.get(place) ?? 0;
+      const { entries, version } = await this.#memory.read({ place });
+      const sealed = entries[ENTRY];
+      let held: Held = { row: null, text: null, version };
+      if (sealed !== undefined) {
+        const opened = await this.#crypto.open(this.#key, sealed.subarray(0, 12), sealed.subarray(12), this.#tools.utf8(place));
+        const text = opened === null ? null : this.#tools.text(opened);
+        if (text === null) throw new Error('a row does not open under these keys');
+        held = { row: JSON.parse(text), text, version };
+      }
+      // A write that moved the row while this read was in flight wins, and this read looks again.
+      if ((this.#moves.get(place) ?? 0) !== move) continue;
+      this.#held.set(place, held);
+      return held;
     }
-    this.#held.set(place, held);
-    return held;
   }
 
   /** A row as it stands, or `null`. */
@@ -169,10 +186,11 @@ export class Rows {
         versions = null;
       }
       if (versions === null) {
-        for (const place of Object.keys(expect)) this.#held.delete(place);
+        for (const place of Object.keys(expect)) this.#forget(place);
         return false;
       }
       for (const [place, held] of landed) {
+        this.#moved(place);
         this.#held.set(place, { ...held, version: versions[place] ?? null });
         this.#landed?.(place, held.row);
       }

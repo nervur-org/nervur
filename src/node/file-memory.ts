@@ -6,6 +6,7 @@ import { mkdir, open, readFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Memory, PlaceRead } from '../foundation.ts';
+import { syncFolder } from './sync-folder.ts';
 
 interface Stored {
   places: Record<string, { version: number; entries: Record<string, string> }>;
@@ -99,11 +100,6 @@ export class FileMemory implements Memory {
       await file.close();
     }
     await rename(temporary, this.#path);
-    const directory = await open(folder, 'r');
-    try {
-      await directory.sync();
-    } finally {
-      await directory.close();
-    }
+    await syncFolder(folder);
   }
 }

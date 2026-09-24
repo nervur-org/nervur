@@ -1,5 +1,6 @@
 // A memory whose writes touching a held place wait until the test lets
-// them through, so a test sees what lands while one write is held.
+// them through, so a test sees what lands while one write is held. One
+// read can be held too, answering late what it took early.
 import type { Memory } from 'nervur';
 import { FakeMemory } from 'nervur/bench';
 
@@ -18,6 +19,31 @@ export class GatedMemory extends FakeMemory {
   release(): void {
     this.#held.clear();
     for (const go of this.#waiting.splice(0)) go();
+  }
+
+  #lateRead: { place: string; go?: () => void; stalled?: () => void } | undefined;
+
+  /** The next read of this place takes what stands, then waits to answer until `answerRead`. Resolves once it waits. */
+  holdNextRead(place: string): Promise<void> {
+    return new Promise((stalled) => (this.#lateRead = { place, stalled }));
+  }
+
+  /** The held read answers what it took, however old it is by now. */
+  answerRead(): void {
+    this.#lateRead?.go?.();
+    this.#lateRead = undefined;
+  }
+
+  override async read(options: { place: string }): ReturnType<Memory['read']> {
+    const read = await super.read(options);
+    const late = this.#lateRead;
+    if (late?.place === options.place && late.go === undefined) {
+      await new Promise<void>((go) => {
+        late.go = go;
+        late.stalled?.();
+      });
+    }
+    return read;
   }
 
   override async write(options: Write): ReturnType<Memory['write']> {

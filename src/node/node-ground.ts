@@ -12,7 +12,7 @@ import { WebCarry } from '../bodies/web-carry.ts';
 import { Ground, type Bodies, type Custody, type Faculty } from '../ground/ground.ts';
 import { FolderCustody, KeychainCustody } from './custody.ts';
 import { FolderClasses } from './folder-classes.ts';
-import { serveHand, type Hand } from './hand.ts';
+import { handAt, serveHand, type Hand } from './hand.ts';
 import { serveHttp, type Served } from './http.ts';
 import { LedgerMemory } from './ledger-memory.ts';
 import { takeLock, type Lock } from './lock.ts';
@@ -145,7 +145,7 @@ export class NodeGround {
 
       // 6. Hook: HTTP chains the web carry and every faculty's handler, and the hand takes its socket.
       if (httpPort !== undefined) http = await serveHttp({ port: httpPort, host: bind }, [web, ...ground.handlers]);
-      const hand = env.NERVUR_HAND ?? join(state, 'hand');
+      const hand = env.NERVUR_HAND ?? handAt(state);
       const served = await serveHand((request) => ground.hand(request), hand);
       return new NodeGround({ ground, hand, tcp, lock, served, http });
     } catch (error) {

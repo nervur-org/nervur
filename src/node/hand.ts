@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-// The hand on a local socket: one JSON object a line in, one answer a
-// line out, in order. The socket is readable by the ground's user alone.
+// The hand on a local socket, or on Windows a named pipe: one JSON object
+// a line in, one answer a line out, in order. It is open to the ground's
+// user alone.
+import { createHash } from 'node:crypto';
 import { chmod } from 'node:fs/promises';
 import { createServer, type Socket } from 'node:net';
+import { join, resolve as absolute } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Json } from '../being/being.ts';
 import type { Answer } from '../house/rows-shape.ts';
@@ -65,15 +68,31 @@ const serve = (ask: (request: HandRequest) => Promise<unknown>, socket: Socket) 
 // the BSDs, 107 on Linux, with the closing zero beyond.
 const LONGEST = process.platform === 'linux' ? 107 : 103;
 
+const PIPE = /^\\\\[.?]\\pipe\\/;
+
+/**
+ * Where a ground's hand stands for its state folder: a socket inside it,
+ * or on Windows a named pipe, which has no place in a folder, named for
+ * the folder's path.
+ */
+export const handAt = (state: string, platform: NodeJS.Platform = process.platform): string =>
+  platform === 'win32' ? `\\\\.\\pipe\\nervur-${createHash('sha256').update(absolute(state).toLowerCase()).digest('hex').slice(0, 16)}` : join(state, 'hand');
+
 /**
  * Serves `ask` at `path`: a house's own hand, or a ground's, which also
  * reads `house` and changes its record. A socket left there by a process
- * that is gone is replaced.
+ * that is gone is replaced. A named pipe on Windows is open to its user
+ * alone, as the operating system makes it, and leaves nothing behind.
  */
 export const serveHand = async (ask: (request: HandRequest) => Promise<unknown>, path: string): Promise<Hand> => {
+  if (PIPE.test(path)) return listen(ask, path, false);
   const length = Buffer.byteLength(path);
   if (length > LONGEST) throw new Error(`a socket's path is at most ${LONGEST} bytes here, and ${path} is ${length}: serve the hand from a shorter folder`);
   await gone(path);
+  return listen(ask, path, true);
+};
+
+const listen = async (ask: (request: HandRequest) => Promise<unknown>, path: string, file: boolean): Promise<Hand> => {
   const server = createServer((socket) => serve(ask, socket));
   const sockets = new Set<Socket>();
   server.on('connection', (socket) => {
@@ -82,6 +101,7 @@ export const serveHand = async (ask: (request: HandRequest) => Promise<unknown>,
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
+    if (!file) return void server.listen(path, () => resolve());
     // Closed to everyone from the first moment, then opened to the user.
     const mask = process.umask(0o177);
     try {
@@ -90,12 +110,12 @@ export const serveHand = async (ask: (request: HandRequest) => Promise<unknown>,
       process.umask(mask);
     }
   });
-  await chmod(path, 0o600);
+  if (file) await chmod(path, 0o600);
   return {
     close: async () => {
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await gone(path);
+      if (file) await gone(path);
     },
   };
 };

@@ -20,6 +20,7 @@ import { connect } from 'node:net';
 import { basename, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { handAt } from './hand.ts';
 import { NodeGround } from './node-ground.ts';
 import { notifyReady } from './notify.ts';
 
@@ -131,7 +132,7 @@ const service = (folder: string) => {
 
 const words = process.argv.slice(2);
 // The hand: named, or the one a ground in this folder serves.
-let at = process.env.NERVUR_HAND ?? (existsSync(join('state', 'hand')) ? join('state', 'hand') : undefined);
+let at = process.env.NERVUR_HAND ?? (existsSync(process.platform === 'win32' ? 'state' : join('state', 'hand')) ? handAt('state') : undefined);
 if (words[0] === '--at') {
   at = words[1] ?? fail('--at names no socket');
   words.splice(0, 2);

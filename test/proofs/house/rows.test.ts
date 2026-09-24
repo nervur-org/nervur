@@ -42,6 +42,20 @@ test('Two writes on one row both land, the second on what the first wrote', asyn
   assert.deepEqual(await rows.get(alice), { total: 2 }, 'neither add was lost');
 });
 
+test('A read overtaken by a write never stands in place of what the write landed', async () => {
+  const { memory, rows, alice } = await open();
+  assert.equal(await rows.transact((draft) => draft.set(alice, { total: 1 })), true);
+  // A second house on the same memory, whose cache is empty, as a house is after it opens.
+  const fresh = await Rows.open(memory, new SeedKeys('5'.repeat(64), crypto), crypto, tools);
+  const stalled = memory.holdNextRead(alice);
+  const late = fresh.get<{ total: number }>(alice);
+  await stalled;
+  assert.equal(await fresh.transact((draft) => draft.set(alice, { total: 2 })), true, 'the write lands while the read is in flight');
+  memory.answerRead();
+  assert.deepEqual(await late, { total: 2 }, 'the late read looks again');
+  assert.deepEqual(await fresh.get(alice), { total: 2 }, 'and what it took never stands in the cache');
+});
+
 test('A write memory refuses lands nothing, as another writer moved it', async () => {
   const { memory, rows, alice } = await open();
   memory.refuseNext();
