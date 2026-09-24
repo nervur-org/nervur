@@ -1,7 +1,7 @@
 {
   // The package, its sources and its suites, checked by `check` wherever
   // the package stands alone. `deep/` needs tools only this repository's
-  // root carries, a browser and a bundler, so `tsconfig.deep.json` checks
+  // root carries, a browser and a bundler, so `deep/tsconfig.json` checks
   // it when `deep` runs.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {

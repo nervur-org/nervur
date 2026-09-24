@@ -92,6 +92,8 @@ export class BrowserGround {
   // Asks sent to another page's ground, by id, with the page they went to.
   readonly #pending = new Map<string, { readonly to: string; readonly settle: (answer: Answer | { readonly describe: Json }) => void }>();
   #ground: Ground | undefined;
+  // The custody and the memories its boot opened, each closed when it closes.
+  readonly #opened: unknown[] = [];
   #persisted = false;
   #leader: string | undefined;
   #waiting: (() => void)[] = [];
@@ -231,8 +233,13 @@ export class BrowserGround {
     const name = this.#name;
     const platform = this.#platform;
     const recipe = this.#options.recipe ?? {};
-    const custody = await platform.custody(`${name}-custody`);
-    const memory = await platform.memory(`${name}-ground`);
+    // Every store it opens is kept, so its close lets each go before the lock passes.
+    const kept = <T>(opened: T): T => {
+      this.#opened.push(opened);
+      return opened;
+    };
+    const custody = kept(await platform.custody(`${name}-custody`));
+    const memory = kept(await platform.memory(`${name}-ground`));
     this.#persisted = await platform.persist().catch(() => false);
     // It only dials, so it writes no address into an invitation.
     const web = new WebCarry({ allowPrivate: this.#options.allowPrivate === true });
@@ -240,7 +247,7 @@ export class BrowserGround {
     const faculties: Record<string, Faculty> = {};
     for (const [faculty, made] of Object.entries(recipe.faculties?.() ?? {})) faculties[faculty] = await made;
     const bodies: Bodies = {
-      memory: joined({ indexeddb: ({ house }) => platform.memory(`${name}-house-${house}`) }, recipe.bodies?.memory),
+      memory: joined({ indexeddb: async ({ house }) => kept(await platform.memory(`${name}-house-${house}`)) }, recipe.bodies?.memory),
       classes: joined(
         {
           origin: ({ args }) => {
@@ -263,6 +270,8 @@ export class BrowserGround {
     const ground = this.#ground;
     this.#ground = undefined;
     await ground?.close();
+    // Its IndexedDB connections go with it, so the next ground in this page opens on none of its.
+    for (const opened of this.#opened.splice(0)) (opened as { close?: () => void }).close?.();
     this.#release?.();
     this.#orphan(() => true);
     for (const resolve of this.#waiting) resolve();

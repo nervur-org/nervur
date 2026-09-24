@@ -144,6 +144,12 @@ and TypeScript reads from it the types of her cells and her needs.
 | `roles` | named tests over the asker and her cells |
 | `state` | a function of the being that names her current state |
 | `asks` | one entry per method she answers |
+| `view` | markup as text over her asks, which a screen renders |
+
+A view is data, at most 64 KiB, carried in her describe to every asker.
+It holds no script, and a renderer loads nothing it names, so a view
+neither acts nor tracks. The library defines no markup: a renderer
+speaks its own.
 
 Every field is optional but `kind` and `asks`. A class with no `state`
 has one state, named `ready`. The kind is how the house finds her code
@@ -195,7 +201,7 @@ nothing lands.
 | `this.house.alarm({ at, ask, args, key })` | one of her asks, at that time |
 | `this.house.cancelAlarm({ key })` | an alarm removed |
 | `this.<need>.<method>({…}, { reply? })` | an awaited call, or an effect |
-| `this.held(id, Need).<ask>({…}, { reply? })` | the same, on a standing |
+| `this.held(id, Need).<ask>({…}, { reply?, after? })` | the same, on a standing, and a watch where `after` is given |
 | `this.standings` | `list()`, `note(id, notes)` and `drop(id)` |
 | `this.handle(ask, { bind?, notes?, once?, expires? })` | a handle to one of her asks |
 | `this.invite(id, { notes?, expires? })` | a new occupant, as a handle |
@@ -238,6 +244,29 @@ one receiver leave one at a time, in the order she called them.
 
 Asks to one being run one at a time, in the order they arrive. A
 `readOnly` ask runs beside that queue, on the cells last landed.
+
+### Watching an answer
+
+A watch is a `readOnly` ask asked with `after`, the answer you already
+hold. The house answers at once where the answer differs. Where it is
+the same, the house holds the ask and runs it again each time an ask of
+that being lands. It answers the first answer that differs, or the same
+one when the wait runs out. So a chat, an order's status or a dashboard
+is a loop of watches, and nothing polls.
+
+Through the hand, pass `after` beside the method, as the answer you
+hold: `{ result: [...] }`. From a being, pass the result she holds:
+`this.held(room, Messages).messages({}, { after: seen })`, inside a
+`readOnly` ask of her own, so she stays free while she waits. Only a
+`readOnly` ask is watched, and a watch on anything else is refused where
+she makes it.
+
+A watch moves only on what its asker could read, since it runs as that
+asker. One asker holds one watch on one ask with the same args, and a
+second answers the first at once. A watch across a door holds its
+relation until it answers, since Quo moves a relation one ask at a time.
+So watch a far being through a handle to the watched ask alone, a
+relation of its own, and ask everything else on your other standing.
 
 ### Relations
 
@@ -718,6 +747,50 @@ systemctl --user enable --now nervur-ground
 A user unit stops when its user logs out, unless lingering is enabled
 with `loginctl enable-linger`. On macOS, the agent goes to
 `~/Library/LaunchAgents/` and is started with `launchctl bootstrap`.
+
+### In a page
+
+`BrowserGround.open({ recipe })` from `nervur/browser` runs the same
+houses in a page. Every tab and the service worker of one origin share
+one ground: the one holding the Web Lock runs it, and the others reach
+its hand over a `BroadcastChannel`. When it closes, the next opens the
+ground from the same storage. `hand` answers the same three requests
+the command sends: `describe`, a faculty's method, and an ask of a being
+in a named house.
+
+Its bodies are the browser's. Seeds are sealed under an AES key that
+IndexedDB holds unextractable, and memory is IndexedDB, named
+`indexeddb` in an entry. Classes load from the page's own origin through
+the `origin` body, `{ body: 'origin', at: '/house/index.js' }`, and a
+path off the origin is refused. The recipe is the object you pass: its
+faculties, made by a function, and any custom body.
+
+Any script on the origin can use the ground's keys, so the ground is
+whoever serves the origin's script. Give it an origin of its own, serve
+nothing a stranger wrote there, and set a strict content security
+policy. The page and the house's module must share one copy of
+`nervur/being`, since a house knows a class by a mark that module gives.
+A bundler's shared chunk or an import map gives the one copy.
+
+A service worker opens the ground the same way, on a push, where no tab
+runs it. It may not `import()`, so hand it the modules it imported
+itself: `platform: { load: (href) => modules[new URL(href).pathname] }`.
+
+### In an app
+
+`AppGround.open({ shell })` from `nervur/app` is a BrowserGround in the
+app's web view, on two interfaces the shell fills in native code:
+
+- `NativeSecrets`: `get(name)` and `set(name, value)`, text kept by the
+  iOS Keychain or the Android Keystore on this device alone.
+- `NativeStore`: `get(key)`, `keys(prefix)`, and `swap(writes, expect)`,
+  which lands every write only where each key in `expect` still holds
+  what it names, and answers whether it landed.
+
+The library holds the rest. Each house's seed goes into the secret
+store, and each memory into the native store, which the system never
+evicts as it may a web view's storage. A push token reaches the ground
+through a faculty your recipe makes.
 
 ## What the house guarantees
 

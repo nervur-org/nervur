@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import type { Memory } from 'nervur';
-import { FakeMemory } from 'nervur/bench';
+import { need } from 'nervur/being';
+import { FakeFaculty, FakeMemory } from 'nervur/bench';
 import { BrowserGround, LockedCustody, type BrowserGroundOptions, type Shelf } from 'nervur/browser';
 
 const origin = pathToFileURL(new URL('../fixtures/', import.meta.url).pathname).href;
@@ -75,6 +76,46 @@ test('When the tab that runs it closes, the next opens the same ground', async (
     'the same house, on the same seed',
   );
   assert.deepEqual(await second.hand({ house: 'shop', id: 'bob', method: 'greet' }), { result: 'bob greets root' }, 'her row stood in the origin’s memory');
+});
+
+test('An ask in flight when the tab running the ground closes is told to ask again', async (t) => {
+  const { platform } = originStorage();
+  // A faculty whose next call never answers, standing for work the closing tab never finishes.
+  const slow = new FakeFaculty(need('slow', { wait: { hints: { idempotent: true } } }), { wait: () => null });
+  slow.hangNext();
+  const recipe = { faculties: () => ({ slow: slow.offer }) };
+  const first = await BrowserGround.open({ name: 'in-flight', platform, recipe });
+  await first.led();
+  const second = await BrowserGround.open({ name: 'in-flight', platform, recipe });
+  t.after(() => second.close());
+  const asked = second.hand({ faculty: 'slow', method: 'wait' });
+  // The first tab has the ask before it closes.
+  while (slow.calls.length === 0) await new Promise((next) => setImmediate(next));
+  await first.close();
+  assert.deepEqual(await asked, { error: { message: 'the page that ran the ground closed; ask again' } });
+  await second.led();
+  assert.equal(second.leading, true, 'the second tab runs the ground now');
+});
+
+test('Closing lets go of every store its boot opened', async () => {
+  const { platform } = originStorage();
+  const closed: string[] = [];
+  // Stores that say when they are let go, as IndexedDB's connections are.
+  const only = await tab('closing', {
+    ...platform,
+    custody: async (name: string) => {
+      const custody = await platform.custody();
+      return { keys: (options: { house: string }) => custody.keys(options), close: () => closed.push(name) };
+    },
+    memory: async (name: string) => {
+      const memory = await platform.memory(name);
+      return { read: memory.read.bind(memory), list: memory.list.bind(memory), write: memory.write.bind(memory), close: () => closed.push(name) };
+    },
+  });
+  await only.led();
+  await only.hand({ faculty: 'houses', method: 'add', args: { name: 'shop', ...shop } });
+  await only.close();
+  assert.deepEqual(closed.sort(), ['closing-custody', 'closing-ground', 'closing-house-shop']);
 });
 
 test('Its describe says whether the browser keeps its storage', async (t) => {

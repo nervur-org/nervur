@@ -81,6 +81,11 @@ export class LockedCustody implements Custody {
     return new LockedCustody(await IndexedDbShelf.open(name, factory));
   }
 
+  /** Its shelf let go, where the shelf holds a connection. */
+  close(): void {
+    (this.#shelf as { close?: () => void }).close?.();
+  }
+
   keys({ house }: { house: string }): Promise<Keys> {
     if (!NAME.test(house)) return Promise.reject(new TypeError(`no house is named ${house}`));
     const turn = this.#turn.then(() => this.#keys(house));

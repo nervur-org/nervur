@@ -107,6 +107,39 @@ the house's seed, its ledger and its record in `state/`, readable by
 you alone. Keep that folder secret: a house opens on no other seed.
 `npx nervur help` lists everything the ground offers.
 
+## A ground in a page
+
+The same house runs in a browser. Bundle the house's module and serve it
+on your origin, beside a page that opens the ground.
+
+```ts
+// page.ts
+import { BrowserGround } from 'nervur/browser';
+
+// Every tab of this origin joins one ground, and the tab holding its lock runs it.
+const ground = await BrowserGround.open();
+
+// The house's code is a module on this origin, and its rows live in IndexedDB.
+await ground.hand({
+  faculty: 'houses',
+  method: 'add',
+  args: { name: 'main', memory: { body: 'indexeddb' }, classes: { body: 'origin', at: '/house/index.js' } },
+});
+
+console.log(await ground.hand({ house: 'main', method: 'hello', args: { name: 'Ada' } }));
+```
+
+Every tab of the origin reaches the one ground, and when the tab running
+it closes, the next opens it from the same storage. Its seeds are sealed
+under a key the browser never hands out. Any script on the origin can
+use them, so give the ground an origin of its own, with a strict content
+security policy. The page and the house's module must share one copy of
+`nervur/being`, as a bundler's shared chunk gives.
+
+An app on a phone opens the same ground with `AppGround` from
+`nervur/app`, on the Keychain or the Keystore and a store the system
+keeps. `AUTHORING.md` shows both.
+
 ## Entries
 
 | Entry | For |
@@ -114,6 +147,9 @@ you alone. Keep that folder secret: a house opens on no other seed.
 | `nervur/being` | writing a being: `Being`, `s`, `need`, `Args`, `Result` |
 | `nervur` | any engine: `Ground`, `House` and the bodies they take |
 | `nervur/node` | a ground on Node: `NodeGround`, the `nervur` command, and its bodies |
+| `nervur/browser` | a ground in a page or its service worker: `BrowserGround` and its bodies |
+| `nervur/app` | a ground in a phone's app: `AppGround`, and the two interfaces its shell fills |
+| `nervur/serve` | a faculty's program in JavaScript: `serve` |
 | `nervur/bench` | tests: `Bench`, `BenchGround`, `FakeNetwork` and the fakes of every body |
 
 ## License
