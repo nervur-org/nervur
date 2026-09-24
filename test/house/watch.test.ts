@@ -3,7 +3,7 @@
 // through the hand, and by a device's being across a door on a handle.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BenchGround, FakeClock, FakeNetwork } from 'nervur/bench';
+import { BenchGround, FakeClock, FakeNetwork, settle } from 'nervur/bench';
 import * as watch from '../fixtures/watch/index.ts';
 
 const modules = { watch };
@@ -53,6 +53,8 @@ test('A watch answers as it stands when its wait runs out', async (t) => {
   t.after(() => ground.down());
   const held = watched(ask(ground, 'messages', {}, { result: [] }));
   await ask(ground, 'retitle', { topic: 'quiet' });
+  // The watch runs to where it waits on the clock before the clock moves.
+  await settle();
   assert.equal(held.answered, false);
   clock.advance(30_000);
   assert.deepEqual(await held.value, { result: [] });
@@ -61,12 +63,16 @@ test('A watch answers as it stands when its wait runs out', async (t) => {
 test('A second watch from one asker answers the first at once', async (t) => {
   const { ground } = await station();
   t.after(() => ground.down());
-  const first = watched(ask(ground, 'messages', {}, { result: [] }));
-  const second = watched(ask(ground, 'messages', {}, { result: [] }));
-  assert.deepEqual(await first.value, { result: [] });
-  assert.equal(second.answered, false);
+  // Whichever reaches the house second ends the other, so the test holds either order.
+  const one = ask(ground, 'messages', {}, { result: [] }).then((answer) => ({ answer, which: 'one' }));
+  const two = ask(ground, 'messages', {}, { result: [] }).then((answer) => ({ answer, which: 'two' }));
+  const ended = await Promise.race([one, two]);
+  assert.deepEqual(ended.answer, { result: [] }, 'the watch ended at once, with what it held');
+  const held = ended.which === 'one' ? watched(two) : watched(one);
+  await ask(ground, 'retitle', { topic: 'still' });
+  assert.equal(held.answered, false, 'the other watch holds');
   await ask(ground, 'post', { text: 'late' });
-  assert.deepEqual(await second.value, { result: [{ from: 'root', text: 'late' }] });
+  assert.deepEqual((await held.value).answer, { result: [{ from: 'root', text: 'late' }] });
 });
 
 test('A device watches across a door on a handle, a relation of its own', async (t) => {
