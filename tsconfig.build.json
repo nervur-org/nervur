@@ -1,11 +1,13 @@
 {
+  // What ships: `src` written to `dist` as JavaScript with its declarations,
+  // each `.ts` import rewritten to `.js`. Tests and fixtures stay behind.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": false,
     "declaration": true,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "allowJs": false
   },
-  "include": ["src"],
-  "exclude": ["src/core/stand"]
+  "include": ["src"]
 }

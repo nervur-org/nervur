@@ -1,0 +1,11 @@
+{
+  // `nervur/being` and `nervur` run on every engine, so they compile with
+  // ECMAScript's library alone: no DOM, no Node. What they take from the
+  // web platform is declared in `platform.d.ts`, and nothing else.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/being", "src/index.ts", "platform.d.ts"]
+}

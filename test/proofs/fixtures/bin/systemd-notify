@@ -1,0 +1,4 @@
+#!/bin/sh
+# systemd-notify as a test stands it: what it was told, written where
+# NOTIFY_SOCKET points, which here is a file.
+printf '%s\n' "$@" > "$NOTIFY_SOCKET"

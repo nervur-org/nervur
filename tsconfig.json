@@ -1,7 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "resolveJsonModule": true
+    // A suite names the package by its entries, as a stranger does, and
+    // reads the source each entry is built from.
+    "customConditions": ["nervur-source"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "deep"]
 }
