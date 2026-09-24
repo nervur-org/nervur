@@ -31,13 +31,16 @@ test('The packed tarball ships dist alone, and runs a written ground and the gui
     rmSync(folder, { recursive: true, force: true });
   });
 
-  const [packed] = JSON.parse(npm(['pack', '--json', '--pack-destination', folder], pkg)) as { filename: string; files: { path: string }[] }[];
+  // npm 11 answers a list of packs, and npm 12 an object keyed by the package's name.
+  type Pack = { filename: string; files: { path: string }[] };
+  const answered = JSON.parse(npm(['pack', '--json', '--pack-destination', folder], pkg)) as Pack[] | Record<string, Pack>;
+  const packed = Array.isArray(answered) ? answered[0] : answered.nervur;
   const shipped = packed.files.map((file) => file.path);
   assert.deepEqual(
     shipped.filter((path) => !path.startsWith('dist/')),
     ['AUTHORING.md', 'KIT-SPEC.md', 'LICENSE', 'NOTICE', 'README.md', 'package.json'],
   );
-  for (const entry of ['index', 'being/index', 'node/index', 'bench/index']) {
+  for (const entry of ['index', 'being/index', 'node/index', 'bench/index', 'browser/index', 'app/index']) {
     assert.ok(shipped.includes(`dist/${entry}.js`) && shipped.includes(`dist/${entry}.d.ts`), entry);
   }
 
