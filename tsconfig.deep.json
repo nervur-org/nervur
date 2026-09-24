@@ -1,0 +1,6 @@
+{
+  // The terrains' runs, checked when `deep` runs, with the tools the
+  // repository's root carries beside the package: Playwright and esbuild.
+  "extends": "./tsconfig.json",
+  "include": ["src", "test", "deep"]
+}

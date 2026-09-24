@@ -1,9 +1,11 @@
 {
+  // The package, its sources and its suites, checked by `check` wherever
+  // the package stands alone. `deep/` needs tools only this repository's
+  // root carries, a browser and a bundler, so `tsconfig.deep.json` checks
+  // it when `deep` runs.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    // A suite names the package by its entries, as a stranger does, and
-    // reads the source each entry is built from.
     "customConditions": ["nervur-source"]
   },
-  "include": ["src", "test", "deep"]
+  "include": ["src", "test"]
 }
