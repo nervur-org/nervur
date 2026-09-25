@@ -4,8 +4,8 @@
 them. It is the first kit of [Quo](https://quo.systems), a protocol where
 a door is one function: bytes in, bytes or nothing out.
 
-This version is a prerelease, and the API moves until 1.0.0. Install it
-with `npm i nervur@next`. It runs on Node 22.18 or later.
+Install it with `npm i nervur`. It runs on Node 22.18 or later. The API
+moves until 1.0.0.
 [Reading a world](WORLD.md) reads a real situation into the four pieces.
 [Writing for nervur](AUTHORING.md) teaches beings and grounds.
 [Writing a faculty](FACULTIES.md) teaches faculties, in any language.
