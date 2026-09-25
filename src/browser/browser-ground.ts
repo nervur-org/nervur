@@ -9,19 +9,11 @@ import type { Json } from '../being/being.ts';
 import { JoinedCarry } from '../bodies/joined-carry.ts';
 import { WebCarry } from '../bodies/web-carry.ts';
 import type { Memory } from '../foundation.ts';
-import { Ground, type Bodies, type Custody, type Faculty } from '../ground/ground.ts';
+import { Ground, joinedRegistry, type Registry, type Unlock } from '../ground/ground.ts';
 import type { Answer } from '../house/rows-shape.ts';
 import { IndexedDbMemory } from './indexeddb-memory.ts';
-import { LockedCustody } from './locked-custody.ts';
+import { LockedUnlock } from './locked-unlock.ts';
 import { OriginClasses, type Load } from './origin-classes.ts';
-
-/** What a page hands its ground: the faculties it makes, by name, and any custom body. */
-export interface BrowserRecipe {
-  readonly faculties?: () => Readonly<Record<string, Faculty | Promise<Faculty>>>;
-  readonly bodies?: Partial<Bodies>;
-  /** The kinds that hold the ground's own `houses`: its pilot. */
-  readonly houses?: { readonly kinds: readonly string[] };
-}
 
 /** What the ground takes of its engine. Each is the page's own where omitted. */
 export interface BrowserPlatform {
@@ -36,18 +28,18 @@ export interface BrowserPlatform {
 }
 
 /**
- * Where its seeds and its memories rest: the terrain's own, never a
- * recipe's, since the record that would name another lives in them. A
- * BrowserGround's are the origin's IndexedDB; an AppGround's are the
- * shell's. No entry exports this.
+ * Where its key and its memory rest: the terrain's own, never the
+ * drawer's, since the drawer is read with them. A BrowserGround's are the
+ * origin's IndexedDB; an AppGround's are the shell's. No entry exports
+ * this.
  */
 export interface Stores {
-  readonly custody: (name: string) => Promise<Custody>;
+  readonly unlock: (name: string) => Promise<Unlock>;
   readonly memory: (name: string) => Promise<Memory>;
 }
 
 const originStores: Stores = {
-  custody: (custody) => LockedCustody.open(custody),
+  unlock: (unlock) => LockedUnlock.open(unlock),
   memory: (memory) => IndexedDbMemory.open(memory),
 };
 
@@ -59,7 +51,8 @@ export const openOn = (options: BrowserGroundOptions, stores: Stores): Promise<B
 export interface BrowserGroundOptions {
   /** The ground's name on its origin, which names its lock, its channel and its storage. `nervur` where omitted. */
   readonly name?: string;
-  readonly recipe?: BrowserRecipe;
+  /** The page's own registry, which joins the terrain's as the ladder's first rung. */
+  readonly registry?: Registry;
   readonly platform?: Partial<BrowserPlatform>;
   /** The ground's bound on every ask, in milliseconds. */
   readonly wait?: number;
@@ -88,12 +81,6 @@ type Said =
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const random = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 
-// Bodies a recipe adds beside the ground's own, never in their place.
-const joined = <T>(own: Readonly<Record<string, T>>, added: Readonly<Record<string, T>> = {}): Readonly<Record<string, T>> => {
-  for (const name of Object.keys(added)) if (name in own) throw new TypeError(`the recipe names a body ${name}, which is the ground's own`);
-  return { ...own, ...added };
-};
-
 const defaults = (name: string): BrowserPlatform => ({
   locks: navigator.locks,
   channel: (channel) => new BroadcastChannel(channel),
@@ -113,7 +100,7 @@ export class BrowserGround {
   // Asks sent to another page's ground, by id, with the page they went to.
   readonly #pending = new Map<string, { readonly to: string; readonly settle: (answer: Answer | { readonly describe: Json }) => void }>();
   #ground: Ground | undefined;
-  // The custody and the memories its boot opened, each closed when it closes.
+  // The unlock and the memory its boot opened, each closed when it closes.
   readonly #opened: unknown[] = [];
   #persisted = false;
   #leader: string | undefined;
@@ -258,38 +245,31 @@ export class BrowserGround {
       .catch(() => undefined);
   }
 
-  // The boot: its own custody and memory, the recipe's faculties, and the record's houses.
+  // The boot: its own unlock and memory, then the ground on them, its ladder and its drawer's houses.
   async #boot(): Promise<Ground> {
     const name = this.#name;
     const platform = this.#platform;
-    const recipe = this.#options.recipe ?? {};
     // Every store it opens is kept, so its close lets each go before the lock passes.
     const kept = <T>(opened: T): T => {
       this.#opened.push(opened);
       return opened;
     };
-    const stores = this.#stores;
-    const custody = kept(await stores.custody(`${name}-custody`));
-    const memory = kept(await stores.memory(`${name}-ground`));
+    const unlock = kept(await this.#stores.unlock(`${name}-unlock`));
+    const memory = kept(await this.#stores.memory(`${name}-ground`));
     this.#persisted = await platform.persist().catch(() => false);
     // It only dials, so it writes no address into an invitation.
     const web = new WebCarry({ allowPrivate: this.#options.allowPrivate === true });
     const carry = new JoinedCarry({ https: web, http: web, wss: web, ws: web });
-    const bodies: Bodies = {
-      memory: joined({ indexeddb: async ({ house }) => kept(await stores.memory(`${name}-house-${house}`)) }, recipe.bodies?.memory),
-      classes: joined(
-        {
-          origin: ({ args }) => {
-            if (typeof args.at !== 'string') throw new Error('the origin body names its module in at');
-            return OriginClasses.open(args.at, platform.origin, platform.load);
-          },
+    const own: Registry = {
+      classes: {
+        origin: ({ args }) => {
+          if (typeof args.at !== 'string') throw new Error('the origin body names its module in at');
+          return OriginClasses.open(args.at, platform.origin, platform.load);
         },
-        recipe.bodies?.classes,
-      ),
+      },
     };
     const wait = this.#options.wait;
-    const faculties = recipe.faculties;
-    return Ground.open({ custody, memory, carry, bodies, ...(faculties === undefined ? {} : { recipe: faculties }), ...(wait === undefined ? {} : { wait }), ...(recipe.houses === undefined ? {} : { houses: recipe.houses }) });
+    return Ground.open({ unlock, memory, carry, registry: joinedRegistry(own, this.#options.registry), ...(wait === undefined ? {} : { wait }) });
   }
 
   /** This page leaves: its ground closes where it ran one, and the lock passes to the next page. */

@@ -7,17 +7,21 @@ have read [the package's start](README.md), which runs a first ground.
 
 ## Starting a ground
 
-`nervur up` runs a NodeGround on a folder until it is stopped. The folder
-holds the ground's recipe, a folder of code for each house, and `state/`,
-where the ground keeps its seeds, its record and its hand.
+`nervur up` runs a NodeGround on a folder until it is stopped. The
+folder holds your code: a folder for each house, and each module or
+program your entries name. `state/` holds the ground's key, its ledger
+and its hand. The key is drawn on the first start, into a file your user
+alone reads.
 
 ```bash
 npx nervur up .
 ```
 
 The ground stops cleanly on an interrupt and on `SIGTERM`. It takes a
-lock on its folder, so a second `nervur up` on the same folder refuses to
-start.
+lock on its state, so a second `nervur up` on the same folder refuses to
+start. Keep `state/` as you keep an ssh key: whoever holds its key and
+its ledger holds the ground, and without the key the ledger opens
+nothing.
 
 `nervur service` prints what keeps the ground running across reboots: a
 systemd unit on Linux, a launchd job on macOS. Nothing is installed; you
@@ -40,7 +44,7 @@ A ground reads its settings from the environment.
 | `NERVUR_ADDRESSES` | the public addresses written into invitations, by commas |
 | `NERVUR_ORIGINS` | the page origins the web listener answers, by commas |
 | `NERVUR_ALLOW_PRIVATE` | `1` to let the ground dial a private or loopback address |
-| `NERVUR_KEYCHAIN` | on macOS, a keychain service that keeps the seeds in place of files |
+| `NERVUR_UNLOCK` | on macOS, `keychain:<account>` keeps the key in the keychain in place of `state/key` |
 | `NERVUR_HAND` | where the hand's socket is, `state/hand` where unset; a relative path is read from where the command runs |
 | `NERVUR_WAIT` | the longest any ask may run, in milliseconds |
 
@@ -58,18 +62,22 @@ Every other word goes to the ground's hand, a socket in `state/` that
 your user alone may open. Run the command in the ground's folder, or
 name the socket with `--at <socket>` or `NERVUR_HAND`.
 
-`help` prints what the ground holds: each faculty with its methods, and
-each house.
+`help` prints what the ground holds: each faculty with its methods, or
+why it is down, and each house.
 
 ```bash
 npx nervur help
 ```
 
 A faculty is called by its name and a method. Named alone, it prints its
-methods. The ground's own `houses` faculty adds, removes and lists houses.
+methods. Four faculties are the ground's own. `secrets` keeps a secret
+in the ground's sealed drawer. `faculties` stands a faculty on the maker
+its entry names, and `houses` opens a house on its entry.
 
 ```bash
-npx nervur houses add name=main memory='{"body":"ledger"}' classes='{"body":"folder","at":"house"}'
+npx nervur faculties add name=recipe make=module args='{"at":"recipe.ts"}'
+npx nervur faculties add name=payments from=recipe make=payments secrets='["stripe-key"]'
+npx nervur houses add name=main classes='{"body":"folder","at":"house"}' faculties='["payments"]'
 ```
 
 `ask` asks a being of a house, as the house's owner. `--id <being>` names
@@ -99,6 +107,13 @@ JSON where it reads as JSON, and as text where it does not, so
 
 ```bash
 npx nervur ask main hello '{"name":"Ada"}'
+```
+
+A lone `-` reads the one JSON object from standard input instead. So a
+secret never stands on a command line or in a shell's history.
+
+```bash
+npx nervur secrets set - < stripe-key.json
 ```
 
 Each word prints one JSON value, the answer, and its exit code says what

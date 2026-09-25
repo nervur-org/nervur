@@ -10,21 +10,13 @@ import { ClassList } from '../bodies/class-list.ts';
 import { JoinedCarry } from '../bodies/joined-carry.ts';
 import { WebCarry, type Handler, type Held, type HeldSocket } from '../bodies/web-carry.ts';
 import type { BeingClass } from '../foundation.ts';
-import { Ground, type Bodies, type Faculty } from '../ground/ground.ts';
+import { Ground, joinedRegistry, type Registry } from '../ground/ground.ts';
 import { DurableClock } from './durable-clock.ts';
 import { DurableMemory } from './durable-memory.ts';
 import type { DurableStorage } from './durable.ts';
 import { NativeCrypto } from './native-crypto.ts';
-import { SecretCustody } from './secret-custody.ts';
+import { SecretUnlock } from './secret-unlock.ts';
 import { SocketCarry, type Connect } from './socket-carry.ts';
-
-/** What an edge's recipe exports: the faculties it makes, by name, and any custom body. */
-export interface EdgeRecipe {
-  readonly faculties?: (made: { env: Readonly<Record<string, string | undefined>> }) => Readonly<Record<string, Faculty | Promise<Faculty>>>;
-  readonly bodies?: Partial<Bodies>;
-  /** The kinds that hold the ground's own `houses`: its pilot. */
-  readonly houses?: { readonly kinds: readonly string[] };
-}
 
 /** A house's code as the deploy bundles it: what a folder's entry exports. */
 export interface Code {
@@ -34,7 +26,8 @@ export interface Code {
 }
 
 export interface EdgeGroundOptions {
-  readonly recipe?: EdgeRecipe;
+  /** The deploy's own registry, which joins the terrain's as the ladder's first rung. */
+  readonly registry?: Registry;
   /** Each house's code by the name its entry's `bundle` body gives in `at`. */
   readonly code?: Readonly<Record<string, Code>>;
   /** The platform's outbound sockets, `connect` from `cloudflare:sockets`; an edge without it dials the web alone. */
@@ -104,12 +97,6 @@ const listed = (value: string | undefined): string[] =>
     .map((item) => item.trim())
     .filter((item) => item !== '');
 
-// Bodies a recipe adds beside the ground's own, never in their place.
-const joined = <T>(own: Readonly<Record<string, T>>, added: Readonly<Record<string, T>> = {}): Readonly<Record<string, T>> => {
-  for (const name of Object.keys(added)) if (name in own) throw new TypeError(`the recipe names a body ${name}, which is the ground's own`);
-  return { ...own, ...added };
-};
-
 const socketOf = (socket: Socket): HeldSocket => ({
   send: (data) => socket.send(data),
   close: () => socket.close(),
@@ -119,11 +106,12 @@ export const EdgeGround = Object.freeze({
   /**
    * The ground's Durable Object class, which the Worker's module exports
    * under the name its binding gives. Its settings are the Worker's:
-   * `NERVUR_SECRET`, sixty-four hex digits set as a secret, `NERVUR_HAND`,
-   * the key of its hand, set as a secret, and `NERVUR_ADDRESSES`,
-   * `NERVUR_ORIGINS`, `NERVUR_ALLOW_PRIVATE` and `NERVUR_WAIT`.
+   * `NERVUR_SECRET`, the ground's key, sixty-four hex digits set as a
+   * secret, `NERVUR_HAND`, the key of its hand, set as a secret, and
+   * `NERVUR_ADDRESSES`, `NERVUR_ORIGINS`, `NERVUR_ALLOW_PRIVATE` and
+   * `NERVUR_WAIT`.
    */
-  object({ recipe = {}, code = {}, connect }: EdgeGroundOptions = {}): new (state: DurableState, env: Readonly<Record<string, unknown>>) => EdgeObject {
+  object({ registry, code = {}, connect }: EdgeGroundOptions = {}): new (state: DurableState, env: Readonly<Record<string, unknown>>) => EdgeObject {
     return class implements EdgeObject {
       readonly #state: DurableState;
       readonly #env: Readonly<Record<string, string | undefined>>;
@@ -145,43 +133,34 @@ export const EdgeGround = Object.freeze({
       async #boot(): Promise<Woken> {
         const env = this.#env;
         const storage = this.#state.storage;
-        const custody = new SecretCustody(storage, env.NERVUR_SECRET);
-        const memory = new DurableMemory(storage, 'ground');
         const clock = new DurableClock(storage);
         const allowPrivate = env.NERVUR_ALLOW_PRIVATE === '1';
         // A Worker learns no name it is reached by before a request, so it writes only the addresses it is given.
         const web = new WebCarry({ allowPrivate, origins: listed(env.NERVUR_ORIGINS), addresses: listed(env.NERVUR_ADDRESSES) });
         const carries = { https: web, http: web, wss: web, ws: web };
         const carry = new JoinedCarry(connect === undefined ? carries : { ...carries, tcp: new SocketCarry({ connect, allowPrivate }) });
-        const bodies: Bodies = {
-          memory: joined({ durable: ({ house }) => new DurableMemory(storage, `house-${house}`) }, recipe.bodies?.memory),
-          classes: joined(
-            {
-              bundle: ({ args }) => {
-                const bundled = typeof args.at === 'string' && Object.hasOwn(code, args.at) ? code[args.at] : undefined;
-                if (bundled === undefined) throw new Error(`the deploy bundles no code named ${String(args.at)}`);
-                return new ClassList(bundled);
-              },
+        const own: Registry = {
+          classes: {
+            bundle: ({ args }) => {
+              const bundled = typeof args.at === 'string' && Object.hasOwn(code, args.at) ? code[args.at] : undefined;
+              if (bundled === undefined) throw new Error(`the deploy bundles no code named ${String(args.at)}`);
+              return new ClassList(bundled);
             },
-            recipe.bodies?.classes,
-          ),
+          },
         };
         const wait = env.NERVUR_WAIT === undefined ? WAIT : Number(env.NERVUR_WAIT);
         if (!(Number.isSafeInteger(wait) && wait > 0)) throw new TypeError('NERVUR_WAIT is whole milliseconds above zero');
-        const faculties = recipe.faculties;
         const ground = await Ground.open({
-          custody,
-          memory,
+          unlock: new SecretUnlock(env.NERVUR_SECRET),
+          memory: new DurableMemory(storage, 'ground'),
           carry,
-          bodies,
+          registry: joinedRegistry(own, registry),
           clock,
           crypto: new NativeCrypto(),
           wait,
           lazy: true,
-          ...(faculties === undefined ? {} : { recipe: () => faculties({ env }) }),
-          ...(recipe.houses === undefined ? {} : { houses: recipe.houses }),
         });
-        return { ground, clock, handlers: [web, ...ground.handlers] };
+        return { ground, clock, handlers: [web, ground.handler] };
       }
 
       async fetch(request: Request): Promise<Response> {

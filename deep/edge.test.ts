@@ -7,12 +7,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before } from 'node:test';
-import type { Carry, Clock, Crypto, Custody, Keys, Memory, Sent } from 'nervur';
+import type { Carry, Clock, Crypto, Memory, Sent } from 'nervur';
 import { TcpCarry } from 'nervur/node';
 import { carrySuite } from '../test/suites/carry.ts';
 import { clockSuite } from '../test/suites/clock.ts';
 import { cryptoSuite } from '../test/suites/crypto.ts';
-import { custodySuite } from '../test/suites/custody.ts';
 import { memorySuite } from '../test/suites/memory.ts';
 import { fromWire, toWire } from './fixtures/edge/wire.ts';
 import { built, started, type Running } from './fixtures/edge/workerd.ts';
@@ -68,15 +67,6 @@ memorySuite('DurableMemory on workerd', () => {
   } satisfies Memory;
 });
 
-custodySuite('SecretCustody on workerd', () => {
-  const id = call('custody/open');
-  return {
-    keys: async ({ house }) => ({ ward: async () => call('custody/ward', { id: await id, house }) }) as unknown as Keys,
-    seed: async ({ house }) => call('custody/seed', { id: await id, house }) as Promise<string>,
-    keep: async ({ house, seed }) => void (await call('custody/keep', { id: await id, house, seed })),
-  } satisfies Custody;
-});
-
 // Each wait and cancel reaches the object in the order the suite made it; a wait's end is read after.
 clockSuite('DurableClock on workerd', () => {
   let turn: Promise<unknown> = Promise.resolve();
@@ -95,7 +85,7 @@ clockSuite('DurableClock on workerd', () => {
 });
 
 carrySuite('SocketCarry on workerd', async () => {
-  const one: Carry = { send: (options) => call('carry/send', options) as Promise<Sent>, at: () => [] };
+  const one: Carry = { send: (options) => call('carry/send', options) as Promise<Sent>, at: () => [], vouched: async () => [] };
   const two = new TcpCarry({ host: '127.0.0.1', allowPrivate: true });
   const three = new TcpCarry({ host: '127.0.0.1', allowPrivate: true });
   return {

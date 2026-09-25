@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { ClassList, Ground, WebCarry } from 'nervur';
-import { FileMemory, FolderCustody, NodeGround } from 'nervur/node';
+import { FileMemory, FileUnlock, NodeGround } from 'nervur/node';
 import { Steward } from '../fixtures/world/steward.ts';
 
 const folder = new URL('../fixtures/node/', import.meta.url).pathname;
@@ -16,21 +16,21 @@ test('A holder that dials only the web reaches a NodeGround whose invitation nam
   t.after(() => rm(state, { recursive: true, force: true }));
   const far = await NodeGround.open({ folder, state, env: { NERVUR_TCP_PORT: '0', NERVUR_HTTP_PORT: '0', NERVUR_BIND: '127.0.0.1', NERVUR_ALLOW_PRIVATE: '1' } });
   t.after(() => far.close());
-  assert.ok((await far.ground.add('main', { memory: { body: 'ledger' }, classes: { body: 'folder', at: 'two' } })).ward !== undefined);
+  assert.ok((await far.ground.add('main', { classes: { body: 'folder', at: 'two' } })).ward !== undefined);
 
   // A ground whose one carry is the web, as a page or a service worker has.
   const web = new WebCarry({ allowPrivate: true });
   const near = await Ground.open({
-    custody: new FolderCustody(join(state, 'near', 'seeds')),
-    memory: new FileMemory(join(state, 'near', 'record')),
+    unlock: new FileUnlock(join(state, 'near', 'key')),
+    memory: new FileMemory(join(state, 'near', 'drawer')),
     carry: web,
-    bodies: { memory: { file: ({ house }) => new FileMemory(join(state, 'near', `${house}.memory`)) }, classes: { steward: () => new ClassList({ steward: Steward }) } },
+    registry: { classes: { steward: () => new ClassList({ steward: Steward }) } },
   });
   t.after(async () => {
     await near.close();
     await web.close();
   });
-  await near.add('near', { memory: { body: 'file' }, classes: { body: 'steward' } });
+  await near.add('near', { classes: { body: 'steward' } });
 
   const offered = await far.ground.ask({ house: 'main', method: 'offer' });
   assert.ok('result' in offered);

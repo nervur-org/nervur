@@ -188,25 +188,35 @@ method the tool's name, its args schema the tool's input schema, and its
 hints the tool's annotations. A moved describe is a changed list of
 tools.
 
-## The recipe
+## The registry
 
-The ground makes the face from its recipe, as it makes any faculty. The
-house's entry names `face` among its faculties, and the steward's `arm`
-hands the face its signup.
+The ground makes the face from a registry, as it makes any faculty. A
+NodeGround stands the module below with the maker `module`, and the
+face from it by an entry that names `from`. The house's entry names
+`face` among its faculties, and the steward's `arm` hands the face its
+signup.
 
 ```ts
 // recipe.ts
 import { Api, apiOffer } from './api.ts';
 
-export const faculties = () => ({
-  face: apiOffer(new Api()),
-});
+// A registry: the ground makes the face when an entry names its maker.
+export const faculties = {
+  face: () => apiOffer(new Api()),
+};
+```
+
+```bash
+npx nervur faculties add name=recipe make=module args='{"at":"recipe.ts"}'
+npx nervur faculties add name=face from=recipe make=face
 ```
 
 ## Testing it
 
 A BenchGround answers a request with its faculties' handlers in turn, as
-a ground's one listener does, so the face is tested with no socket.
+a ground's one listener does, so the face is tested with no socket. The
+test hands the bench the registry, and stands the face through the
+ground's hand, as an owner does.
 
 ```ts
 // api.test.ts
@@ -217,8 +227,9 @@ import * as desk from './desk.ts';
 import { faculties } from './recipe.ts';
 
 test('A person signs up at the face, and reaches their member as an API and as tools', async (t) => {
-  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'desk', modules: { desk }, recipe: faculties });
+  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'desk', modules: { desk }, registry: { faculties } });
   t.after(() => ground.down());
+  await ground.hand({ faculty: 'faculties', method: 'add', args: { name: 'face', make: 'face' } });
   await ground.add('desk', 'desk', { faculties: ['face'] });
   await ground.ask({ house: 'desk', method: 'arm' });
   const web = async (path: string, body?: unknown, token?: string) =>

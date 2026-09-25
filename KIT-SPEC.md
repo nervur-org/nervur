@@ -19,9 +19,10 @@ Asks to one being run one at a time, in the order they arrive. An ask
 marked `readOnly`, and the empty ask, run beside them. Asks to two beings
 run side by side.
 
-**Question 2.** The ground that runs the house holds its seed, in a
-custody of one seed for each house. A keys body gives signatures and
-agreements from it, and never the seed itself. `House.open`
+**Question 2.** The ground that runs the house holds its seed, sealed in
+the ground's drawer under the one key the ground holds outside itself. A
+keys body gives signatures and agreements from the seed, and never the
+seed itself. `House.open`
 hands the ground a hand, `ask({ id, method, args })`, which asks the being
 `id`, or the steward where none is named, as the occupant `root`. The
 steward places and removes every other being. Every other being holds the
@@ -60,10 +61,12 @@ ground. None of these names crosses a door.
 ## What a kit keeps
 
 **Question 6.** A ward's seed is sixty-four lowercase hex digits, and
-anything else opens no house. `SeedKeys` takes it as a string. `FileKeys`
-reads it from a file only its owner may read, and `KeychainKeys` from the
-macOS keychain. Both make a fresh seed where none is kept. The house never
-holds the seed, and asks its keys body for operations alone. The lock is
+anything else opens no house. `SeedKeys` takes it as a string. A ground
+draws a fresh seed when a house is first added, and keeps it sealed in
+its drawer. The drawer's key rests outside the ground, in a file only
+its owner may read, the macOS keychain, a Worker's secret, or the
+platform's keystore. The house never holds the seed, and asks its keys
+body for operations alone. The lock is
 derived, not drawn. It is the ML-KEM-768 key pair from 64 bytes of
 HKDF-SHA-256 over the seed, under the label `nervur-lock`. It is made on
 first use and is the same every time. So a ward holds one lock, and its

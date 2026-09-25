@@ -22,10 +22,10 @@ const world = async () => {
     network,
     host: 'shop',
     names: ['shop.example'],
-    faculties: faculties(),
-    bodies: { classes: { folder: () => FolderClasses.open(new URL('../fixtures/guides/classes/', import.meta.url)) } },
+    registry: { faculties, classes: { folder: () => FolderClasses.open(new URL('../fixtures/guides/classes/', import.meta.url)) } },
   });
-  await shop.add('shop', { memory: { body: 'fake' }, classes: { body: 'folder' }, faculties: ['payments'] });
+  await shop.hand({ faculty: 'faculties', method: 'add', args: { name: 'payments', make: 'payments' } });
+  await shop.add('shop', { classes: { body: 'folder' }, faculties: ['payments'] });
   const courier = await BenchGround.open({ network, host: 'courier', names: ['courier.example'], modules: { courier: { steward: Steward, beings: [Depot] } } });
   await courier.add('courier');
   const ask = (method: string, args: Json = {}) => shop.ask({ house: 'shop', method, args });

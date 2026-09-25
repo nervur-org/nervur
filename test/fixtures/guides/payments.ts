@@ -16,7 +16,8 @@ type Answer = { result: { pending: boolean } } | { error: { message: string } };
 /**
  * A payment provider in the ground's process. It answers a call id it has
  * seen with the answer it gave, so an effect sent twice charges once. A
- * provider that changes the world keeps these where a restart keeps them.
+ * provider that changes the world keeps these in the memory its maker
+ * receives, where a restart and a move keep them.
  */
 export class Payments {
   readonly #answered = new Map<string, Answer>();

@@ -1,10 +1,22 @@
-// The clock and the carry a ground hands each house are bodies of their
-// contracts like any other, and held to the same suites.
+// The views a ground hands out of what it holds whole are bodies of their
+// contracts like any other, and held to the same suites: each house's
+// clock and carry, and the prefixed and sealed memories a house and a
+// faculty keep their places in.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { FakeNetwork } from 'nervur/bench';
 import { FakeClock } from '../../../src/bench/fake-clock.ts';
-import { HouseCarry, HouseClock } from '../../../src/ground/ground.ts';
+import { FakeMemory } from '../../../src/bench/fake-memory.ts';
+import { NobleCrypto } from '../../../src/bodies/noble-crypto.ts';
+import { StrictTools } from '../../../src/bodies/strict-tools.ts';
+import { HouseCarry, HouseClock, SealedMemory, ViewMemory } from '../../../src/ground/views.ts';
 import { carrySuite } from '../../suites/carry.ts';
 import { clockSuite } from '../../suites/clock.ts';
+import { memorySuite } from '../../suites/memory.ts';
+
+const crypto = new NobleCrypto();
+const tools = new StrictTools();
+const key = (fill: number) => new Uint8Array(32).fill(fill);
 
 clockSuite('HouseClock', () => {
   const clock = new FakeClock();
@@ -38,4 +50,32 @@ carrySuite('HouseCarry', async () => {
     },
     close: async () => undefined,
   };
+});
+
+// Each run of the suite shares its memory with a neighbour's view, which it must never see.
+memorySuite('ViewMemory', async () => {
+  const whole = new FakeMemory();
+  await new ViewMemory(whole, 'other/').write({ writes: { p: { a: new Uint8Array([7]) } }, expect: { p: null } });
+  return new ViewMemory(whole, 'mine/');
+});
+
+memorySuite('SealedMemory', async () => {
+  const whole = new FakeMemory();
+  await new SealedMemory(whole, key(2), crypto, tools).write({ writes: { p: { a: new Uint8Array([7]) } }, expect: { p: null } });
+  return new SealedMemory(new ViewMemory(whole, 'mine/'), key(1), crypto, tools);
+});
+
+test('A sealed memory keeps no place, no entry and no byte in the clear, and opens under its own key alone', async () => {
+  const whole = new FakeMemory();
+  const sealed = new SealedMemory(whole, key(1), crypto, tools);
+  await sealed.write({ writes: { 'call-ids': { 'call-7': tools.utf8('pulsed') } }, expect: { 'call-ids': null } });
+  const [stored] = await whole.list();
+  assert.ok(!stored.includes('call'), 'the place is named by a digest');
+  const { entries } = await whole.read({ place: stored });
+  const [[name, bytes]] = Object.entries(entries);
+  assert.ok(!name.includes('call') && !new TextDecoder().decode(bytes).includes('pulsed'), 'the entry is named by a digest and sealed');
+  const thief = new SealedMemory(whole, key(9), crypto, tools);
+  assert.deepEqual(await thief.list(), [], 'another key finds none of it');
+  assert.deepEqual(await thief.read({ place: 'call-ids' }), { entries: {}, version: null });
+  assert.deepEqual(new TextDecoder().decode((await sealed.read({ place: 'call-ids' })).entries['call-7']), 'pulsed', 'its own key reads it back');
 });

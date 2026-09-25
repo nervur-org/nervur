@@ -52,7 +52,7 @@ test('The packed tarball ships dist alone, and runs a written ground and the gui
   copyFileSync(join(fixtures, 'node/ground.ts'), join(stranger, 'node/ground.ts'));
   copyFileSync(join(fixtures, 'world/steward.ts'), join(stranger, 'world/steward.ts'));
   const port = String(40_000 + Math.floor(Math.random() * 20_000));
-  far = await ground('node/ground.ts', { cwd: stranger, env: { NERVUR_SEED: 'c'.repeat(64), GROUND_PORT: port, GROUND_MEMORY: join(folder, 'far.memory'), GROUND_OFFER: '1' } });
+  far = await ground('node/ground.ts', { cwd: stranger, env: { NERVUR_KEY: 'c'.repeat(64), GROUND_PORT: port, GROUND_MEMORY: join(folder, 'far.memory'), GROUND_OFFER: '1' } });
 
   const near = await (await groundOne(t, { dials: true })).open('near');
   const standing = (await hand(near.ask, 'adopt', { invitation: far.line.offered!.result.handle })) as string;
@@ -74,7 +74,7 @@ test('The packed tarball ships dist alone, and runs a written ground and the gui
   const readmeEnv = { env: { NERVUR_TCP_PORT: String(Number(port) + 1), NERVUR_BIND: '127.0.0.1' }, cwd: readme };
   let greeter = await up(cli, '.', readmeEnv);
   t.after(() => stop(greeter.child));
-  assert.equal(nervur(readme, 'houses', 'add', 'name=main', 'memory={"body":"ledger"}', 'classes={"body":"folder","at":"house"}').code, 0);
+  assert.equal(nervur(readme, 'houses', 'add', 'name=main', 'classes={"body":"folder","at":"house"}').code, 0);
   assert.deepEqual(nervur(readme, 'ask', 'main', 'hello', 'name=Ada'), { code: 0, out: '{"result":"Hello, Ada. You are number 1."}' });
   await stop(greeter.child);
   greeter = await up(cli, '.', readmeEnv);
@@ -89,7 +89,9 @@ test('The packed tarball ships dist alone, and runs a written ground and the gui
   const shopEnv = { env: { NERVUR_TCP_PORT: String(Number(port) + 2), NERVUR_BIND: '127.0.0.1' }, cwd: shop };
   let guide = await up(cli, '.', shopEnv);
   t.after(() => stop(guide.child));
-  assert.equal(nervur(shop, 'houses', 'add', 'name=shop', 'memory={"body":"ledger"}', 'classes={"body":"folder","at":"classes"}', 'faculties=["payments"]').code, 0);
+  assert.equal(nervur(shop, 'faculties', 'add', 'name=recipe', 'make=module', 'args={"at":"recipe.ts"}').code, 0);
+  assert.equal(nervur(shop, 'faculties', 'add', 'name=payments', 'from=recipe', 'make=payments').code, 0);
+  assert.equal(nervur(shop, 'houses', 'add', 'name=shop', 'classes={"body":"folder","at":"classes"}', 'faculties=["payments"]').code, 0);
   assert.equal(nervur(shop, 'ask', 'shop', 'open', 'id=first').code, 0);
   await stop(guide.child);
   guide = await up(cli, '.', shopEnv);

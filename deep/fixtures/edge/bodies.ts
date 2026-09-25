@@ -3,10 +3,8 @@
 // `{ error }`. They live in one Durable Object, on its real storage, its
 // real alarm and the platform's own sockets and Web Crypto.
 import { connect } from 'cloudflare:sockets';
-import { DurableClock, DurableMemory, NativeCrypto, SecretCustody, SocketCarry, type DurableStorage } from 'nervur/edge';
+import { DurableClock, DurableMemory, NativeCrypto, SocketCarry, type DurableStorage } from 'nervur/edge';
 import { fromWire, toWire } from './wire.ts';
-
-const SECRET = '5e'.repeat(32);
 
 interface Namespace {
   idFromName(name: string): unknown;
@@ -20,7 +18,6 @@ export class Bodies {
   readonly #clock: DurableClock;
   readonly #crypto = new NativeCrypto();
   readonly #carry = new SocketCarry({ connect, allowPrivate: true });
-  readonly #custodies: SecretCustody[] = [];
   // Each wait by the token its asking was answered with, so a wait replaced under its id still ends as its own.
   readonly #waits = new Map<number, Promise<boolean>>();
   readonly #ops: Readonly<Record<string, Op>>;
@@ -33,10 +30,6 @@ export class Bodies {
       'memory/read': ({ name, place }) => memory(name).read({ place: place as string }),
       'memory/list': ({ name }) => memory(name).list(),
       'memory/write': ({ name, writes, expect }) => memory(name).write({ writes: writes as never, expect: expect as never }),
-      'custody/open': () => this.#custodies.push(new SecretCustody(this.#storage, SECRET)) - 1,
-      'custody/ward': async ({ id, house }) => (await this.#custodies[id as number].keys({ house: house as string })).ward(),
-      'custody/seed': ({ id, house }) => this.#custodies[id as number].seed({ house: house as string }),
-      'custody/keep': ({ id, house, seed }) => this.#custodies[id as number].keep({ house: house as string, seed: seed as string }),
       'clock/now': () => this.#clock.now(),
       'clock/wait': ({ id, ms }) => {
         const token = this.#waits.size;

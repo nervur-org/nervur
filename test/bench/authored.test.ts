@@ -16,8 +16,8 @@ test('A custom registry brings new code to a house, which keeps its rows', async
     const module = versions[live];
     return new ClassList({ steward: module.steward, beings: module.beings });
   };
-  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'shop', names: ['shop.example'], bodies: { classes: { registry } } });
-  const entry = { memory: { body: 'fake' }, classes: { body: 'registry' } };
+  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'shop', names: ['shop.example'], registry: { classes: { registry } } });
+  const entry = { classes: { body: 'registry' } };
   const first = await ground.add('store', entry);
   await ground.ask({ house: 'store', method: 'bear', args: { kind: 'org.example.host', id: 'bob' } });
   assert.deepEqual(await ground.ask({ house: 'store', id: 'bob', method: 'greet' }), { result: 'bob greets root' });
@@ -31,7 +31,7 @@ test('A custom registry brings new code to a house, which keeps its rows', async
 
 test('A custom body never takes the place of the bench’s own', async () => {
   await assert.rejects(
-    BenchGround.open({ network: new FakeNetwork(), host: 'x', bodies: { memory: { fake: () => { throw new Error('never made'); } } } }),
+    BenchGround.open({ network: new FakeNetwork(), host: 'x', registry: { memory: { fake: () => { throw new Error('never made'); } } } }),
     /the body fake is the bench's own/,
   );
 });

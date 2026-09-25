@@ -11,7 +11,7 @@ The shop has three classes and one faculty.
 - `Order` is one order, from its first item to its shipping.
 - `Shop` is the steward, the being that runs the house.
 - `Lobby` is the public being, which strangers may ask.
-- `Payments` is a faculty that charges money, which the ground's
+- `Payments` is a faculty that charges money, which a maker in
   `recipe.ts` makes.
 
 ## Words
@@ -31,7 +31,8 @@ The shop has three classes and one faculty.
 | role | a named test over the asker and her cells |
 | state | a name read from her cells that decides which asks exist |
 | house | what holds beings, keeps their cells, and seals every ask |
-| ground | the process houses run in, holding their seeds, faculties and hands |
+| ground | the process houses run in, holding one key and sealing their seeds, faculties and secrets under it |
+| registry | code that makes faculties and bodies by name, for the ground to stand |
 
 ## A being
 
@@ -587,7 +588,8 @@ type Answer = { result: { pending: boolean } } | { error: { message: string } };
 /**
  * A payment provider in the ground's process. It answers a call id it has
  * seen with the answer it gave, so an effect sent twice charges once. A
- * provider that changes the world keeps these where a restart keeps them.
+ * provider that changes the world keeps these in the memory its maker
+ * receives, where a restart and a move keep them.
  */
 export class Payments {
   readonly #answered = new Map<string, Answer>();
@@ -615,28 +617,31 @@ export class Payments {
 export const paymentsOffer = (payments: Payments): Offer => ({ blueprint: PaymentsBlueprint, object: payments, window: 7 * 86_400_000 });
 ```
 
-An offer is `{ blueprint, object, kinds?, window?, handler?, stop? }`.
-The object answers each call with its call id, and one that changes the
-world answers a call id it has seen with the answer it gave. The ground's
-recipe makes each faculty by name, and `kinds` grants it to the classes
-it names. [Writing a faculty](FACULTIES.md) teaches the craft whole, with a
-faculty written in Python.
+An offer is `{ blueprint, object, kinds?, window? }`. The object answers
+each call with its call id, and one that changes the world answers a
+call id it has seen with the answer it gave. A registry holds a maker
+for each faculty by name. The ground stands a faculty when an entry names
+its maker, and the entry's `kinds` grants it to the classes it names.
+[Writing a faculty](FACULTIES.md) teaches the craft whole, with a faculty
+written in Python.
 
 ```ts
 // recipe.ts
 import { Payments, paymentsOffer } from './payments.ts';
 
-export const faculties = () => ({
-  payments: paymentsOffer(new Payments()),
-});
+// A registry: the ground makes each faculty an entry names, by its maker here.
+export const faculties = {
+  payments: () => paymentsOffer(new Payments()),
+};
 ```
 
 ## A ground
 
 A ground is the process houses run in, and you write none. `nervur up`
-runs one on a folder: the recipe of its faculties, and a folder of code
-for each house. It keeps a record of its houses, and opens each on the
-bodies the record names.
+runs one on a folder of code: a folder for each house, and each module
+your entries name. It holds one key in `state/`, and keeps every entry
+sealed in its drawer: which faculties stand, and which houses open on
+which bodies.
 
 ### The shop's folder
 
@@ -676,11 +681,14 @@ The ground boots in one order, and a stop is that order reversed, on an
 interrupt and on `SIGTERM`.
 
 1. **Lock.** One ground to its state.
-2. **Its own.** Its seeds and its record open.
-3. **Faculties.** The recipe makes each, in its order.
-4. **Houses.** Each house of the record opens on its bodies.
-5. **Hook.** The listeners, then the hand on its socket.
-6. **Ready.** It tells systemd it is up, where systemd waits.
+2. **Key.** Its key is read from `state/key`, drawn there on the first
+   start.
+3. **Drawer.** Its ledger opens, and the key opens its drawer.
+4. **Ladder.** Each faculty its drawer names stands on its registry. One
+   that fails stays down, and says why.
+5. **Houses.** Each house of the drawer opens on its bodies.
+6. **Hook.** The listeners, then the hand on its socket.
+7. **Ready.** It tells systemd it is up, where systemd waits.
 
 It is set by its environment.
 
@@ -693,26 +701,45 @@ It is set by its environment.
 | `NERVUR_ALLOW_PRIVATE` | `1` to dial private and loopback addresses, as two grounds on one machine do |
 | `NERVUR_BIND` | the address it listens on, `0.0.0.0` where unset |
 | `NERVUR_STATE` | its state, `state/` in its folder where unset |
-| `NERVUR_KEYCHAIN` | a keychain service holding its seeds on macOS, in place of files |
+| `NERVUR_UNLOCK` | `keychain:<account>` keeps its key in the macOS keychain, in place of `state/key` |
 | `NERVUR_WAIT` | its bound on every ask, in milliseconds |
 
-The state holds each house's seed in a file its owner alone reads, and
-each house's ledger. A ledger appends every write and never rewrites
-one. Its witness keeps where it last stood, and a ledger behind its
-witness is refused. So a ledger restored alone cannot replay what a
-house already answered, though a whole state folder restored with its
-witnesses is not seen. A lost seed is a lost house.
+The state holds the key in a file its owner alone reads, and the
+ground's ledger. Every house keeps its rows in that ledger, sealed. A
+ledger appends every write and never rewrites one. Its witness keeps
+where it last stood, and a ledger behind its witness is refused. So a
+ledger restored alone cannot replay what a house already answered,
+though a whole state folder restored with its witness is not seen. A
+lost key is a lost ground.
+
+The ladder stands once, and the ground stands it again at every start.
+The first entry stands the folder's `recipe.ts` as a registry, by the
+ground's own maker `module`. The second makes the payments from it.
+
+```bash
+npx nervur faculties add name=recipe make=module args='{"at":"recipe.ts"}'
+```
+
+```bash
+npx nervur faculties add name=payments from=recipe make=payments
+```
 
 A house is added once, and the ground opens it again at every start.
 
 ```bash
-npx nervur houses add name=shop memory='{"body":"ledger"}' classes='{"body":"folder","at":"classes"}' faculties='["payments"]'
+npx nervur houses add name=shop classes='{"body":"folder","at":"classes"}' faculties='["payments"]'
 ```
 
-`memory` and `classes` name the bodies the house is handed. `ledger` and
-`folder` are the ground's own, and a recipe may add more, a git registry
-or another store among them. `faculties` names what the house receives,
-and within it each offer's `kinds` names the classes that hold it.
+`classes` names the body of the house's code. `folder` is the ground's
+own, and a registry may add more, a git repository among them. A house
+keeps its rows in the ground's ledger unless its entry names a `memory`
+body. `faculties` names what the house receives, and within it each
+faculty's entry names in `kinds` the classes that hold it.
+
+A secret reaches a faculty the same way, and never through the
+environment. `npx nervur secrets set -` reads `{ name, value }` from
+standard input into the ground's sealed drawer. A faculty's entry names
+the secrets its maker receives in `secrets`.
 
 ### The hand
 
@@ -774,7 +801,7 @@ with `loginctl enable-linger`. On macOS, the agent goes to
 
 ### In a page
 
-`BrowserGround.open({ recipe })` from `nervur/browser` runs the same
+`BrowserGround.open({ registry })` from `nervur/browser` runs the same
 houses in a page. Every tab and the service worker of one origin share
 one ground: the one holding the Web Lock runs it, and the others reach
 its hand over a `BroadcastChannel`. When it closes, the next opens the
@@ -782,12 +809,12 @@ ground from the same storage. `hand` answers the same three requests
 the command sends: `describe`, a faculty's method, and an ask of a being
 in a named house.
 
-Its bodies are the browser's. Seeds are sealed under an AES key that
-IndexedDB holds unextractable, and memory is IndexedDB, named
-`indexeddb` in an entry. Classes load from the page's own origin through
-the `origin` body, `{ body: 'origin', at: '/house/index.js' }`, and a
-path off the origin is refused. The recipe is the object you pass: its
-faculties, made by a function, and any custom body.
+Its bodies are the browser's. The ground's key is sealed under an AES
+key that IndexedDB holds unextractable, and its memory is IndexedDB.
+Classes load from the page's own origin through the `origin` body, `{
+body: 'origin', at: '/house/index.js' }`, and a path off the origin is
+refused. The registry is the object you pass: makers of faculties, and
+of any custom body, beside the terrain's own.
 
 Any script on the origin can use the ground's keys, so the ground is
 whoever serves the origin's script. Give it an origin of its own, serve
@@ -811,10 +838,10 @@ app's web view, on two interfaces the shell fills in native code:
   which lands every write only where each key in `expect` still holds
   what it names, and answers whether it landed.
 
-The library holds the rest. Each house's seed goes into the secret
-store, and each memory into the native store, which the system never
-evicts as it may a web view's storage. A push token reaches the ground
-through a faculty your recipe makes.
+The library holds the rest. The ground's key goes into the secret store,
+and its memory into the native store, which the system never evicts as
+it may a web view's storage. A push token reaches the ground through a
+faculty your registry makes.
 
 ## What the house guarantees
 
@@ -871,5 +898,8 @@ at her call, or where an ask arrives.
 - A send to a private address, unless its ground allows it.
 - A call on the house beside `House.open`, `door` and `ask`.
 - A faculty in a house's code. Faculties are the ground's.
-- A custom body for a ground's own custody or memory.
+- A drawer opened with a key that did not seal it.
+- A secret read by a being, a describe or anyone but a maker its entry
+  names.
+- A faculty entry for `secrets` or `moves`, which the hand alone reaches.
 - A ground an owner must write. Each terrain's ships.

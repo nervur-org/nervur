@@ -3,5 +3,5 @@
 // bodies it passes, for whoever writes a ground of their own.
 export { BrowserGround } from './browser-ground.ts';
 export { IndexedDbMemory } from './indexeddb-memory.ts';
-export { IndexedDbShelf, LockedCustody, type Shelf } from './locked-custody.ts';
+export { IndexedDbShelf, LockedUnlock, type Shelf } from './locked-unlock.ts';
 export { OriginClasses } from './origin-classes.ts';

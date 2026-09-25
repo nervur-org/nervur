@@ -2,20 +2,20 @@
 // Node gives as a page does: two grounds opened in one process are two tabs
 // of one origin. Its stores are the test's own, in memory and shared by
 // both, as an origin's IndexedDB is. That reaches past its entry, since a
-// ground's custody and memory are its terrain's alone, so this is a proof;
+// ground's unlock and memory are its terrain's alone, so this is a proof;
 // the browser's own run proves IndexedDB itself.
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import type { Memory } from 'nervur';
+import type { Memory, Registry } from 'nervur';
 import { need } from 'nervur/being';
 import { FakeMemory } from '../../../src/bench/fake-memory.ts';
-import { LockedCustody, type BrowserGround, type Shelf } from 'nervur/browser';
+import { LockedUnlock, type BrowserGround, type Shelf } from 'nervur/browser';
 import { openOn, type BrowserPlatform, type Stores } from '../../../src/browser/browser-ground.ts';
 
 const origin = pathToFileURL(new URL('../../fixtures/', import.meta.url).pathname).href;
 
-// One origin's storage: its custody's shelf and its memories, by name.
+// One origin's storage: its unlock's shelf and its memories, by name.
 const originStorage = () => {
   const kept = new Map<string, unknown>();
   const shelf: Shelf = {
@@ -26,7 +26,7 @@ const originStorage = () => {
   };
   const memories = new Map<string, Memory>();
   const stores: Stores = {
-    custody: async () => new LockedCustody(shelf),
+    unlock: async () => new LockedUnlock(shelf),
     memory: async (name) => {
       if (!memories.has(name)) memories.set(name, new FakeMemory());
       return memories.get(name)!;
@@ -36,13 +36,13 @@ const originStorage = () => {
 };
 
 // A tab of the origin, closed when the test ends.
-const tab = async (t: TestContext, name: string, stores: Stores, { platform = {}, recipe }: { platform?: Partial<BrowserPlatform>; recipe?: Parameters<typeof openOn>[0]['recipe'] } = {}): Promise<BrowserGround> => {
-  const opened = await openOn({ name, platform: { origin, persist: async () => true, ...platform }, ...(recipe === undefined ? {} : { recipe }) }, stores);
+const tab = async (t: TestContext, name: string, stores: Stores, { platform = {}, registry }: { platform?: Partial<BrowserPlatform>; registry?: Registry } = {}): Promise<BrowserGround> => {
+  const opened = await openOn({ name, platform: { origin, persist: async () => true, ...platform }, ...(registry === undefined ? {} : { registry }) }, stores);
   t.after(() => opened.close());
   return opened;
 };
 
-const shop = { memory: { body: 'indexeddb' }, classes: { body: 'origin', at: 'world/shop.ts' } };
+const shop = { classes: { body: 'origin', at: 'world/shop.ts' } };
 
 test('The first tab runs the ground, and a second reaches its hand', async (t) => {
   const { stores } = originStorage();
@@ -91,10 +91,11 @@ test('An ask in flight when the tab running the ground closes is told to ask aga
       },
     },
   };
-  const recipe = { faculties: () => ({ slow }) };
-  const first = await tab(t, 'in-flight', stores, { recipe });
+  const registry: Registry = { faculties: { slow: () => slow } };
+  const first = await tab(t, 'in-flight', stores, { registry });
   await first.led();
-  const second = await tab(t, 'in-flight', stores, { recipe });
+  await first.hand({ faculty: 'faculties', method: 'add', args: { name: 'slow', make: 'slow' } });
+  const second = await tab(t, 'in-flight', stores, { registry });
   const asked = second.hand({ faculty: 'slow', method: 'wait' });
   // The first tab has the ask before it closes.
   await reached;
@@ -109,9 +110,9 @@ test('Closing lets go of every store its boot opened', async (t) => {
   const closed: string[] = [];
   // Stores that say when they are let go, as IndexedDB's connections are.
   const only = await tab(t, 'closing', {
-    custody: async (name) => {
-      const custody = await stores.custody(name);
-      return { keys: (options: { house: string }) => custody.keys(options), close: () => closed.push(name) };
+    unlock: async (name) => {
+      const unlock = await stores.unlock(name);
+      return { key: () => unlock.key(), close: () => closed.push(name) };
     },
     memory: async (name) => {
       const memory = await stores.memory(name);
@@ -121,7 +122,7 @@ test('Closing lets go of every store its boot opened', async (t) => {
   await only.led();
   await only.hand({ faculty: 'houses', method: 'add', args: { name: 'shop', ...shop } });
   await only.close();
-  assert.deepEqual(closed.sort(), ['closing-custody', 'closing-ground', 'closing-house-shop']);
+  assert.deepEqual(closed.sort(), ['closing-ground', 'closing-unlock'], 'its houses keep their places in the ground’s one memory');
 });
 
 test('Its describe says whether the browser keeps its storage', async (t) => {
@@ -136,28 +137,28 @@ test('Its classes come from its origin, and a path off it is refused', async (t)
   const { stores } = originStorage();
   const only = await tab(t, 'off-origin', stores);
   await only.led();
-  const off = await only.hand({ faculty: 'houses', method: 'add', args: { name: 'stray', memory: { body: 'indexeddb' }, classes: { body: 'origin', at: '../../src/index.ts' } } });
+  const off = await only.hand({ faculty: 'houses', method: 'add', args: { name: 'stray', classes: { body: 'origin', at: '../../src/index.ts' } } });
   assert.deepEqual(off, { error: { message: `the house stray did not open: the code at ../../src/index.ts stands off ${origin}` } });
 });
 
-test('Custody keeps each seed sealed, and never as bytes a script could read', async (t) => {
+test('The unlock keeps the ground’s key sealed, and never as bytes a script could read', async (t) => {
   const { stores, kept } = originStorage();
   const only = await tab(t, 'sealed', stores);
   await only.led();
   await only.hand({ faculty: 'houses', method: 'add', args: { name: 'shop', ...shop } });
-  const key = kept.get('key') as CryptoKey;
-  assert.equal(key.extractable, false, 'the key is the browser’s alone');
-  const sealed = kept.get('seed:shop') as { iv: Uint8Array; data: Uint8Array };
-  assert.equal(sealed.data.length, 48, 'thirty-two bytes of seed and a tag, sealed');
+  const lock = kept.get('lock') as CryptoKey;
+  assert.equal(lock.extractable, false, 'the lock is the browser’s alone');
+  const sealed = kept.get('key') as { iv: Uint8Array; data: Uint8Array };
+  assert.equal(sealed.data.length, 48, 'thirty-two bytes of key and a tag, sealed');
 });
 
-test('It refuses a custom body for a ground’s own custody or memory: a recipe’s bodies stand beside the ground’s own and never in their place', async (t) => {
+test('A page’s registry stands beside the terrain’s own and never in its place', async (t) => {
   const { stores } = originStorage();
   await assert.rejects(
     (async () => {
-      const only = await tab(t, 'replaced', stores, { recipe: { bodies: { memory: { indexeddb: async () => new FakeMemory() } } } });
+      const only = await tab(t, 'replaced', stores, { registry: { classes: { origin: () => Promise.reject(new Error('never made')) } } });
       await only.led();
     })(),
-    /the recipe names a body indexeddb, which is the ground's own/,
+    /the registry names a classes body origin, which is the ground's own/,
   );
 });

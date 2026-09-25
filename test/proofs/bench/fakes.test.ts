@@ -1,19 +1,12 @@
 // Every fake the bench exports, held to its contract's suite.
-import assert from 'node:assert/strict';
-import { test } from 'node:test';
 import { FakeNetwork } from 'nervur/bench';
 import { FakeClock } from '../../../src/bench/fake-clock.ts';
-import { FakeKeys } from '../../../src/bench/fake-keys.ts';
 import { FakeMemory } from '../../../src/bench/fake-memory.ts';
-import { NobleCrypto } from '../../../src/bodies/noble-crypto.ts';
 import { SeededCrypto } from '../../../src/bench/seeded.ts';
 import { carrySuite } from '../../suites/carry.ts';
 import { clockSuite } from '../../suites/clock.ts';
 import { cryptoSuite } from '../../suites/crypto.ts';
-import { keysSuite } from '../../suites/keys.ts';
 import { memorySuite } from '../../suites/memory.ts';
-
-const crypto = new NobleCrypto();
 
 memorySuite('FakeMemory', () => new FakeMemory());
 
@@ -56,9 +49,3 @@ clockSuite('FakeClock', () => {
   return { clock, advance: async (ms) => clock.advance(ms) };
 });
 
-keysSuite('FakeKeys', () => new FakeKeys('a ward', crypto), crypto);
-
-test('FakeKeys: one name, one ward; two names, two wards', async () => {
-  assert.deepEqual(await new FakeKeys('x', crypto).ward(), await new FakeKeys('x', crypto).ward());
-  assert.notDeepEqual((await new FakeKeys('x', crypto).ward()).signing, (await new FakeKeys('y', crypto).ward()).signing);
-});

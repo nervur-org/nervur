@@ -7,7 +7,7 @@ import { BenchGround, FakeNetwork } from 'nervur/bench';
 import * as shop from '../fixtures/world/shop.ts';
 
 const modules = { shop };
-const entry = { memory: { body: 'fake' }, classes: { body: 'module', name: 'shop' } };
+const entry = { classes: { body: 'module', name: 'shop' } };
 
 test('A house moved to another ground keeps its ward, and no far standing notices', async (t) => {
   const network = new FakeNetwork();
@@ -64,5 +64,10 @@ test('No grant reaches moves, and a house moves into no memory that holds rows',
   // Removed, a house leaves its seed and its rows behind, and nothing moves in over them.
   await ground.remove('taken');
   assert.deepEqual(await moveInto('taken'), { error: { message: 'the memory for taken holds places already' } });
+  // A house whose places are on a memory body of their own leaves its seed in the drawer all the same.
+  await ground.add('seeded', { memory: { body: 'fake' }, classes: { body: 'module', name: 'shop' } });
+  await ground.remove('seeded');
+  const seededInto = await ground.hand({ faculty: 'moves', method: 'in', args: { name: 'seeded', ...entry, ...(out.result as object) } });
+  assert.deepEqual(seededInto, { error: { message: 'the drawer keeps another seed for seeded' } });
   assert.ok('result' in (await moveInto('again')), 'an empty memory takes it');
 });

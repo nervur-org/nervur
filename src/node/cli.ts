@@ -12,9 +12,10 @@
 //   nervur ask <house> [--id <being>] --cells            her cells, read and nothing asked
 //
 // Args are one JSON object, or words `key=value`, each value read as JSON
-// where it reads and as text where it does not. `--at <socket>` or
-// `NERVUR_HAND` names the hand, and `state/hand` in this folder is it where
-// neither does. Each prints one JSON value and exits 0 on a result, 1 on
+// where it reads and as text where it does not, or `-`, one JSON object
+// read from standard input, so no secret stands in a shell's history.
+// `--at <socket>` or `NERVUR_HAND` names the hand, and `state/hand` in
+// this folder is it where neither does. Each prints one JSON value and exits 0 on a result, 1 on
 // an error answered, and 2 where nothing was asked.
 import { existsSync } from 'node:fs';
 import { connect } from 'node:net';
@@ -25,25 +26,36 @@ import { handAt } from './hand.ts';
 import { NodeGround } from './node-ground.ts';
 import { notifyReady } from './notify.ts';
 
-const USAGE = 'nervur up <folder> | service <folder> | [--at <socket>] help | ask <house> [--id <being>] [--cells | <method> [args]] | <faculty> [<method> [args]]';
+const USAGE = 'nervur up <folder> | service <folder> | [--at <socket>] help | ask <house> [--id <being>] [--cells | <method> [args | -]] | <faculty> [<method> [args | -]]';
 
 const fail = (message: string): never => {
   process.stderr.write(`${message}\n${USAGE}\n`);
   process.exit(2);
 };
 
-// Args as one JSON object, or as words `key=value`.
-const argsOf = (words: readonly string[]): Record<string, unknown> | undefined => {
-  if (words.length === 0) return undefined;
-  if (words.length === 1 && words[0].startsWith('{')) {
-    try {
-      const value: unknown = JSON.parse(words[0]);
-      if (typeof value === 'object' && value !== null && !Array.isArray(value)) return value as Record<string, unknown>;
-    } catch {
-      // Read as words below, where it fails with a reason.
-    }
-    return fail('args are one JSON object');
+// One JSON object, or nothing where the text is none.
+const objectOf = (text: string): Record<string, unknown> | undefined => {
+  try {
+    const value: unknown = JSON.parse(text);
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) return value as Record<string, unknown>;
+  } catch {
+    // No JSON: the caller says why.
   }
+  return undefined;
+};
+
+// Standard input, whole.
+const stdin = async (): Promise<string> => {
+  let text = '';
+  for await (const chunk of process.stdin) text += String(chunk);
+  return text;
+};
+
+// Args as one JSON object, as words `key=value`, or as one JSON object on standard input.
+const argsOf = async (words: readonly string[]): Promise<Record<string, unknown> | undefined> => {
+  if (words.length === 0) return undefined;
+  if (words.length === 1 && words[0] === '-') return objectOf(await stdin()) ?? fail('standard input holds no JSON object');
+  if (words.length === 1 && words[0].startsWith('{')) return objectOf(words[0]) ?? fail('args are one JSON object');
   return Object.fromEntries(
     words.map((word) => {
       const at = word.indexOf('=');
@@ -159,7 +171,7 @@ else if (command === 'ask') {
     send(at, { house, ...(id === undefined ? {} : { id }), cells: true });
   } else {
     const [method, ...args] = more;
-    send(at, { house, ...(id === undefined ? {} : { id }), ...(method === undefined ? {} : { method }), ...(args.length === 0 ? {} : { args: argsOf(args) }) });
+    send(at, { house, ...(id === undefined ? {} : { id }), ...(method === undefined ? {} : { method }), ...(args.length === 0 ? {} : { args: await argsOf(args) }) });
   }
 } else {
   const [method, ...args] = rest;
@@ -169,5 +181,5 @@ else if (command === 'ask') {
       const faculty = (answer.result as { faculties?: Record<string, unknown> } | undefined)?.faculties?.[command];
       return faculty === undefined ? { error: { message: `no faculty ${command}` } } : { result: faculty };
     });
-  else send(at, { faculty: command, method, ...(args.length === 0 ? {} : { args: argsOf(args) }) });
+  else send(at, { faculty: command, method, ...(args.length === 0 ? {} : { args: await argsOf(args) }) });
 }

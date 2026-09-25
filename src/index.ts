@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // `nervur`: what a ground's author imports on any engine. The house, the
-// blueprints of its foundation, and the bodies that fill them anywhere.
+// blueprints of its foundation and the ground's unlock, and the bodies
+// that fill them anywhere.
 import { NobleCrypto } from './bodies/noble-crypto.ts';
 import { StrictTools } from './bodies/strict-tools.ts';
 import { WebClock } from './bodies/web-clock.ts';
@@ -12,7 +13,7 @@ export { JoinedCarry } from './bodies/joined-carry.ts';
 export { WebCarry, type Handler } from './bodies/web-carry.ts';
 export { vouchesOf } from './bodies/vouch.ts';
 export type { FacultyContext, Offer, Opened } from './house/house.ts';
-export { Ground, type Bodies, type Custody, type Faculty, type Hooked } from './ground/ground.ts';
+export { Ground, type Faculty, type Hooked, type Made, type Registry, type Unlock } from './ground/ground.ts';
 export { ClassList } from './bodies/class-list.ts';
 export { NobleCrypto } from './bodies/noble-crypto.ts';
 export { SeedKeys } from './bodies/seed-keys.ts';

@@ -13,7 +13,7 @@ const script = new URL('../fixtures/node/ground.ts', import.meta.url).pathname;
 test('Two grounds ask each other over TCP, and a restart loses nothing that landed', { timeout: 30_000 }, async (t) => {
   const folder = mkdtempSync(join(tmpdir(), 'nervur-ground-'));
   const port = String(40_000 + Math.floor(Math.random() * 20_000));
-  const env = { NERVUR_SEED: 'a'.repeat(64), GROUND_PORT: port, GROUND_MEMORY: join(folder, 'a.memory') };
+  const env = { NERVUR_KEY: 'a'.repeat(64), GROUND_PORT: port, GROUND_MEMORY: join(folder, 'a.memory') };
   const start = (extra: Record<string, string> = {}) => ground(script, { env: { ...env, ...extra }, conditions: ['nervur-source'] });
   let far = await start({ GROUND_OFFER: '1' });
   t.after(async () => {

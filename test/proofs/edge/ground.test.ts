@@ -14,7 +14,7 @@ import { MapStorage } from '../fixtures/durable.ts';
 const Ground = EdgeGround.object({ code: { shop: { steward: Steward, beings: [Host] } } });
 const KEY = 'a1'.repeat(32);
 const env = { NERVUR_SECRET: '5e'.repeat(32), NERVUR_HAND: KEY };
-const shop = { name: 'shop', memory: { body: 'durable' }, classes: { body: 'bundle', at: 'shop' } };
+const shop = { name: 'shop', classes: { body: 'bundle', at: 'shop' } };
 
 type Edge = InstanceType<typeof Ground>;
 const handOf = (edge: Edge, key = KEY) => async (request: object) => {

@@ -15,10 +15,12 @@ the package's own tests run.
 ## What a faculty owes
 
 A faculty answers a blueprint: a name, and methods with their schemas.
-The ground hands it to its houses as an offer.
+A maker in a registry makes it, and the ground hands it to its houses as
+an offer, with the kinds its entry grants.
 
 ```text
-offer = { blueprint, object, kinds?, window?, handler?, stop? }
+faculty = { blueprint?, object?, window?, handler?, stop?, registry? }
+offer   = { blueprint, object, kinds?, window? }
 ```
 
 - **The object has the blueprint's methods.** Each takes one args object
@@ -42,9 +44,9 @@ answered, with the same call id every time.
 
 So one call arrives more than once. A reply lost on its way back brings
 it again, and so does a program that died before it answered. A faculty
-that changes the world keeps each call id with the answer it gave, where
-a restart keeps it. It answers a call id it has seen with that answer,
-and acts once.
+that changes the world keeps each call id with the answer it gave, in
+the memory its maker receives, where a restart and a move keep it. It
+answers a call id it has seen with that answer, and acts once.
 
 It keeps them for its `window`, seven days where the offer names none.
 The house gives up on an effect at the window and tells the being, so a
@@ -71,9 +73,10 @@ grant decides which classes a face reaches.
 ### The ground grants it
 
 A faculty is the ground's, never a house's. Its grant has two steps,
-both the ground's. A house receives the faculties its entry names. Within
-it, `kinds` lists the classes that may hold the offer, and without it,
-every class whose need it covers holds it.
+both the ground's. A house receives the faculties its entry names.
+Within it, the faculty's own entry lists in `kinds` the classes that may
+hold the offer, and without it, every class whose need it covers holds
+it.
 
 So a raw faculty reaches one class. Limits, approvals and quotas are not
 the faculty's. One being holds the raw faculty, and every other being
@@ -81,19 +84,30 @@ reaches her through a standing, so policy is written as a being.
 
 ### It lives in the ground
 
-The object arrives living. The ground's recipe makes each faculty by
-name and awaits it up, and the house never starts, stops or restarts it.
-Every being whose need it covers holds the same object.
+The object arrives living. The ground stands each faculty its entries
+name, awaiting its maker, and the house never starts, stops or restarts
+it. Every being whose need it covers holds the same object. A maker
+receives three things beside the faculty's name.
 
-- **`env`** is the ground's environment, so a secret stays on its
-  machine and out of the code.
-- **`dir(name)`** answers a folder of the faculty's own, where it keeps
-  its call ids.
+- **`args`** are its entry's, as the owner wrote them.
+- **`secrets`** are the secrets its entry names, set through the hand
+  and kept sealed in the ground's drawer. No other code reads them.
+- **`memory`** is the faculty's own, a view of the ground's memory
+  sealed under a key the ground derives for it. Its call ids live there,
+  so they move with the ground.
+
+A faculty answers four things beside its methods, each where it has
+one.
+
 - **`handler`** answers HTTP on the ground's one listener. It takes a
   `Request` and answers a `Response`, or `null` where the request is not
   its own. A site, an API or an MCP server is a faculty with a handler.
 - **`stop`** is called when the ground stops, faculties in the reverse
-  of the order they were made.
+  of the order they stood.
+- **`registry`** makes more faculties and bodies, for every entry that
+  names this faculty in `from`. A module of code, a git repository and a
+  program's catalogue are each a registry.
+- **`window`** is how long it remembers a call id.
 
 ## Three ways to wrap a program
 
@@ -105,8 +119,9 @@ Every being whose need it covers holds the same object.
 
 ## The bridge
 
-`bridge({ command, args, env, cwd })` from `nervur/node` starts a
-program and answers an offer. The program may be written in any
+`bridge({ command, args, env, cwd, memory })` from `nervur/node` starts
+a program and answers a faculty. A NodeGround makes one by the maker
+`bridge`, from its entry alone. The program may be written in any
 language. It speaks one JSON value a line on its standard streams.
 
 ```text
@@ -114,6 +129,8 @@ in   { id, method, args, call }          a call to the program
 out  { id, result } | { id, error }      its answer
 out  { id, token, args, call }           the program calls a handle
 in   { id, result } | { id, error }      the house's answer to that
+out  { id, memory, args }                the program reads or writes its memory
+in   { id, result } | { id, error }      the ground's answer to that
 ```
 
 - **It describes itself first.** Its first call is the method
@@ -126,20 +143,26 @@ in   { id, result } | { id, error }      the house's answer to that
   the same every time that call is sent, in every life of the program.
   A handle called with no `call` is refused.
 - **It starts with an empty environment.** It holds only what `env`
-  names, so it never reads the ground's seeds.
+  names, so it never reads the ground's key. The maker `bridge` names
+  there the secrets of its entry, each under its name.
+- **It keeps its state in the faculty's memory.** A memory line names
+  `read`, `list` or `write` and the memory's args, every entry's bytes
+  in lowercase hex. A write names the versions it read in `expect`, and
+  answers `null` where another write moved them. Nothing it keeps rests
+  in its folder.
 - **It is started again.** A program that exits fails every awaited call
   in flight to it, and the house sends each effect again with its call
   id. A program that keeps failing is started more slowly, up to a
   minute apart.
-- **Its blueprint is fixed at the boot.** A program started again that
-  describes another blueprint is stopped, and the ground says so. Every
-  call to it then answers why, until its ground restarts.
+- **Its blueprint is fixed while its faculty stands.** A program started
+  again that describes another blueprint is stopped, and the ground says
+  so. Every call to it then answers why, until its faculty stands again.
 - **Its standard error goes to the ground's log**, and a line is at most
   a mebibyte.
 
 The bridge is not a sandbox. A program runs as the ground's user, and
 `kinds` decides which classes reach it. A program you do not trust runs
-as a user of its own. On Linux the recipe's command becomes `sudo`, with
+as a user of its own. On Linux the entry's command becomes `sudo`, with
 `-n -u relay` before the program, and one rule allows it and nothing
 else:
 
@@ -153,9 +176,10 @@ nervur ALL=(relay) NOPASSWD: /usr/bin/python3 /srv/garage/relay.py
 #!/usr/bin/env python3
 # The relay on a garage's Pi, as a faculty over the bridge. One pulse
 # toggles the door, so a pulse sent twice would open it and close it
-# again. It keeps each call id before it pulses, and answers an id it has
-# seen with the answer it gave, so a pulse sent again never toggles twice.
-# It runs in the folder the ground gives it, where it keeps what it saw.
+# again. It keeps each call id in the faculty's memory before it pulses,
+# and answers an id it has seen with the answer it gave, so a pulse sent
+# again never toggles twice. Its memory is sealed by the ground and
+# travels with it; its folder holds only what the Pi's pin would show.
 import json
 import os
 import sys
@@ -171,6 +195,45 @@ BLUEPRINT = {
     },
 }
 
+waiting = []
+asked = 0
+
+
+def send(message):
+    sys.stdout.write(json.dumps(message) + '\n')
+    sys.stdout.flush()
+
+
+def remember(op, args):
+    # One memory line, and the ground's answer to it; calls that arrive meanwhile wait their turn.
+    global asked
+    asked += 1
+    mine = 'memory-' + str(asked)
+    send({'id': mine, 'memory': op, 'args': args})
+    while True:
+        line = sys.stdin.readline()
+        if line == '':
+            sys.exit(0)
+        message = json.loads(line)
+        if message.get('id') != mine or 'method' in message:
+            waiting.append(message)
+            continue
+        if 'error' in message:
+            raise RuntimeError(message['error']['message'])
+        return message['result']
+
+
+def seen():
+    read = remember('read', {'place': 'seen'})
+    return {call: int(bytes.fromhex(count).decode()) for call, count in read['entries'].items()}, read['version']
+
+
+def keep(call, count, version):
+    landed = remember('write', {'writes': {'seen': {call: str(count).encode().hex()}}, 'expect': {'seen': version}})
+    if landed is None:
+        # Another life wrote first: this one ends, and the ground starts it again.
+        sys.exit(1)
+
 
 def pulse(call):
     # The Pi drives its pin here. This relay writes a line, so a test counts pulses.
@@ -178,42 +241,40 @@ def pulse(call):
         relay.write(call + '\n')
 
 
-def keep(seen):
-    with open('seen.json.tmp', 'w') as held:
-        json.dump(seen, held)
-        held.flush()
-        os.fsync(held.fileno())
-    os.replace('seen.json.tmp', 'seen.json')
+def messages():
+    while True:
+        if waiting:
+            yield waiting.pop(0)
+            continue
+        line = sys.stdin.readline()
+        if line == '':
+            return
+        yield json.loads(line)
 
 
-def answer(id, **fields):
-    sys.stdout.write(json.dumps({'id': id, **fields}) + '\n')
-    sys.stdout.flush()
-
-
-seen = json.load(open('seen.json')) if os.path.exists('seen.json') else {}
 # Each life writes a line, so a test knows when the program started again.
 with open('lives', 'a') as lives:
     lives.write(str(os.getpid()) + '\n')
-for line in sys.stdin:
-    message = json.loads(line)
+for message in messages():
     if message['method'] == 'describe':
-        answer(message['id'], result={'blueprint': BLUEPRINT, 'window': 7 * 86_400_000})
-    elif message['method'] != 'pulse':
-        answer(message['id'], error={'message': 'no such method'})
-    elif message['call'] in seen:
-        answer(message['id'], result=seen[message['call']])
-    else:
-        count = len(seen) + 1
-        # The call id is kept before the pulse, so a crash between them never pulses twice.
-        seen[message['call']] = count
-        keep(seen)
-        pulse(message['call'])
-        # A test writes `crash-after`: the program dies once after that pulse, before it answers.
-        if os.path.exists('crash-after') and count == int(open('crash-after').read()):
-            os.remove('crash-after')
-            os._exit(1)
-        answer(message['id'], result=count)
+        send({'id': message['id'], 'result': {'blueprint': BLUEPRINT, 'window': 7 * 86_400_000}})
+        continue
+    if message['method'] != 'pulse':
+        send({'id': message['id'], 'error': {'message': 'no such method'}})
+        continue
+    counts, version = seen()
+    if message['call'] in counts:
+        send({'id': message['id'], 'result': counts[message['call']]})
+        continue
+    count = len(counts) + 1
+    # The call id is kept before the pulse, so a crash between them never pulses twice.
+    keep(message['call'], count, version)
+    pulse(message['call'])
+    # A test writes `crash-after`: the program dies once after that pulse, before it answers.
+    if os.path.exists('crash-after') and count == int(open('crash-after').read()):
+        os.remove('crash-after')
+        os._exit(1)
+    send({'id': message['id'], 'result': count})
 ```
 
 The call id is written to disk before the pin moves. A crash between the
@@ -300,37 +361,36 @@ on the relay, and the relay never waits on the twin. The remote asks the
 twin by an effect too, so a tap made while the Pi is unreachable reaches
 it later, once.
 
-## The recipe
+## The entry
 
-```ts
-// recipe.ts
-import { fileURLToPath } from 'node:url';
-import { bridge, type Recipe } from 'nervur/node';
-
-const relay = fileURLToPath(new URL('./relay.py', import.meta.url));
-
-// The relay runs in a folder of its own, granted to the twin's class alone.
-export const faculties: NonNullable<Recipe['faculties']> = ({ dir }) => ({
-  relay: dir('relay').then(async (cwd) => ({ ...(await bridge({ command: 'python3', args: [relay], cwd })), kinds: ['org.example.garage'] })),
-});
-```
-
-The Pi's folder holds the recipe, the program and a folder of classes
-for its house. The house is added once, and names the relay among the
-faculties it receives.
+The Pi's folder holds the program and a folder of classes for its
+house, and no code of the ground's. The relay stands from its entry,
+made by the NodeGround's own maker `bridge`, and granted to the twin's
+class alone.
 
 ```bash
-npx nervur houses add name=garage memory='{"body":"ledger"}' classes='{"body":"folder","at":"classes"}' faculties='["relay"]'
+npx nervur faculties add name=relay make=bridge args='{"command":"python3","args":["relay.py"]}' kinds='["org.example.garage"]'
 ```
+
+The house is added once, and names the relay among the faculties it
+receives.
+
+```bash
+npx nervur houses add name=garage classes='{"body":"folder","at":"classes"}' faculties='["relay"]'
+```
+
+Both entries rest sealed in the ground's drawer, so the ground stands
+the relay again at every start.
 
 ## In JavaScript
 
 `serve(need, methods)` from `nervur/serve` is the program's side of the
 bridge in JavaScript. It answers `describe` from the need, and every
 call with the method it names. A method receives its args and a context:
-the call id, and `call(token, args, id?)` for a handle it was handed.
-Where no `id` is given, the handle's call id is the call's own id and
-its count within the call. A retry of the call calls back with the same
+the call id, `call(token, args, id?)` for a handle it was handed, and
+`memory`, the faculty's own, whose `read`, `list` and `write` speak the
+memory lines. Where no `id` is given, the handle's call id is the call's
+own id and its count within the call. A retry of the call calls back with the same
 ids, so the handle acts once. A method that throws answers an error,
 which is final. A program that must be asked again exits instead, and
 the ground starts it again.
@@ -363,16 +423,18 @@ serve(Doorbell, {
 });
 ```
 
-The recipe starts it with `bridge({ command: 'node', args:
-['doorbell.js'] })`. A faculty that needs no process of its own is a
-plain object in the recipe instead, as the shop's payments are in
-[Writing for nervur](AUTHORING.md).
+Its entry makes it with the maker `bridge`, its command `node` and its
+args `["doorbell.js"]`. A faculty that needs no process of its own is a
+plain object a registry's maker answers instead, as the shop's payments
+are in [Writing for nervur](AUTHORING.md).
 
 ## Testing a faculty
 
 A faculty is tested on BenchGround, the ground in memory from
-`nervur/bench`, with the program itself behind the bridge. The ground
-makes it from the recipe, as every ground does. A `FakeNetwork` joins
+`nervur/bench`, with the program itself behind the bridge. The test
+hands the bench a registry whose maker bridges the program, as a
+NodeGround's own does, and stands the relay through the ground's hand,
+as an owner does. A `FakeNetwork` joins
 grounds and loses what the test tells it to lose, and its one clock
 moves them all. A test waits on what it can hear: a watch on a being's
 answer, or a line the program writes. The clock moves only as far as a
@@ -391,25 +453,34 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, watch, writeF
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
+import { bridge } from 'nervur/node';
 import * as phone from './phone.ts';
 import * as pi from './pi.ts';
-import { faculties } from './recipe.ts';
 
 test('Each tap on the phone pulses the relay once, whatever fails between', { timeout: 30_000 }, async (t) => {
   const state = mkdtempSync(join(tmpdir(), 'garage-'));
   t.after(() => rmSync(state, { recursive: true, force: true }));
-  const dir = async (name: string) => {
-    mkdirSync(join(state, name), { recursive: true });
-    return join(state, name);
-  };
+  // Where the program runs, and where the Pi's pin shows each pulse.
+  const pin = join(state, 'relay');
+  mkdirSync(pin);
   // The program dies once, after its second pulse and before it answers.
-  writeFileSync(join(await dir('relay'), 'crash-after'), '2');
+  writeFileSync(join(pin, 'crash-after'), '2');
   const network = new FakeNetwork();
 
-  // The Pi's ground, which makes the recipe's relay, and the door's twin.
-  const garage = await BenchGround.open({ network, host: 'pi', names: ['garage.local'], modules: { pi }, recipe: () => faculties({ env: {}, dir }) });
+  // The Pi's ground, whose registry bridges the program as a NodeGround's does, and the door's twin.
+  const relay = fileURLToPath(new URL('./relay.py', import.meta.url));
+  const garage = await BenchGround.open({
+    network,
+    host: 'pi',
+    names: ['garage.local'],
+    modules: { pi },
+    registry: { faculties: { bridge: ({ memory }) => bridge({ command: 'python3', args: [relay], cwd: pin, memory }) } },
+  });
   t.after(() => garage.down());
+  // The relay, granted to the twin's class alone.
+  await garage.hand({ faculty: 'faculties', method: 'add', args: { name: 'relay', make: 'bridge', kinds: ['org.example.garage'] } });
   await garage.add('garage', 'pi', { faculties: ['relay'] });
   await garage.ask({ house: 'garage', method: 'bear', args: { kind: 'org.example.garage', id: 'door' } });
 
@@ -432,8 +503,8 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
   // Resolves once the relay's program has started `count` times.
   const lives = (count: number) =>
     new Promise<void>((resolve) => {
-      const started = () => existsSync(join(state, 'relay', 'lives')) && readFileSync(join(state, 'relay', 'lives'), 'utf8').trim().split('\n').length >= count;
-      const watcher = watch(join(state, 'relay'), () => {
+      const started = () => existsSync(join(pin, 'lives')) && readFileSync(join(pin, 'lives'), 'utf8').trim().split('\n').length >= count;
+      const watcher = watch(pin, () => {
         if (!started()) return;
         watcher.close();
         resolve();
@@ -457,7 +528,7 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
   await network.elapse(1_000);
   await pulsed(2);
   await heard(2);
-  assert.ok(!existsSync(join(state, 'relay', 'crash-after')), 'the program died between its second pulse and its answer');
+  assert.ok(!existsSync(join(pin, 'crash-after')), 'the program died between its second pulse and its answer');
 
   // The reply to the phone is lost, so a second later it asks again, and
   // the twin answers from its call id.
@@ -468,7 +539,7 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
   await heard(3);
 
   assert.ok(network.crossings.some(({ outcome }) => outcome === 'lost'), 'a reply to the phone was lost');
-  assert.equal(readFileSync(join(state, 'relay', 'pulses'), 'utf8').trim().split('\n').length, 3, 'three pulses, never four');
+  assert.equal(readFileSync(join(pin, 'pulses'), 'utf8').trim().split('\n').length, 3, 'three pulses, never four');
   assert.deepEqual(await garage.ask({ house: 'garage', id: 'door', method: 'log' }), { result: { openers: ['alice', 'alice', 'alice'], pulses: [1, 2, 3], failed: [] } });
 });
 ```

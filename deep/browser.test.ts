@@ -108,7 +108,7 @@ const remote = (): Memory => {
 
 memorySuite('IndexedDbMemory', remote);
 
-const shop = { name: 'shop', memory: { body: 'indexeddb' }, classes: { body: 'origin', at: '/houses/shop.js' } };
+const shop = { name: 'shop', classes: { body: 'origin', at: '/houses/shop.js' } };
 const greet = { house: 'shop', id: 'bob', method: 'greet' };
 
 void test('Two tabs share one ground, and the second runs it when the first closes', async () => {

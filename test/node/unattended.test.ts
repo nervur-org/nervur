@@ -1,7 +1,6 @@
 // A ground that runs unattended, `nervur up` on a folder: one instance to
 // its state, asked locally through the command on a socket only the
-// ground's user reads, and opened again on its seeds, its ledgers and its
-// record.
+// ground's user reads, and opened again on its key and its ledger.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -34,7 +33,7 @@ test('An unattended ground holds its state alone, is asked through the command, 
   const at = ['--at', socket];
 
   assert.equal(statSync(socket).mode & 0o777, 0o600, 'the hand is the ground user’s alone');
-  const added = nervur(...at, 'houses', 'add', 'name=main', 'memory={"body":"ledger"}', 'classes={"body":"folder","at":"classes"}');
+  const added = nervur(...at, 'houses', 'add', 'name=main', 'classes={"body":"folder","at":"classes"}');
   assert.equal(added.code, 0, added.out);
   const ward = (JSON.parse(added.out) as { result: { ward: string } }).result.ward;
   assert.deepEqual(nervur(...at, 'ask', 'main', 'whoami'), { code: 0, out: '{"result":"root"}' });
@@ -53,7 +52,8 @@ test('An unattended ground holds its state alone, is asked through the command, 
   first.child.kill('SIGKILL');
   await stop(first.child);
   first = await start();
-  assert.deepEqual(first.line.houses.map(({ name, ward: kept }) => ({ name, ward: kept })), [{ name: 'main', ward }], 'the record and the seed open the same ward');
+  assert.deepEqual(first.line.houses.map(({ name, ward: kept }) => ({ name, ward: kept })), [{ name: 'main', ward }], 'the key opens the drawer, and its seed the same ward');
+  assert.equal(statSync(join(state, 'key')).mode & 0o777, 0o600, 'the key is the ground user’s alone');
   assert.deepEqual(nervur(...at, 'ask', 'main', 'count'), { code: 0, out: '{"result":1}' }, 'the ledger kept what landed, and a dead holder’s lock is taken over');
 
   await stop(first.child);

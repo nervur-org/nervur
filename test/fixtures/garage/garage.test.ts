@@ -4,25 +4,34 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, watch, writeF
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
+import { bridge } from 'nervur/node';
 import * as phone from './phone.ts';
 import * as pi from './pi.ts';
-import { faculties } from './recipe.ts';
 
 test('Each tap on the phone pulses the relay once, whatever fails between', { timeout: 30_000 }, async (t) => {
   const state = mkdtempSync(join(tmpdir(), 'garage-'));
   t.after(() => rmSync(state, { recursive: true, force: true }));
-  const dir = async (name: string) => {
-    mkdirSync(join(state, name), { recursive: true });
-    return join(state, name);
-  };
+  // Where the program runs, and where the Pi's pin shows each pulse.
+  const pin = join(state, 'relay');
+  mkdirSync(pin);
   // The program dies once, after its second pulse and before it answers.
-  writeFileSync(join(await dir('relay'), 'crash-after'), '2');
+  writeFileSync(join(pin, 'crash-after'), '2');
   const network = new FakeNetwork();
 
-  // The Pi's ground, which makes the recipe's relay, and the door's twin.
-  const garage = await BenchGround.open({ network, host: 'pi', names: ['garage.local'], modules: { pi }, recipe: () => faculties({ env: {}, dir }) });
+  // The Pi's ground, whose registry bridges the program as a NodeGround's does, and the door's twin.
+  const relay = fileURLToPath(new URL('./relay.py', import.meta.url));
+  const garage = await BenchGround.open({
+    network,
+    host: 'pi',
+    names: ['garage.local'],
+    modules: { pi },
+    registry: { faculties: { bridge: ({ memory }) => bridge({ command: 'python3', args: [relay], cwd: pin, memory }) } },
+  });
   t.after(() => garage.down());
+  // The relay, granted to the twin's class alone.
+  await garage.hand({ faculty: 'faculties', method: 'add', args: { name: 'relay', make: 'bridge', kinds: ['org.example.garage'] } });
   await garage.add('garage', 'pi', { faculties: ['relay'] });
   await garage.ask({ house: 'garage', method: 'bear', args: { kind: 'org.example.garage', id: 'door' } });
 
@@ -45,8 +54,8 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
   // Resolves once the relay's program has started `count` times.
   const lives = (count: number) =>
     new Promise<void>((resolve) => {
-      const started = () => existsSync(join(state, 'relay', 'lives')) && readFileSync(join(state, 'relay', 'lives'), 'utf8').trim().split('\n').length >= count;
-      const watcher = watch(join(state, 'relay'), () => {
+      const started = () => existsSync(join(pin, 'lives')) && readFileSync(join(pin, 'lives'), 'utf8').trim().split('\n').length >= count;
+      const watcher = watch(pin, () => {
         if (!started()) return;
         watcher.close();
         resolve();
@@ -70,7 +79,7 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
   await network.elapse(1_000);
   await pulsed(2);
   await heard(2);
-  assert.ok(!existsSync(join(state, 'relay', 'crash-after')), 'the program died between its second pulse and its answer');
+  assert.ok(!existsSync(join(pin, 'crash-after')), 'the program died between its second pulse and its answer');
 
   // The reply to the phone is lost, so a second later it asks again, and
   // the twin answers from its call id.
@@ -81,6 +90,6 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
   await heard(3);
 
   assert.ok(network.crossings.some(({ outcome }) => outcome === 'lost'), 'a reply to the phone was lost');
-  assert.equal(readFileSync(join(state, 'relay', 'pulses'), 'utf8').trim().split('\n').length, 3, 'three pulses, never four');
+  assert.equal(readFileSync(join(pin, 'pulses'), 'utf8').trim().split('\n').length, 3, 'three pulses, never four');
   assert.deepEqual(await garage.ask({ house: 'garage', id: 'door', method: 'log' }), { result: { openers: ['alice', 'alice', 'alice'], pulses: [1, 2, 3], failed: [] } });
 });

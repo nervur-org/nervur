@@ -1,9 +1,10 @@
-// A NodeGround on a folder: its recipe's faculties, its houses from folders
-// of code on ledgers, its record kept across a restart, and the command as
-// a face that reads every word it offers from what the ground describes.
+// A NodeGround on a folder: its ladder stood from its drawer, its houses
+// from folders of code in its view of the ground's ledger, its drawer
+// kept across a restart, and the command as a face that reads every word
+// it offers from what the ground describes.
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { execFile, spawn } from 'node:child_process';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -14,7 +15,7 @@ import { cli } from '../fixtures/node/grounds.ts';
 
 const folder = fileURLToPath(new URL('../fixtures/node-ground/', import.meta.url));
 const run = promisify(execFile);
-const env = { NERVUR_TCP_PORT: '0', NERVUR_HTTP_PORT: '0', NERVUR_BIND: '127.0.0.1', NERVUR_ALLOW_PRIVATE: '1', ECHO_PREFIX: '~' };
+const env = { NERVUR_TCP_PORT: '0', NERVUR_HTTP_PORT: '0', NERVUR_BIND: '127.0.0.1', NERVUR_ALLOW_PRIVATE: '1' };
 
 // The command, as an owner runs it on the machine: its one JSON line, and its exit.
 const nervur = async (hand: string, ...args: string[]) => {
@@ -27,24 +28,50 @@ const nervur = async (hand: string, ...args: string[]) => {
   }
 };
 
-const shop = ['name=shop', 'memory={"body":"ledger"}', 'classes={"body":"folder","at":"shop"}', 'faculties=["echo"]'];
+// The command with its args on standard input, as `-` reads them.
+const piped = (hand: string, input: string, ...args: string[]) =>
+  new Promise<{ code: number | null; answer: Record<string, unknown> }>((resolve, reject) => {
+    const child = spawn(process.execPath, [cli, '--at', hand, ...args, '-'], { stdio: ['pipe', 'pipe', 'inherit'] });
+    let out = '';
+    child.stdout.on('data', (chunk) => (out += chunk));
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code, answer: JSON.parse(out || 'null') as Record<string, unknown> }));
+    child.stdin.end(input);
+  });
 
-test('A NodeGround opens houses from its folder, serves its faculties, and keeps its record', { timeout: 20_000 }, async (t) => {
+// The ground's ladder, stood through its hand: the folder's registry, then its echo, with its prefix.
+const ladder = async (hand: string) => {
+  assert.equal((await nervur(hand, 'faculties', 'add', 'name=recipe', 'make=module', 'args={"at":"recipe.ts"}')).code, 0);
+  const echo = await nervur(hand, 'faculties', 'add', 'name=echo', 'from=recipe', 'make=echo', 'args={"prefix":"~"}', 'secrets=["signature"]');
+  return echo;
+};
+
+const shop = ['name=shop', 'classes={"body":"folder","at":"shop"}', 'faculties=["echo"]'];
+
+test('A NodeGround stands its ladder, opens houses from its folder, serves its faculties, and keeps its drawer', { timeout: 20_000 }, async (t) => {
   const state = await mkdtemp(join(tmpdir(), 'ground-'));
   t.after(() => rm(state, { recursive: true, force: true }));
   const first = await NodeGround.open({ folder, state, env });
   let open: NodeGround | undefined = first;
   t.after(() => open?.close());
 
+  const lacking = await ladder(first.hand);
+  assert.equal(lacking.code, 1, 'a faculty whose secret is not kept stays down');
+  assert.match((lacking.answer.error as { message: string }).message, /no secret signature is kept/);
+  assert.deepEqual((await piped(first.hand, '{"name":"signature","value":"— polly"}', 'secrets', 'set')).answer, { result: null }, 'a secret read from standard input');
+  assert.equal((await nervur(first.hand, 'faculties', 'remove', 'name=echo')).code, 0);
+  assert.equal((await ladder(first.hand)).code, 0, 'it stands once its secret is kept');
+
   const added = await nervur(first.hand, 'houses', 'add', ...shop);
   assert.equal(added.code, 0, JSON.stringify(added.answer));
   const ward = (added.answer.result as { ward: string }).ward;
   assert.equal((await nervur(first.hand, 'ask', 'shop', 'bear', 'kind=org.example.parrot', 'id=polly')).code, 0);
-  assert.deepEqual((await nervur(first.hand, 'ask', 'shop', '--id', 'polly', 'repeat', '{"text":"hi"}')).answer, { result: '~hi' }, 'the recipe’s faculty, with its setting');
+  assert.deepEqual((await nervur(first.hand, 'ask', 'shop', '--id', 'polly', 'repeat', '{"text":"hi"}')).answer, { result: '~hi — polly' }, 'the faculty, with its args and its secret');
   const shown = await nervur(first.hand, 'ask', 'shop', '--id', 'polly');
   assert.ok(shown.code === 0 && 'describe' in shown.answer, 'with no method, what she shows, and what was asked exits 0');
   const echoed = await fetch(`http://127.0.0.1:${first.httpPort}/echo?text=hello`);
-  assert.equal(await echoed.text(), 'hello', 'the faculty’s handler on the ground’s listener');
+  assert.equal(await echoed.text(), 'hello', 'the faculty’s handler on the ground’s listener, stood while it ran');
+  assert.ok(!(await readFile(join(state, 'ground.ledger'), 'utf8')).includes('polly'), 'the ledger holds her sealed');
 
   await first.close();
   open = undefined;
@@ -52,7 +79,7 @@ test('A NodeGround opens houses from its folder, serves its faculties, and keeps
   open = second;
   const listed = await nervur(second.hand, 'houses', 'list');
   assert.deepEqual(listed.answer, { result: [{ name: 'shop', ward }] });
-  assert.deepEqual((await nervur(second.hand, 'ask', 'shop', '--id', 'polly', 'repeat', 'text=again')).answer, { result: '~again' }, 'her row stayed in the ledger');
+  assert.deepEqual((await nervur(second.hand, 'ask', 'shop', '--id', 'polly', 'repeat', 'text=again')).answer, { result: '~again — polly' }, 'her row and the ladder stayed in the drawer');
 });
 
 test('The command reads every word from what the ground describes', { timeout: 20_000 }, async (t) => {
@@ -60,27 +87,33 @@ test('The command reads every word from what the ground describes', { timeout: 2
   t.after(() => rm(state, { recursive: true, force: true }));
   const ground = await NodeGround.open({ folder, state, env });
   t.after(() => ground.close());
+  await piped(ground.hand, '{"name":"signature","value":"!"}', 'secrets', 'set');
+  await ladder(ground.hand);
 
   const help = await nervur(ground.hand, 'help');
   const faculties = (help.answer.result as { faculties: Record<string, { methods: Record<string, unknown> }> }).faculties;
-  assert.deepEqual(Object.keys(faculties).sort(), ['echo', 'houses', 'moves']);
+  assert.deepEqual(Object.keys(faculties).sort(), ['echo', 'faculties', 'houses', 'moves', 'recipe', 'secrets']);
   assert.deepEqual(Object.keys(faculties.houses.methods).sort(), ['add', 'list', 'remove']);
+  assert.deepEqual(faculties.recipe.methods, {}, 'a registry offers beings nothing');
   assert.deepEqual(Object.keys((await nervur(ground.hand, 'echo')).answer.result as { methods: object }), ['blueprint', 'methods']);
-  assert.deepEqual((await nervur(ground.hand, 'echo', 'say', 'text=yo')).answer, { result: '~yo' }, 'any faculty, called as its owner');
+  assert.deepEqual((await nervur(ground.hand, 'echo', 'say', 'text=yo')).answer, { result: '~yo !' }, 'any faculty, called as its owner');
   const wrong = await nervur(ground.hand, 'echo', 'say', 'words=yo');
   assert.equal(wrong.code, 1, 'args held to the method’s schema');
   assert.equal((await nervur(ground.hand, 'nothing')).code, 1);
+  assert.deepEqual((await nervur(ground.hand, 'secrets', 'list')).answer, { result: ['signature'] }, 'names, and never a value');
 });
 
-test('A house’s code stands inside the ground’s folder', { timeout: 20_000 }, async (t) => {
+test('A house’s code and a module stand inside the ground’s folder', { timeout: 20_000 }, async (t) => {
   const state = await mkdtemp(join(tmpdir(), 'ground-'));
   t.after(() => rm(state, { recursive: true, force: true }));
   const ground = await NodeGround.open({ folder, state, env });
   t.after(() => ground.close());
-  const outside = await nervur(ground.hand, 'houses', 'add', 'name=loose', 'memory={"body":"ledger"}', 'classes={"body":"folder","at":"../where"}');
+  const outside = await nervur(ground.hand, 'houses', 'add', 'name=loose', 'classes={"body":"folder","at":"../where"}');
   assert.equal(outside.code, 1);
   assert.match((outside.answer.error as { message: string }).message, /a folder of code stands inside/);
   assert.deepEqual((await nervur(ground.hand, 'ask', 'loose', 'bear')).answer, { error: { message: 'no house loose is open here' } });
+  const module = await nervur(ground.hand, 'faculties', 'add', 'name=stray', 'make=module', 'args={"at":"../../index.ts"}');
+  assert.match((module.answer.error as { message: string }).message, /a module stands inside/);
 });
 
 test('The command writes the unit or the job that runs a folder', async () => {

@@ -36,7 +36,7 @@ test('Same ground, two houses: a standing between two beings on one ground is ca
 
 test('Two grounds over TCP: a being on ground one asks a being on ground two, over the carry', async (t) => {
   const folder = mkdtempSync(join(tmpdir(), 'nervur-where-'));
-  const far = await ground(script, { env: { NERVUR_SEED: 'c'.repeat(64), GROUND_MEMORY: join(folder, 'far.memory'), GROUND_OFFER: '1' }, conditions: ['nervur-source'] });
+  const far = await ground(script, { env: { NERVUR_KEY: 'c'.repeat(64), GROUND_MEMORY: join(folder, 'far.memory'), GROUND_OFFER: '1' }, conditions: ['nervur-source'] });
   t.after(async () => {
     await stop(far.child);
     rmSync(folder, { recursive: true, force: true });

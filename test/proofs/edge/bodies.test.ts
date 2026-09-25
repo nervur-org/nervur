@@ -6,25 +6,19 @@ import assert from 'node:assert/strict';
 import { createConnection } from 'node:net';
 import { Duplex } from 'node:stream';
 import { test } from 'node:test';
-import { DurableClock, DurableMemory, NativeCrypto, SecretCustody, SocketCarry, type Connect } from 'nervur/edge';
+import { DurableClock, DurableMemory, NativeCrypto, SocketCarry, type Connect } from 'nervur/edge';
 import { TcpCarry } from 'nervur/node';
 import { carrySuite } from '../../suites/carry.ts';
 import { clockSuite } from '../../suites/clock.ts';
 import { cryptoSuite } from '../../suites/crypto.ts';
-import { custodySuite } from '../../suites/custody.ts';
 import { memorySuite } from '../../suites/memory.ts';
 import { MapStorage } from '../fixtures/durable.ts';
-
-const SECRET = '5e'.repeat(32);
 
 cryptoSuite('NativeCrypto', () => new NativeCrypto());
 
 let names = 0;
 const shared = new MapStorage();
 memorySuite('DurableMemory', () => new DurableMemory(shared, `suite-${names++}`));
-
-const custody = new MapStorage();
-custodySuite('SecretCustody', () => new SecretCustody(custody, SECRET));
 
 clockSuite('DurableClock', () => {
   const storage = new MapStorage();
@@ -72,15 +66,6 @@ carrySuite('SocketCarry', async () => {
       await three.close();
     },
   };
-});
-
-test('SecretCustody keeps no seed that storage alone opens', async () => {
-  const storage = new MapStorage();
-  const seed = await new SecretCustody(storage, SECRET).seed({ house: 'shop' });
-  const kept = [...storage.held.values()].join('');
-  assert.ok(!kept.includes(seed), 'the seed is sealed where it rests');
-  await assert.rejects(new SecretCustody(storage, 'a1'.repeat(32)).seed({ house: 'shop' }), 'another secret opens nothing');
-  assert.throws(() => new SecretCustody(storage, 'short'), /sixty-four/);
 });
 
 test('DurableClock keeps the alarm at the earliest wait, and never moves it later', async (t) => {

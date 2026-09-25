@@ -20,7 +20,7 @@ const SUITES: Readonly<Record<string, string>> = {
   Clock: 'clockSuite',
   Crypto: 'cryptoSuite',
   Tools: 'toolsSuite',
-  Custody: 'custodySuite',
+  Unlock: 'unlockSuite',
 };
 
 const sources = (dir: string): string[] =>

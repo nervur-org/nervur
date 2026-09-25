@@ -27,7 +27,7 @@ const pkg = new URL('../', import.meta.url).pathname;
 const ssh = ['-i', key, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15'];
 // The folder of each ground: its classes, the same on both machines.
 const GROUND = 'deep/fixtures/ground';
-const house = { memory: { body: 'ledger' }, classes: { body: 'folder', at: 'classes' } };
+const house = { classes: { body: 'folder', at: 'classes' } };
 // A hook or a test here crosses SSH and the internet, where the runner's default would call a slow line a freeze.
 const REMOTE = { timeout: 300_000 };
 

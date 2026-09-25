@@ -2,25 +2,32 @@
 // The bridge: a faculty written in any language, as a program the ground
 // starts beside it. It speaks one JSON value a line on its standard
 // streams. Its first answer, to `describe`, is its blueprint and its
-// window, fixed for the ground's life. It starts with an empty
-// environment beside what `env` names, and it is started again whenever
-// it exits. The object the house holds never changes.
+// window, fixed for as long as its faculty stands. It starts with an
+// empty environment beside what `env` names, and it is started again
+// whenever it exits. The object the house holds never changes. It keeps
+// its state in the faculty's memory, through lines of its own.
 //
 //   in   { id, method, args, call }          a call to the program
 //   out  { id, result } | { id, error }      its answer
 //   out  { id, token, args, call }           the program calls a handle
 //   in   { id, result } | { id, error }      the house's answer to that
+//   out  { id, memory, args }                the program reads or writes its memory
+//   in   { id, result } | { id, error }      the ground's answer to that
 //
 // `id` pairs a line with its answer, and a program numbers its own lines.
 // `call` is the call id: the house's on a call in, and the program's own
 // on a call out, the same every time that call is sent, in any life of
-// the program, so a handle called twice acts once.
+// the program, so a handle called twice acts once. A memory line names
+// `read`, `list` or `write`, with the memory contract's args, every
+// entry's bytes in lowercase hex.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
 import { delimiter, isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Json } from '../being/being.ts';
 import { need } from '../being/need.ts';
+import { StrictTools } from '../bodies/strict-tools.ts';
+import type { Memory } from '../foundation.ts';
 import type { Faculty } from '../ground/ground.ts';
 import type { Answer, FacultyContext } from '../house/house.ts';
 
@@ -31,9 +38,59 @@ export interface BridgeOptions {
   /** Everything the program's environment holds. The ground's own is never passed. */
   readonly env?: Readonly<Record<string, string>>;
   readonly cwd?: string;
+  /** The faculty's own memory, which the program reads and writes by its memory lines. */
+  readonly memory?: Memory;
   /** How long its `describe` may take, in milliseconds. */
   readonly wait?: number;
 }
+
+const tools = new StrictTools();
+
+// The bytes of every entry a memory line writes, read from hex.
+const writesOf = (writes: unknown): Record<string, Record<string, Uint8Array | null>> => {
+  if (typeof writes !== 'object' || writes === null || Array.isArray(writes)) throw new TypeError('a write names its places in writes');
+  return Object.fromEntries(
+    Object.entries(writes).map(([place, entries]) => {
+      if (typeof entries !== 'object' || entries === null || Array.isArray(entries)) throw new TypeError(`the place ${place} is an object of entries`);
+      return [
+        place,
+        Object.fromEntries(
+          Object.entries(entries as Record<string, unknown>).map(([entry, hex]) => {
+            if (hex === null) return [entry, null];
+            const bytes = typeof hex === 'string' ? tools.bytes(hex) : null;
+            if (bytes === null) throw new TypeError(`the entry ${entry} of ${place} holds no lowercase hex`);
+            return [entry, bytes];
+          }),
+        ),
+      ];
+    }),
+  );
+};
+
+const expectOf = (expect: unknown): Record<string, string | null> => {
+  if (typeof expect !== 'object' || expect === null || Array.isArray(expect) || !Object.values(expect).every((version) => version === null || typeof version === 'string')) {
+    throw new TypeError('a write names the versions it read in expect');
+  }
+  return expect as Record<string, string | null>;
+};
+
+// One memory line answered from the faculty's memory.
+const remembered = async (memory: Memory | undefined, op: string, args: unknown): Promise<Answer> => {
+  if (memory === undefined) return { error: { message: 'this program holds no memory' } };
+  const given = (typeof args === 'object' && args !== null && !Array.isArray(args) ? args : {}) as Record<string, unknown>;
+  try {
+    if (op === 'read') {
+      if (typeof given.place !== 'string') throw new TypeError('a read names its place');
+      const { entries, version } = await memory.read({ place: given.place });
+      return { result: { entries: Object.fromEntries(Object.entries(entries).map(([entry, bytes]) => [entry, tools.hex(bytes)])), version } };
+    }
+    if (op === 'list') return { result: [...(await memory.list())] };
+    if (op === 'write') return { result: (await memory.write({ writes: writesOf(given.writes), expect: expectOf(given.expect) })) as Json };
+    return { error: { message: `no memory line ${op}` } };
+  } catch (error) {
+    return { error: { message: error instanceof Error ? error.message : String(error) } };
+  }
+};
 
 /** The longest line either side writes, as a Quo frame's bound. */
 const LONGEST = 1_048_576;
@@ -99,7 +156,7 @@ class Bridge {
       const result = described.result as { blueprint?: { name?: unknown; methods?: unknown }; window?: unknown };
       if (typeof result?.blueprint?.name !== 'string' || typeof result.blueprint.methods !== 'object') throw failed('described no blueprint');
       const text = JSON.stringify(result.blueprint);
-      // Another blueprint than at the boot is refused and stopped for good: new code arrives with a restart of its ground.
+      // Another blueprint than at the boot is refused and stopped for good: new code arrives when its faculty stands again.
       if (this.#blueprint !== undefined && this.#blueprint !== text) {
         this.#stopped = true;
         this.#refused = `the program ${this.#options.command} describes another blueprint than it did at the boot, and is stopped`;
@@ -118,11 +175,17 @@ class Bridge {
       this.#child?.kill('SIGKILL');
       return;
     }
-    let message: { id?: unknown; token?: unknown; args?: unknown; call?: unknown; result?: unknown; error?: { message?: unknown } };
+    let message: { id?: unknown; token?: unknown; memory?: unknown; args?: unknown; call?: unknown; result?: unknown; error?: { message?: unknown } };
     try {
       message = JSON.parse(line) as typeof message;
     } catch {
       process.stderr.write(`[${this.#options.command}] a line that is no JSON: ${line.slice(0, 200)}\n`);
+      return;
+    }
+    // The program reads or writes its memory.
+    if (typeof message.memory === 'string') {
+      const { id } = message;
+      void remembered(this.#options.memory, message.memory, message.args).then((answer) => this.#write({ id, ...answer }));
       return;
     }
     // The program calls a handle it was handed.

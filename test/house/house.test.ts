@@ -19,7 +19,8 @@ const modules = { house: { steward: Steward, beings: [Counter, Reader, Checkout,
 const open = async ({ faculties = {} }: { faculties?: Record<string, Faculty> } = {}) => {
   const network = new FakeNetwork();
   const ground = await BenchGround.open({ network, host: 'home', modules, faculties });
-  const standing = await ground.add('house', 'house', { faculties: Object.keys(faculties) });
+  // Its memory apart, so a test has it refuse a write.
+  const standing = await ground.add('house', 'house', { memory: { body: 'fake' }, faculties: Object.keys(faculties) });
   const ask = (request: { id?: string; method?: string; args?: Json }) => ground.ask({ house: 'house', ...request });
   const result = async (method: string, args: Json = {}) => {
     const answer = await ask({ method, args });
@@ -229,10 +230,10 @@ test('remove leaves nothing of her', async () => {
 test('It refuses a memory opened with keys that derive another bound: the bound refuses a memory another set of keys wrote', async () => {
   const network = new FakeNetwork();
   const first = await BenchGround.open({ network, host: 'first', modules });
-  assert.ok((await first.add('house')).ward !== undefined);
+  assert.ok((await first.add('house', 'house', { memory: { body: 'fake' } })).ward !== undefined);
   // A second ground, with its own seeds, handed the memory of the first's house.
-  const bodies = { memory: { shared: () => first.machine.memoryOf('house') } };
-  const second = await BenchGround.open({ network, host: 'second', modules, bodies });
+  const registry = { memory: { shared: () => first.machine.memoryOf('house') } };
+  const second = await BenchGround.open({ network, host: 'second', modules, registry });
   assert.match((await second.add('house', { memory: { body: 'shared' }, classes: { body: 'module', name: 'house' } })).why ?? '', /bound to other keys/);
 });
 

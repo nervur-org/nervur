@@ -94,7 +94,7 @@ test('It refuses a foundation reference handed to a being, or offered as a custo
     network,
     host: 'home',
     modules: { house: { steward: Steward, beings: [Prober] } },
-    bodies: { memory: { leaked: () => leaked } },
+    registry: { memory: { leaked: () => leaked } },
     faculties: { leak: { blueprint: need('leak', { read: { args: s.object({ place: s.string() }) } }), object: leaked } },
   });
   t.after(() => ground.down());

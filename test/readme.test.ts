@@ -17,7 +17,7 @@ const held = (guide: string, folder: string, files: readonly string[]) => {
 
 held('README.md', 'readme', ['greeter.ts', 'greeter.test.ts', 'house/index.ts', 'page.ts']);
 held('AUTHORING.md', 'guides', ['classes/order.ts', 'classes/shop.ts', 'classes/lobby.ts', 'order.test.ts', 'payments.ts', 'recipe.ts', 'classes/index.ts']);
-held('FACULTIES.md', 'garage', ['relay.py', 'garage.ts', 'recipe.ts', 'doorbell.ts', 'garage.test.ts']);
+held('FACULTIES.md', 'garage', ['relay.py', 'garage.ts', 'doorbell.ts', 'garage.test.ts']);
 held('WORLD.md', 'world', []);
 held('FACES.md', 'faces', ['desk.ts', 'api.ts', 'recipe.ts', 'api.test.ts']);
 held('GROUNDS.md', 'guides', ['worker.ts']);

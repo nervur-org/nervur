@@ -1,53 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
 // The ground on Node, for a server, a container, a desktop or a Pi. Its
-// folder holds the recipe and a folder of code for each house; its state
-// holds the seeds, the record's ledger, each house's ledger and the hand's
-// socket. It takes the lock, opens the ground on its own custody and
-// memory, listens on TCP and on HTTP, and serves the hand.
-import { access, mkdir } from 'node:fs/promises';
+// folder holds its code: a folder for each house, and each module or
+// program its entries name. Its state holds the key, the ground's ledger
+// and the hand's socket. It takes the lock, opens the ground on its key and
+// its ledger, listens on TCP and on HTTP, and serves the hand.
+import { mkdir } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { Json } from '../being/being.ts';
 import { JoinedCarry } from '../bodies/joined-carry.ts';
 import { WebCarry } from '../bodies/web-carry.ts';
-import { Ground, type Bodies, type Custody, type Faculty } from '../ground/ground.ts';
-import { FolderCustody, KeychainCustody } from './custody.ts';
+import { Ground, type Registry, type Unlock } from '../ground/ground.ts';
+import { bridge } from './bridge.ts';
 import { FolderClasses } from './folder-classes.ts';
 import { handAt, serveHand, type Hand } from './hand.ts';
 import { serveHttp, type Served } from './http.ts';
 import { LedgerMemory } from './ledger-memory.ts';
 import { takeLock, type Lock } from './lock.ts';
 import { TcpCarry } from './tcp-carry.ts';
-
-/** What a ground's recipe exports: the faculties it makes, by name, and any custom body. */
-export interface Recipe {
-  readonly faculties?: (made: { env: Readonly<Record<string, string | undefined>>; dir: (name: string) => Promise<string> }) => Readonly<Record<string, Faculty | Promise<Faculty>>>;
-  readonly bodies?: Partial<Bodies>;
-  /** The kinds that hold the ground's own `houses`: its pilot. */
-  readonly houses?: { readonly kinds: readonly string[] };
-}
+import { FileUnlock, KeychainUnlock } from './unlock.ts';
 
 export interface NodeGroundOptions {
-  /** The folder of its code: the recipe, and a folder for each house. */
+  /** The folder of its code: a folder for each house, and each module or program its entries name. */
   readonly folder: string;
   /** The folder of its state; `NERVUR_STATE`, or `<folder>/state`, where none is named. */
   readonly state?: string;
   /**
    * Its settings: `NERVUR_STATE`, `NERVUR_TCP_PORT`, `NERVUR_HTTP_PORT`, `NERVUR_BIND`,
-   * `NERVUR_ADDRESSES`, `NERVUR_ORIGINS`, `NERVUR_ALLOW_PRIVATE`, `NERVUR_KEYCHAIN`,
+   * `NERVUR_ADDRESSES`, `NERVUR_ORIGINS`, `NERVUR_ALLOW_PRIVATE`, `NERVUR_UNLOCK`,
    * `NERVUR_HAND` and `NERVUR_WAIT`. The process's own where none are named.
    */
   readonly env?: Readonly<Record<string, string | undefined>>;
+  /** Its unlock, where the host opens the ground from its own code; `NERVUR_UNLOCK`'s, or the key file in its state, where omitted. */
+  readonly unlock?: Unlock;
 }
-
-const RECIPES = ['recipe.js', 'recipe.mjs', 'recipe.ts'];
-
-const found = async (folder: string): Promise<Recipe> => {
-  for (const name of RECIPES) {
-    const at = join(folder, name);
-    if (await access(at).then(() => true, () => false)) return (await import(pathToFileURL(at).href)) as Recipe;
-  }
-  return {};
-};
 
 const port = (value: string | undefined, fallback: number | undefined): number | undefined => {
   if (value === undefined || value === '') return fallback;
@@ -56,10 +42,43 @@ const port = (value: string | undefined, fallback: number | undefined): number |
   return number;
 };
 
-// Bodies the recipe adds beside the ground's own, never in their place.
-const joined = <T>(own: Readonly<Record<string, T>>, added: Readonly<Record<string, T>> = {}): Readonly<Record<string, T>> => {
-  for (const name of Object.keys(added)) if (name in own) throw new TypeError(`the recipe names a body ${name}, which is the ground's own`);
-  return { ...own, ...added };
+// A path its entry names, held inside the ground's folder.
+const inside = (folder: string, named: Json | undefined, what: string): string => {
+  if (typeof named !== 'string') throw new TypeError(`${what} names its path in at`);
+  const at = resolve(folder, named);
+  const within = relative(folder, at);
+  if (within.startsWith('..') || isAbsolute(within)) throw new Error(`${what} stands inside ${folder}`);
+  return at;
+};
+
+const strings = (value: Json | undefined, what: string): string[] => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) throw new TypeError(`${what} is a list of words`);
+  return value;
+};
+
+// The terrain's registry: a house's classes from a folder, a module as a registry, and a program over the bridge.
+const nodeRegistry = (folder: string): Registry => ({
+  classes: { folder: ({ args }) => FolderClasses.open(inside(folder, args.at, 'a folder of code')) },
+  faculties: {
+    module: async ({ args }) => {
+      const module = (await import(pathToFileURL(inside(folder, args.at, 'a module')).href)) as Registry;
+      return { registry: { ...(module.faculties === undefined ? {} : { faculties: module.faculties }), ...(module.memory === undefined ? {} : { memory: module.memory }), ...(module.classes === undefined ? {} : { classes: module.classes }) } };
+    },
+    bridge: ({ args, secrets, memory }) => {
+      if (typeof args.command !== 'string') throw new TypeError('a bridge names its program in command');
+      const cwd = args.cwd === undefined ? folder : inside(folder, args.cwd, 'a program’s folder');
+      return bridge({ command: args.command, args: strings(args.args, 'a program’s args'), env: secrets, cwd, memory });
+    },
+  },
+});
+
+// The unlock `NERVUR_UNLOCK` names: `keychain:<account>` on macOS, or the key file in its state.
+const unlockOf = (named: string | undefined, state: string): Unlock => {
+  if (named === undefined || named === '') return new FileUnlock(join(state, 'key'));
+  const account = /^keychain:(.+)$/.exec(named)?.[1];
+  if (account === undefined) throw new TypeError(`NERVUR_UNLOCK names keychain:<account>, not ${named}`);
+  return new KeychainUnlock({ account });
 };
 
 export class NodeGround {
@@ -85,18 +104,14 @@ export class NodeGround {
     return this.#http?.port;
   }
 
-  static async open({ folder: given, state: stateGiven, env = process.env }: NodeGroundOptions): Promise<NodeGround> {
+  static async open({ folder: given, state: stateGiven, env = process.env, unlock }: NodeGroundOptions): Promise<NodeGround> {
     const folder = resolve(given);
     const state = resolve(stateGiven ?? env.NERVUR_STATE ?? join(folder, 'state'));
-    await mkdir(join(state, 'houses'), { recursive: true, mode: 0o700 });
+    await mkdir(state, { recursive: true, mode: 0o700 });
 
     // 1. Lock.
     const lock = await takeLock(state);
     try {
-      // 2. Its own custody and memory, always the terrain's.
-      const custody: Custody = env.NERVUR_KEYCHAIN ? new KeychainCustody({ service: env.NERVUR_KEYCHAIN }) : new FolderCustody(join(state, 'seeds'));
-      const memory = new LedgerMemory(join(state, 'ground.ledger'), { witness: join(state, 'ground.witness') });
-
       // The carry: TCP and the web, each writing the addresses of its schemes.
       const addresses = (env.NERVUR_ADDRESSES ?? '')
         .split(',')
@@ -123,39 +138,19 @@ export class NodeGround {
       // The web carries the post and the held line alike, so it speaks all four of its schemes.
       const carry = new JoinedCarry({ tcp, https: web, http: web, wss: web, ws: web });
 
-      // 3 to 5, which the Ground runs: the record, the recipe's faculties awaited up in its order, then the record's houses.
-      const recipe = await found(folder);
-      const made = () =>
-        recipe.faculties?.({
-          env,
-          // A place of the faculty's own, named as a house is, so no name reaches past its folder.
-          dir: async (name) => {
-            if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(name) || name.includes('..')) throw new TypeError(`no faculty's folder is named ${name}`);
-            const dir = join(state, 'faculties', name);
-            await mkdir(dir, { recursive: true, mode: 0o700 });
-            return dir;
-          },
-        }) ?? {};
-      const bodies: Bodies = {
-        memory: joined({ ledger: ({ house }) => new LedgerMemory(join(state, 'houses', `${house}.ledger`), { witness: join(state, 'houses', `${house}.witness`) }) }, recipe.bodies?.memory),
-        classes: joined(
-          {
-            folder: ({ args }) => {
-              const at = resolve(folder, String(args.at));
-              const inside = relative(folder, at);
-              if (typeof args.at !== 'string' || inside.startsWith('..') || isAbsolute(inside)) throw new Error(`a folder of code stands inside ${folder}`);
-              return FolderClasses.open(at);
-            },
-          },
-          recipe.bodies?.classes,
-        ),
-      };
       const wait = env.NERVUR_WAIT === undefined ? undefined : Number(env.NERVUR_WAIT);
       if (wait !== undefined && !(Number.isSafeInteger(wait) && wait > 0)) throw new TypeError('NERVUR_WAIT is whole milliseconds above zero');
-      const ground = await Ground.open({ custody, memory, carry, bodies, recipe: made, ...(wait === undefined ? {} : { wait }), ...(recipe.houses === undefined ? {} : { houses: recipe.houses }) });
+      // 2 to 5, which the Ground runs: the key, the drawer on the ledger, the ladder, then the drawer's houses.
+      const ground = await Ground.open({
+        unlock: unlock ?? unlockOf(env.NERVUR_UNLOCK, state),
+        memory: new LedgerMemory(join(state, 'ground.ledger'), { witness: join(state, 'ground.witness') }),
+        carry,
+        registry: nodeRegistry(folder),
+        ...(wait === undefined ? {} : { wait }),
+      });
 
       // 6. Hook: HTTP chains the web carry and every faculty's handler, and the hand takes its socket.
-      if (httpPort !== undefined) http = await serveHttp({ port: httpPort, host: bind }, [web, ...ground.handlers]);
+      if (httpPort !== undefined) http = await serveHttp({ port: httpPort, host: bind }, [web, ground.handler]);
       const hand = env.NERVUR_HAND ?? handAt(state);
       const served = await serveHand((request) => ground.hand(request), hand);
       return new NodeGround({ ground, hand, tcp, lock, served, http });

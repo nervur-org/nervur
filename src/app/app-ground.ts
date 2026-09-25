@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // The ground in a phone's app: a BrowserGround in the shell's web view,
-// on the two bodies the shell hands in. Its seeds rest in the platform's
+// on the two bodies the shell hands in. Its key rests in the platform's
 // Keychain or Keystore, and its memory in a native store the system never
 // evicts. The code arrives signed in the app's bundle, and one web view
 // runs, so the lock is taken at once. A wake by push is the app's own
-// recipe's faculty, since the library ships no faculty.
+// registry's faculty, since the library ships no faculty.
 import { openOn, type BrowserGround, type BrowserGroundOptions } from '../browser/browser-ground.ts';
-import { NativeCustody, NativeMemory, type NativeSecrets, type NativeStore } from './native.ts';
+import { NativeMemory, NativeUnlock, type NativeSecrets, type NativeStore } from './native.ts';
 
 /** What the shell hands the ground: its secret store and its native store. */
 export interface NativeShell {
@@ -23,7 +23,7 @@ export interface AppGroundOptions extends Omit<BrowserGroundOptions, 'platform'>
 }
 
 export const AppGround = Object.freeze({
-  /** The app's ground: a BrowserGround whose custody and memory are the shell's own. */
+  /** The app's ground: a BrowserGround whose unlock and memory are the shell's own. */
   open({ shell, load, origin, ...options }: AppGroundOptions): Promise<BrowserGround> {
     return openOn(
       {
@@ -35,7 +35,7 @@ export const AppGround = Object.freeze({
           ...(origin === undefined ? {} : { origin }),
         },
       },
-      { custody: async () => new NativeCustody(shell.secrets), memory: async (name) => new NativeMemory(shell.store, name) },
+      { unlock: async () => new NativeUnlock(shell.secrets), memory: async (name) => new NativeMemory(shell.store, name) },
     );
   },
 });

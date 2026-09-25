@@ -51,7 +51,9 @@ test('A home shows the domain that vouches for a ward it took, and none where no
   const other = await shopHouse(quiet.ground);
   assert.deepEqual(await holder('take', { paper: other.paper }), { result: null });
   await network.settle();
-  assert.deepEqual(await holder('vouched'), { result: [['acme.shop'], []] }, 'a domain that lists no ward vouches for none');
+  // Her standings are listed by their ids, which say nothing of who took them first.
+  const vouched = (await holder('vouched')) as { result: string[][] };
+  assert.deepEqual(vouched.result.map((domains) => domains.join(',')).sort(), ['', 'acme.shop'], 'a domain that lists no ward vouches for none');
 });
 
 test('An impostor’s paper shows the impostor’s own domain, never the one it copies', async (t) => {

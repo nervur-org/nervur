@@ -22,8 +22,9 @@ which are JSON values, and answers **asks**, which are the methods others
 may call. The **house** holds beings, keeps their cells, and seals every
 ask that crosses its door. A **ground** is the process houses run in. It
 hands each house its keys, somewhere to keep rows, its classes, a way to
-carry bytes, and the **faculties** its beings may call. The seed behind
-the keys stays with the ground, and never enters the house.
+carry bytes, and the **faculties** its beings may call. The ground holds
+one key outside itself, and seals everything else under it: each house's
+seed, its rows and your secrets. No seed ever enters a house.
 
 ## A being
 
@@ -95,11 +96,11 @@ Run the ground in the folder, and leave it running.
 npx nervur up .
 ```
 
-In a second shell, add the house once. The ground keeps it in its record,
-and opens it again at every start.
+In a second shell, add the house once. The ground keeps its entry in its
+sealed drawer, and opens it again at every start.
 
 ```bash
-npx nervur houses add name=main memory='{"body":"ledger"}' classes='{"body":"folder","at":"house"}'
+npx nervur houses add name=main classes='{"body":"folder","at":"house"}'
 ```
 
 Then ask the steward through the ground's hand.
@@ -108,11 +109,12 @@ Then ask the steward through the ground's hand.
 npx nervur ask main hello name=Ada
 ```
 
-Each ask greets Ada once more, since the count lands in the house's
+Each ask greets Ada once more, since the count lands in the ground's
 ledger before the answer, and it outlives a restart. The ground keeps
-the house's seed, its ledger and its record in `state/`, readable by
-you alone. Keep that folder secret: a house opens on no other seed.
-`npx nervur help` lists everything the ground offers.
+its key and its ledger in `state/`, readable by you alone. Everything
+in the ledger is sealed under the key. Keep that folder as you keep an
+ssh key: without the key, the ledger opens nothing. `npx nervur help`
+lists everything the ground offers.
 
 ## A ground in a page
 
@@ -126,20 +128,20 @@ import { BrowserGround } from 'nervur/browser';
 // Every tab of this origin joins one ground, and the tab holding its lock runs it.
 const ground = await BrowserGround.open();
 
-// The house's code is a module on this origin, and its rows live in IndexedDB.
+// The house's code is a module on this origin, and its rows rest sealed in IndexedDB.
 await ground.hand({
   faculty: 'houses',
   method: 'add',
-  args: { name: 'main', memory: { body: 'indexeddb' }, classes: { body: 'origin', at: '/house/index.js' } },
+  args: { name: 'main', classes: { body: 'origin', at: '/house/index.js' } },
 });
 
 console.log(await ground.hand({ house: 'main', method: 'hello', args: { name: 'Ada' } }));
 ```
 
 Every tab of the origin reaches the one ground, and when the tab running
-it closes, the next opens it from the same storage. Its seeds are sealed
-under a key the browser never hands out. Any script on the origin can
-use them, so give the ground an origin of its own, with a strict content
+it closes, the next opens it from the same storage. Its key is sealed
+under one the browser never hands out. Any script on the origin can use
+that key, so give the ground an origin of its own, with a strict content
 security policy. The page and the house's module must share one copy of
 `nervur/being`, as a bundler's shared chunk gives.
 

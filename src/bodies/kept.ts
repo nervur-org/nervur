@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-// Custody and memory over a store of text a terrain keeps: a phone's
+// An unlock and a memory over a store of text a terrain keeps: a phone's
 // Keychain and native store, or an edge's Durable Object storage. A
 // terrain's body extends these and hands in its store; the logic of each
 // contract stands here once.
-import type { Keys, Memory, PlaceRead } from '../foundation.ts';
-import type { Custody } from '../ground/ground.ts';
-import { SeedKeys } from './seed-keys.ts';
+import type { Memory, PlaceRead } from '../foundation.ts';
+import type { Unlock } from '../ground/ground.ts';
 
 /** Secrets as text by name, kept where the terrain keeps them. */
 export interface Secrets {
@@ -27,50 +26,32 @@ export interface Store {
 }
 
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-const SEED = /^[0-9a-f]{64}$/;
+const KEY = /^[0-9a-f]{64}$/;
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 const bytes = (text: string) => new Uint8Array(text.match(/../g)?.map((pair) => parseInt(pair, 16)) ?? []);
 
-/** One seed for each house among a terrain's secrets, drawn on first use. */
-export abstract class KeptCustody implements Custody {
+/** The ground's key among a terrain's secrets, drawn on first use. */
+export abstract class KeptUnlock implements Unlock {
   readonly #secrets: Secrets;
-  #turn: Promise<unknown> = Promise.resolve();
+  #drawn: Promise<string> | undefined;
 
   constructor(secrets: Secrets) {
     this.#secrets = secrets;
   }
 
-  keys({ house }: { house: string }): Promise<Keys> {
-    return this.seed({ house }).then((seed) => new SeedKeys(seed));
-  }
-
-  /** A house's seed, drawn where none is kept, for the hand's `moves` alone. */
-  seed({ house }: { house: string }): Promise<string> {
-    return this.#seed(house);
-  }
-
-  /** A seed kept for a house, as a move brings it in; a house holding another is refused. */
-  async keep({ house, seed }: { house: string; seed: string }): Promise<void> {
-    if (!SEED.test(seed)) throw new TypeError('a seed is sixty-four lowercase hex digits');
-    if ((await this.#seed(house, seed)) !== seed) throw new Error(`the house ${house} holds another seed`);
-  }
-
-  // The seed kept for a house: the one there, or `given`, or a fresh one, kept first.
-  #seed(house: string, given?: string): Promise<string> {
-    if (!NAME.test(house)) return Promise.reject(new TypeError(`no house is named ${house}`));
-    // One seed is drawn at a time, so two first uses of a house never draw two.
-    const turn = this.#turn.then(async () => {
-      const name = `nervur.seed.${house}`;
-      let seed = await this.#secrets.get(name);
-      if (seed === null) {
-        seed = given ?? hex(crypto.getRandomValues(new Uint8Array(32)));
-        await this.#secrets.set(name, seed);
+  key(): Promise<string> {
+    // One key is drawn at a time, so two first uses never draw two.
+    this.#drawn ??= (async () => {
+      let key = await this.#secrets.get('nervur.key');
+      if (key === null) {
+        key = hex(crypto.getRandomValues(new Uint8Array(32)));
+        await this.#secrets.set('nervur.key', key);
       }
-      if (!SEED.test(seed)) throw new Error(`the seed of ${house} is not sixty-four hex digits`);
-      return seed;
-    });
-    this.#turn = turn.catch(() => undefined);
-    return turn;
+      if (!KEY.test(key)) throw new Error('the kept key is not sixty-four lowercase hex digits');
+      return key;
+    })();
+    this.#drawn.catch(() => (this.#drawn = undefined));
+    return this.#drawn;
   }
 }
 

@@ -45,13 +45,16 @@ void test('An edge answers a watch held across an eviction', { timeout: 60_000 }
   const port = await freePort();
   const named = { NERVUR_ADDRESSES: `ws://127.0.0.1:${port}/quo,http://127.0.0.1:${port}/quo` };
   edge = await started(out, port, named);
-  await hand(edge, { faculty: 'houses', method: 'add', args: { name: 'family', memory: { body: 'durable' }, classes: { body: 'bundle', at: 'station' } } });
+  await hand(edge, { faculty: 'houses', method: 'add', args: { name: 'family', classes: { body: 'bundle', at: 'station' } } });
   await hand(edge, { house: 'family', method: 'bear', args: { kind: 'org.example.garage-mirror', id: 'door' } });
   const { handle } = (await hand(edge, { house: 'family', method: 'offerFor', args: { being: 'door', occupant: 'pi' } })) as { handle: string };
 
   // The Pi names no address and listens on nothing another reaches: it only dials.
   ground = await NodeGround.open({ folder, state, env: { NERVUR_TCP_PORT: '0', NERVUR_BIND: '127.0.0.1', NERVUR_ALLOW_PRIVATE: '1' } });
-  const added = await ground.ground.add('pi', { memory: { body: 'ledger' }, classes: { body: 'folder', at: 'twin' }, faculties: ['relay'] });
+  // Its ladder: the folder's registry, then the relay from it, granted to the twin alone.
+  assert.deepEqual(await ground.ground.stand('recipe', { make: 'module', args: { at: 'recipe.ts' } }), {});
+  assert.deepEqual(await ground.ground.stand('relay', { from: 'recipe', make: 'relay', kinds: ['org.example.garage-twin'] }), {});
+  const added = await ground.ground.add('pi', { classes: { body: 'folder', at: 'twin' }, faculties: ['relay'] });
   assert.ok(added.ward !== undefined, added.why ?? 'the Pi’s house did not open');
   const pi = ground;
   const twin = (method: string, args = {}) => pi.ground.ask({ house: 'pi', ...(method === 'bear' ? {} : { id: 'door' }), method, args });
