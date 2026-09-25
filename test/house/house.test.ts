@@ -234,7 +234,7 @@ test('It refuses a memory opened with keys that derive another bound: the bound 
   // A second ground, with its own seeds, handed the memory of the first's house.
   const registry: Registry = { faculties: { shared: { up: () => ({ serves: 'memory', house: () => first.machine.memoryOf('house') }) } } };
   const second = await BenchGround.open({ network, host: 'second', modules, registry });
-  await second.hand({ faculty: 'faculties', method: 'add', args: { name: 'shared', make: 'shared' } });
+  await second.hand({ method: 'facultiesAdd', args: { name: 'shared', make: 'shared' } });
   assert.match((await second.add('house', { memory: { faculty: 'shared' }, classes: { faculty: 'module', name: 'house' } })).why ?? '', /bound to other keys/);
 });
 

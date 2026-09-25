@@ -127,7 +127,6 @@ export const FaceBlueprint = need('face', {
 export class Api {
   #context: Calls | undefined;
   #signup = '';
-  #calls = 0;
 
   arm({ signup }: { signup: string }, context: FacultyContext): Promise<Answer> {
     this.#context = context;
@@ -145,9 +144,9 @@ export class Api {
     return this.#context;
   }
 
-  // Each call its own id, so a call the house retries acts once.
+  // Each call an id drawn afresh, so no life of the face repeats one.
   #ask(token: string, method: string, args: Json): Promise<Answer> {
-    return this.#held().call({ token, method, args, id: `api:${++this.#calls}` });
+    return this.#held().call({ token, method, args, id: `api:${crypto.randomUUID()}` });
   }
 
   async #tools(token: string): Promise<Json> {
@@ -213,7 +212,7 @@ export const faculties = {
 ```
 
 ```bash
-npx nervur faculties add name=recipe make=module args='{"at":"recipe.ts"}'
+npx nervur faculties add name=recipe from=folder make=module args='{"at":"recipe.ts"}'
 npx nervur faculties add name=face from=recipe make=face
 ```
 
@@ -235,7 +234,7 @@ import { faculties } from './recipe.ts';
 test('A person signs up at the face, and reaches their member as an API and as tools', async (t) => {
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'desk', modules: { desk }, registry: { faculties } });
   t.after(() => ground.down());
-  await ground.hand({ faculty: 'faculties', method: 'add', args: { name: 'face', make: 'face' } });
+  await ground.hand({ method: 'facultiesAdd', args: { name: 'face', make: 'face' } });
   await ground.add('desk', 'desk', { faculties: ['face'] });
   await ground.ask({ house: 'desk', method: 'arm' });
   const web = async (path: string, body?: unknown, token?: string) =>

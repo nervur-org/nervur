@@ -30,6 +30,7 @@ test('A face is told its house opened, so a door’s token answers after a resta
   await first.add('desk', 'desk', { faculties: ['front'] });
   await first.ask({ house: 'desk', method: 'arm' });
   const alice = await armed.signup('alice');
+  assert.deepEqual(await armed.ask(alice, 'bump'), { result: null });
   await first.down();
 
   // The same ground on its machine, with a face no being has called: the steward never arms it again.
@@ -39,6 +40,9 @@ test('A face is told its house opened, so a door’s token answers after a resta
   assert.deepEqual(await fresh.ask(alice, 'hello'), { result: 'hello, web' }, 'her door answers at once');
   const bearer = await second.fetch(new Request('https://desk.example/hello', { method: 'POST', headers: { authorization: `Bearer ${alice}` }, body: '{}' }));
   assert.deepEqual(await bearer.json(), { result: 'hello, web' }, 'and on the listener');
+  // Each call's id is drawn afresh, so a call of this life never meets an answer an earlier life got.
+  assert.deepEqual(await fresh.ask(alice, 'bump'), { result: null });
+  assert.deepEqual(await fresh.ask(alice, 'count'), { result: 2 }, 'both bumps acted');
 });
 
 test('A face’s token lists and asks every ask its occupant may, and nothing more', async (t) => {

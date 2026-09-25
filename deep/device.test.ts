@@ -60,7 +60,7 @@ void describe('Invitations between this machine and a real device', { timeout: 6
 
   // Bob's ground started on the device, its hand forwarded to a socket here, and its house added once.
   const up = async () => {
-    const env = `NERVUR_STATE=${folder}/state NERVUR_TCP_PORT=${port} NERVUR_ADDRESSES=tcp://${host}:${port} NERVUR_HAND=${folder}/hand`;
+    const env = `NERVUR_STATE=${folder}/state NERVUR_HAND=${folder}/hand`;
     const child = spawn(
       'ssh',
       [...ssh, '-o', 'ExitOnForwardFailure=yes', '-o', 'StreamLocalBindUnlink=yes', '-L', `${socket}:${folder}/hand`, device, `cd ${folder} && ${env} exec ${folder}/node_modules/.bin/nervur up ${folder}/${GROUND}`],
@@ -73,9 +73,12 @@ void describe('Invitations between this machine and a real device', { timeout: 6
     const owner = await handAt<HandRequest>(socket);
     bob = { child, close: owner.close };
     bobs = (request) => owner.ask({ house: 'bob', ...request });
+    // Its port, every interface and its public address, set through the hand once; the drawer keeps them across a restart.
+    const tcp = await owner.ask({ method: 'facultiesUpdate', args: { name: 'tcp', make: 'tcp', args: { port: Number(port), bind: '0.0.0.0', addresses: [`tcp://${host}:${port}`] } } });
+    assert.deepEqual(tcp, { result: {} }, 'the tcp body stands on its entry');
     const { houses } = JSON.parse(line) as { houses: { name: string }[] };
     if (!houses.some(({ name }) => name === 'bob')) {
-      const added = await owner.ask({ faculty: 'houses', method: 'add', args: { name: 'bob', ...house } });
+      const added = await owner.ask({ method: 'housesAdd', args: { name: 'bob', ...house } });
       assert.ok('result' in added, JSON.stringify(added));
     }
   };
@@ -95,6 +98,8 @@ void describe('Invitations between this machine and a real device', { timeout: 6
     // npm 11 answers a list of packs, and npm 12 an object keyed by the package's name.
     const answered = JSON.parse(local('npm', ['pack', '--json', '--pack-destination', here], pkg)) as { filename: string }[] | Record<string, { filename: string }>;
     const packed = Array.isArray(answered) ? answered[0] : answered.nervur;
+    // A red run stops before its `after`, so the ground and the folder it left are removed here.
+    remote(`pkill -INT -f 'nervur-deep-.*/${GROUND}' || true; rm -rf "$HOME"/nervur-deep-*`);
     folder = remote('mktemp -d "$HOME/nervur-deep-XXXXXX"');
     remote(`mkdir -p ${folder}/${GROUND}/classes ${folder}/test/fixtures/world`);
     local('scp', [...ssh, join(here, packed.filename), `${device}:${folder}/`]);
@@ -104,8 +109,11 @@ void describe('Invitations between this machine and a real device', { timeout: 6
     await up();
     await hand(bobs, 'bear', { kind: 'org.example.host', id: 'bob' });
     // Alice's ground, here: it dials alone, with no private address allowed.
-    alice = await NodeGround.open({ folder: join(pkg, GROUND), state: join(here, 'alice'), env: { NERVUR_TCP_PORT: '0', NERVUR_BIND: '127.0.0.1', NERVUR_HAND: join(here, 'alice-hand') } });
-    const added = await alice.ground.hand({ faculty: 'houses', method: 'add', args: { name: 'alice', ...house } });
+    // Her TCP moved onto the loopback through the hand, with no private address allowed.
+    alice = await NodeGround.open({ folder: join(pkg, GROUND), state: join(here, 'alice'), env: { NERVUR_HAND: join(here, 'alice-hand') } });
+    const moved = await alice.ground.hand({ method: 'facultiesUpdate', args: { name: 'tcp', make: 'tcp', args: { port: 0, bind: '127.0.0.1' } } });
+    assert.ok('result' in moved, JSON.stringify(moved));
+    const added = await alice.ground.hand({ method: 'housesAdd', args: { name: 'alice', ...house } });
     assert.ok('result' in added, JSON.stringify(added));
     alices = (request) => alice.ground.ask({ house: 'alice', ...request });
   }, REMOTE);

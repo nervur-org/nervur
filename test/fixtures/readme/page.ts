@@ -6,8 +6,7 @@ const ground = await BrowserGround.open();
 
 // The house's code is a module on this origin, and its rows rest sealed in IndexedDB.
 await ground.hand({
-  faculty: 'houses',
-  method: 'add',
+  method: 'housesAdd',
   args: { name: 'main', classes: { faculty: 'origin', at: '/house/index.js' } },
 });
 

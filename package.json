@@ -1,6 +1,6 @@
 {
   "name": "nervur",
-  "version": "0.22.2-8",
+  "version": "0.23.0",
   "description": "Nervur's kit of Quo: write beings and faculties, and open the house that holds them on any ground.",
   "keywords": [
     "quo",
@@ -79,6 +79,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepack": "npm run build",
     "check": "tsc -p tsconfig.json && tsc -p tsconfig.pure.json && node test.mjs \"test/**/*.test.ts\"",
+    "mutate": "node mutate.mjs",
     "deep": "tsc -p deep && NERVUR_TEST_CAP=900000 node test.mjs \"deep/**/*.test.ts\"",
     "prepublishOnly": "test \"$NERVUR_GATED\" = 1 || { echo 'a publish is /release, from the root, on the human'\"'\"'s word' >&2; exit 1; }"
   },

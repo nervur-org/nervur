@@ -8,7 +8,7 @@ import { faculties } from './recipe.ts';
 test('A person signs up at the face, and reaches their member as an API and as tools', async (t) => {
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'desk', modules: { desk }, registry: { faculties } });
   t.after(() => ground.down());
-  await ground.hand({ faculty: 'faculties', method: 'add', args: { name: 'face', make: 'face' } });
+  await ground.hand({ method: 'facultiesAdd', args: { name: 'face', make: 'face' } });
   await ground.add('desk', 'desk', { faculties: ['face'] });
   await ground.ask({ house: 'desk', method: 'arm' });
   const web = async (path: string, body?: unknown, token?: string) =>

@@ -18,12 +18,11 @@ export interface Hand {
 
 /**
  * One line to the hand. On a house's own hand, an ask of a being. On a
- * ground's, an ask of a being in the house it names, a method of one of
- * its faculties, or `describe` for all it holds.
+ * ground's, an ask of a being in the house it names, of the dock's steward
+ * where it names none, or `describe` for all it holds.
  */
 export interface HandRequest {
   readonly house?: string;
-  readonly faculty?: string;
   readonly describe?: true;
   readonly id?: string;
   readonly method?: string;
@@ -32,6 +31,8 @@ export interface HandRequest {
   readonly after?: Answer;
   /** Her cells read, and nothing asked. */
   readonly cells?: true;
+  /** The ask's call id: asked again, it answers what the first answered. */
+  readonly call?: string;
 }
 
 const object = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -44,15 +45,15 @@ const request = (line: string): HandRequest | null => {
     return null;
   }
   if (!object(value)) return null;
-  const { house, faculty, describe, id, method, args, after, cells, ...rest } = value;
+  const { house, describe, id, method, args, after, cells, call, ...rest } = value;
   if (Object.keys(rest).length > 0) return null;
-  for (const text of [house, faculty, id, method]) if (text !== undefined && typeof text !== 'string') return null;
+  for (const text of [house, id, method, call]) if (text !== undefined && typeof text !== 'string') return null;
   if (args !== undefined && !object(args)) return null;
   if (describe !== undefined && describe !== true) return null;
   if (cells !== undefined && cells !== true) return null;
   // An answer is `{ result }` or `{ error }`, and nothing else.
   if (after !== undefined && !(object(after) && Object.keys(after).length === 1 && ('result' in after || 'error' in after))) return null;
-  return Object.fromEntries(Object.entries({ house, faculty, describe, id, method, args, after, cells }).filter(([, field]) => field !== undefined));
+  return Object.fromEntries(Object.entries({ house, describe, id, method, args, after, cells, call }).filter(([, field]) => field !== undefined));
 };
 
 const serve = (ask: (request: HandRequest) => Promise<unknown>, socket: Socket) => {

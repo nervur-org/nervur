@@ -51,7 +51,7 @@ test('The first tab runs the ground, and a second reaches its hand', async (t) =
   await first.led();
   assert.equal(first.leading, true);
   assert.equal(second.leading, false);
-  const added = await second.hand({ faculty: 'houses', method: 'add', args: { name: 'shop', ...shop } });
+  const added = await second.hand({ method: 'housesAdd', args: { name: 'shop', ...shop } });
   assert.ok('result' in added, JSON.stringify(added));
   await second.hand({ house: 'shop', method: 'bear', args: { kind: 'org.example.host', id: 'bob' } });
   assert.deepEqual(await first.hand({ house: 'shop', id: 'bob', method: 'greet' }), { result: 'bob greets root' });
@@ -63,12 +63,12 @@ test('When the tab that runs it closes, the next opens the same ground', async (
   const first = await tab(t, 'handover', stores);
   await first.led();
   const second = await tab(t, 'handover', stores);
-  const { ward } = ((await first.hand({ faculty: 'houses', method: 'add', args: { name: 'shop', ...shop } })) as { result: { ward: string } }).result;
+  const { ward } = ((await first.hand({ method: 'housesAdd', args: { name: 'shop', ...shop } })) as { result: { ward: string } }).result;
   await first.hand({ house: 'shop', method: 'bear', args: { kind: 'org.example.host', id: 'bob' } });
   await first.close();
   await second.led();
   assert.equal(second.leading, true);
-  const listed = (await second.hand({ faculty: 'houses', method: 'list' })) as { result: { name: string; ward?: string }[] };
+  const listed = (await second.hand({ method: 'housesList' })) as { result: { name: string; ward?: string }[] };
   assert.deepEqual(
     listed.result.map(({ name, ward: held }) => ({ name, ward: held })),
     [{ name: 'shop', ward }],
@@ -94,9 +94,9 @@ test('An ask in flight when the tab running the ground closes is told to ask aga
   const registry: Registry = { faculties: { slow: { up: () => slow } } };
   const first = await tab(t, 'in-flight', stores, { registry });
   await first.led();
-  await first.hand({ faculty: 'faculties', method: 'add', args: { name: 'slow', make: 'slow' } });
+  await first.hand({ method: 'facultiesAdd', args: { name: 'slow', make: 'slow' } });
   const second = await tab(t, 'in-flight', stores, { registry });
-  const asked = second.hand({ faculty: 'slow', method: 'wait' });
+  const asked = second.hand({ method: 'callFaculty', args: { faculty: 'slow', method: 'wait' } });
   // The first tab has the ask before it closes.
   await reached;
   await first.close();
@@ -120,7 +120,7 @@ test('Closing lets go of every store its boot opened', async (t) => {
     },
   });
   await only.led();
-  await only.hand({ faculty: 'houses', method: 'add', args: { name: 'shop', ...shop } });
+  await only.hand({ method: 'housesAdd', args: { name: 'shop', ...shop } });
   await only.close();
   assert.deepEqual(closed.sort(), ['closing-ground', 'closing-unlock'], 'its houses keep their places in the ground’s one memory');
 });
@@ -137,15 +137,15 @@ test('Its classes come from its origin, and a path off it is refused', async (t)
   const { stores } = originStorage();
   const only = await tab(t, 'off-origin', stores);
   await only.led();
-  const off = await only.hand({ faculty: 'houses', method: 'add', args: { name: 'stray', classes: { faculty: 'origin', at: '../../src/index.ts' } } });
-  assert.deepEqual(off, { error: { message: `the house stray did not open: the code at ../../src/index.ts stands off ${origin}` } });
+  const off = await only.hand({ method: 'housesAdd', args: { name: 'stray', classes: { faculty: 'origin', at: '../../src/index.ts' } } });
+  assert.deepEqual(off, { result: { why: `the code at ../../src/index.ts stands off ${origin}` } }, 'its entry lands, and the house stays closed with why');
 });
 
 test('The unlock keeps the ground’s key sealed, and never as bytes a script could read', async (t) => {
   const { stores, kept } = originStorage();
   const only = await tab(t, 'sealed', stores);
   await only.led();
-  await only.hand({ faculty: 'houses', method: 'add', args: { name: 'shop', ...shop } });
+  await only.hand({ method: 'housesAdd', args: { name: 'shop', ...shop } });
   const lock = kept.get('lock') as CryptoKey;
   assert.equal(lock.extractable, false, 'the lock is the browser’s alone');
   const sealed = kept.get('key') as { iv: Uint8Array; data: Uint8Array };

@@ -20,7 +20,6 @@ export const FaceBlueprint = need('face', {
 export class Api {
   #context: Calls | undefined;
   #signup = '';
-  #calls = 0;
 
   arm({ signup }: { signup: string }, context: FacultyContext): Promise<Answer> {
     this.#context = context;
@@ -38,9 +37,9 @@ export class Api {
     return this.#context;
   }
 
-  // Each call its own id, so a call the house retries acts once.
+  // Each call an id drawn afresh, so no life of the face repeats one.
   #ask(token: string, method: string, args: Json): Promise<Answer> {
-    return this.#held().call({ token, method, args, id: `api:${++this.#calls}` });
+    return this.#held().call({ token, method, args, id: `api:${crypto.randomUUID()}` });
   }
 
   async #tools(token: string): Promise<Json> {

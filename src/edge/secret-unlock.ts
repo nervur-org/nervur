@@ -9,7 +9,7 @@ const KEY = /^[0-9a-f]{64}$/;
 export class SecretUnlock implements Unlock {
   readonly #secret: string;
 
-  /** `secret` is the Worker's `NERVUR_SECRET`, sixty-four lowercase hex digits, set as a secret and never in its code. */
+  /** `secret` is its entry's arg, which the edge reads once from the Worker's `NERVUR_SECRET`: sixty-four lowercase hex digits, set as a secret and never in its code. */
   constructor(secret: string | undefined) {
     if (typeof secret !== 'string' || !KEY.test(secret)) throw new TypeError('the edge’s secret is sixty-four lowercase hex digits');
     this.#secret = secret;

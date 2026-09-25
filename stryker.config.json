@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": { "command": "node test.mjs \"test/house/**/*.test.ts\"" },
+  "mutate": ["src/house/**/*.ts"],
+  "ignorePatterns": ["tsconfig*.json", "dist", "deep", ".wrangler"],
+  "coverageAnalysis": "off",
+  "incremental": true,
+  "incrementalFile": ".stryker/incremental.json",
+  "tempDirName": ".stryker/tmp",
+  "reporters": ["clear-text", "progress"],
+  "timeoutMS": 3000,
+  "timeoutFactor": 1,
+  "concurrency": 5,
+  "thresholds": { "high": 90, "low": 75, "break": null }
+}

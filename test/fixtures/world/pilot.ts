@@ -1,45 +1,35 @@
-// A pilot: she holds the ground's `houses` faculty where the record grants
-// it to her house, and adds, removes and lists houses through it.
-import { Being, need, s, type Args } from 'nervur/being';
+// A pilot: she takes the invitation the ground's owner minted on the
+// dock's steward, which makes it her standing there, and asks through it
+// whatever the dock shows her.
+import { DockPilot } from 'nervur';
+import { Being, s, type Args, type Json } from 'nervur/being';
 
-// Her need names the bodies she hands, at their minimum; the ground's offer checks the args.
-export const Houses = need('houses', {
-  add: {
-    args: s.object({ name: s.string(), memory: s.object({ faculty: s.string() }), classes: s.object({ faculty: s.string(), set: s.string() }) }),
-    result: s.object({ ward: s.string() }),
-    hints: { idempotent: true },
-  },
-  remove: { args: s.object({ name: s.string() }), hints: { idempotent: true } },
-});
+/** Any JSON value: a schema with no keyword. */
+const ANY = Object.freeze({});
 
 export class Pilot extends Being.of({
   kind: 'org.example.pilot',
-  needs: { houses: Houses },
+  cells: { dock: '' },
   asks: {
-    open: { hints: { idempotent: true }, args: s.object({ name: s.string(), set: s.string() }), result: s.string() },
-    close: { hints: { idempotent: true }, args: s.object({ name: s.string() }) },
+    // Taking an invitation twice gives the standing it made, so it is safe to repeat.
+    accept: { args: s.object({ invitation: s.handle() }), hints: { idempotent: true } },
+    pilot: { hints: { idempotent: true }, args: s.object({ method: s.string(), args: s.optional(ANY) }), result: ANY },
+    houses: { hints: { readOnly: true }, result: ANY },
   },
 }) {
-  async open({ name, set }: Args<Pilot, 'open'>) {
-    const { ward } = await this.houses.add({ name, memory: { faculty: 'fake' }, classes: { faculty: 'list', set } });
-    return ward;
+  // The dock's houses, through the standing matched to the need every pilot holds.
+  async houses() {
+    return (await this.held(this.cells.dock, DockPilot).housesList({})) as Json;
   }
 
-  async close({ name }: Args<Pilot, 'close'>) {
-    await this.houses.remove({ name });
+  accept({ invitation }: Args<Pilot, 'accept'>) {
+    this.cells.dock = invitation;
   }
-}
 
-/** A class of another kind whose need `houses` covers too, in the same house as the pilot. */
-export class Stowaway extends Being.of({
-  kind: 'org.example.stowaway',
-  needs: { houses: Houses },
-  asks: {
-    open: { hints: { idempotent: true }, args: s.object({ name: s.string(), set: s.string() }), result: s.string() },
-  },
-}) {
-  async open({ name, set }: Args<Stowaway, 'open'>) {
-    const { ward } = await this.houses.add({ name, memory: { faculty: 'fake' }, classes: { faculty: 'list', set } });
-    return ward;
+  // What the dock shows her, then the ask she names from it.
+  async pilot({ method, args }: Args<Pilot, 'pilot'>) {
+    const dock = this.held(this.cells.dock);
+    await dock.describe();
+    return ((await dock.ask(method, args ?? {})) ?? null) as Json;
   }
 }

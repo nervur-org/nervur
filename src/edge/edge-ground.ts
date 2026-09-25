@@ -10,6 +10,7 @@ import type { Json } from '../being/being.ts';
 import { ClassList } from '../bodies/class-list.ts';
 import { WebCarry, type Handler, type Held, type HeldSocket } from '../bodies/web-carry.ts';
 import type { BeingClass } from '../foundation.ts';
+import { s } from '../being/schema.ts';
 import { Ground, joinedRegistry, type Registry } from '../ground/ground.ts';
 import { DurableClock } from './durable-clock.ts';
 import { DurableMemory } from './durable-memory.ts';
@@ -68,7 +69,6 @@ export interface EdgeObject {
 /** What one wake holds. */
 interface Woken {
   readonly ground: Ground;
-  readonly clock: DurableClock;
   readonly handlers: readonly Handler[];
 }
 
@@ -91,11 +91,8 @@ const same = async (given: string, key: string): Promise<boolean> => {
   return differs === 0;
 };
 
-const listed = (value: string | undefined): string[] =>
-  (value ?? '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item !== '');
+const NONE = { args: s.object({}) } as const;
+const WORDS = s.array(s.string());
 
 // Words an entry's args list, or none.
 const strings = (value: Json | undefined): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
@@ -108,11 +105,11 @@ const socketOf = (socket: Socket): HeldSocket => ({
 export const EdgeGround = Object.freeze({
   /**
    * The ground's Durable Object class, which the Worker's module exports
-   * under the name its binding gives. Its settings are the Worker's:
-   * `NERVUR_SECRET`, the ground's key, sixty-four hex digits set as a
-   * secret, `NERVUR_HAND`, the key of its hand, set as a secret, and
-   * `NERVUR_ADDRESSES`, `NERVUR_ORIGINS`, `NERVUR_ALLOW_PRIVATE` and
-   * `NERVUR_WAIT`.
+   * under the name its binding gives. The Worker's environment holds what
+   * opens its drawer and its hand, and nothing else: `NERVUR_SECRET`, the
+   * ground's key, sixty-four hex digits, and `NERVUR_HAND`, the key of its
+   * hand, both set as secrets. Every other setting is an entry in the
+   * drawer.
    */
   object({ registry, code = {}, connect }: EdgeGroundOptions = {}): new (state: DurableState, env: Readonly<Record<string, unknown>>) => EdgeObject {
     return class implements EdgeObject {
@@ -136,22 +133,40 @@ export const EdgeGround = Object.freeze({
       async #boot(): Promise<Woken> {
         const env = this.#env;
         const storage = this.#state.storage;
-        // The clock this wake stands, which the object's alarm ends each wait of.
-        const ticking: { clock?: DurableClock } = {};
-        const allowPrivate = env.NERVUR_ALLOW_PRIVATE === '1';
         const own: Registry = {
           faculties: {
-            'secret-unlock': { up: () => ({ serves: 'unlock', object: new SecretUnlock(env.NERVUR_SECRET) }) },
-            durable: { up: () => ({ serves: 'memory', object: new DurableMemory(storage, 'ground') }) },
-            native: { up: () => ({ serves: 'crypto', object: new NativeCrypto() }) },
-            'durable-clock': {
-              up: () => {
-                const clock = new DurableClock(storage);
-                ticking.clock = clock;
-                return { serves: 'clock', object: clock };
+            'secret-unlock': { takes: { args: s.object({ secret: s.string() }) }, up: ({ args }) => ({ serves: 'unlock', object: new SecretUnlock(args.secret as string) }) },
+            // The hand, for whoever holds the key its args give; to anyone else, as on an edge that gives none, nothing is here.
+            'key-hand': {
+              takes: { args: s.object({ key: s.optional(s.string()) }) },
+              up: ({ args, faculties }) => {
+                const key = typeof args.key === 'string' ? args.key : undefined;
+                const ground = faculties.ground as { hand(request: HandRequest): Promise<unknown> };
+                return {
+                  serves: 'hand',
+                  handler: {
+                    fetch: async (request: Request) => {
+                      if (new URL(request.url).pathname !== HAND) return null;
+                      const given = /^Bearer (.+)$/.exec(request.headers.get('authorization') ?? '')?.[1];
+                      if (key === undefined || given === undefined || request.method !== 'POST' || !(await same(given, key))) return null;
+                      let asked: HandRequest;
+                      try {
+                        asked = (await request.json()) as HandRequest;
+                      } catch {
+                        return Response.json({ error: { message: 'the hand takes one JSON object' } }, { status: 400 });
+                      }
+                      return Response.json(await ground.hand(asked));
+                    },
+                  },
+                };
               },
             },
+            durable: { takes: NONE, up: () => ({ serves: 'memory', object: new DurableMemory(storage, 'ground') }) },
+            native: { takes: NONE, up: () => ({ serves: 'crypto', object: new NativeCrypto() }) },
+            // The ground's clock, which the object's alarm, through the ground's wake, ends each due wait of.
+            'durable-clock': { takes: NONE, up: () => ({ serves: 'clock', object: new DurableClock(storage) }) },
             web: {
+              takes: { args: s.object({ allowPrivate: s.optional(s.boolean()), addresses: s.optional(WORDS), origins: s.optional(WORDS) }) },
               up: ({ args }) => {
                 const web = new WebCarry({ allowPrivate: args.allowPrivate === true, origins: strings(args.origins), addresses: strings(args.addresses) });
                 return { serves: 'carry', schemes: ['https', 'http', 'wss', 'ws'], object: web, handler: web };
@@ -159,8 +174,9 @@ export const EdgeGround = Object.freeze({
             },
             ...(connect === undefined
               ? {}
-              : { socket: { up: ({ args }) => ({ serves: 'carry', schemes: ['tcp'], object: new SocketCarry({ connect, allowPrivate: args.allowPrivate === true }) }) } }),
+              : { socket: { takes: { args: s.object({ allowPrivate: s.optional(s.boolean()) }) }, up: ({ args }) => ({ serves: 'carry', schemes: ['tcp'], object: new SocketCarry({ connect, allowPrivate: args.allowPrivate === true }) }) } }),
             bundle: {
+              takes: NONE,
               up: () => ({
                 serves: 'classes',
                 house: ({ args }) => {
@@ -172,50 +188,37 @@ export const EdgeGround = Object.freeze({
             },
           },
         };
-        const wait = env.NERVUR_WAIT === undefined ? WAIT : Number(env.NERVUR_WAIT);
-        if (!(Number.isSafeInteger(wait) && wait > 0)) throw new TypeError('NERVUR_WAIT is whole milliseconds above zero');
-        const privately: Record<string, Json> = allowPrivate ? { allowPrivate } : {};
         const ground = await Ground.open({
           registry: joinedRegistry(own, registry ?? {}),
-          primordial: { unlock: { make: 'secret-unlock' }, memory: { make: 'durable' }, crypto: { make: 'native' }, tools: { make: 'strict' } },
-          // A Worker learns no name it is reached by before a request, so it writes only the addresses it is given.
-          entries: {
+          // The unlock's args are the environment's, read once into its entry, which never lands in the drawer.
+          primordial: {
+            unlock: { make: 'secret-unlock', args: env.NERVUR_SECRET === undefined ? {} : { secret: env.NERVUR_SECRET } },
+            memory: { make: 'durable' },
+            crypto: { make: 'native' },
+            tools: { make: 'strict' },
             clock: { make: 'durable-clock' },
-            bundle: { make: 'bundle' },
-            web: { make: 'web', args: { ...privately, addresses: listed(env.NERVUR_ADDRESSES), origins: listed(env.NERVUR_ORIGINS) } },
-            ...(connect === undefined ? {} : { tcp: { make: 'socket', args: privately } }),
+            hand: { make: 'key-hand', args: env.NERVUR_HAND === undefined ? {} : { key: env.NERVUR_HAND }, faculties: ['ground'] },
           },
-          wait,
+          // A Worker learns no name it is reached by before a request, so it writes only the addresses its entry gives.
+          entries: {
+            bundle: { make: 'bundle' },
+            web: { make: 'web' },
+            ...(connect === undefined ? {} : { tcp: { make: 'socket' } }),
+          },
+          wait: WAIT,
           lazy: true,
         });
-        const clock = ticking.clock;
-        if (clock === undefined) throw new Error('the edge stands no clock');
-        return { ground, clock, handlers: [ground.handler] };
+        return { ground, handlers: [ground.handler] };
       }
 
       async fetch(request: Request): Promise<Response> {
-        const { ground, handlers } = await this.#wake();
-        if (new URL(request.url).pathname === HAND) return this.#hand(request, ground);
+        const { handlers } = await this.#wake();
         if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') return this.#upgrade(request, handlers);
         for (const handler of handlers) {
           const response = await handler.fetch(request);
           if (response !== null) return response;
         }
         return new Response(null, { status: 404 });
-      }
-
-      // The hand, for whoever holds the Worker's `NERVUR_HAND`; to anyone else, as to an edge that sets none, nothing is here.
-      async #hand(request: Request, ground: Ground): Promise<Response> {
-        const key = this.#env.NERVUR_HAND;
-        const given = /^Bearer (.+)$/.exec(request.headers.get('authorization') ?? '')?.[1];
-        if (key === undefined || given === undefined || request.method !== 'POST' || !(await same(given, key))) return new Response(null, { status: 404 });
-        let asked: HandRequest;
-        try {
-          asked = (await request.json()) as HandRequest;
-        } catch {
-          return Response.json({ error: { message: 'the hand takes one JSON object' } }, { status: 400 });
-        }
-        return Response.json(await ground.hand(asked));
       }
 
       // A held line accepted to hibernate, what opened it kept beside it so a later wake opens it again.
@@ -270,9 +273,8 @@ export const EdgeGround = Object.freeze({
 
       /** The object's alarm: every house opens, so each arms its times again, and every wait due ends. */
       async alarm(): Promise<void> {
-        const { ground, clock } = await this.#wake();
+        const { ground } = await this.#wake();
         await ground.wake();
-        await clock.alarm();
       }
     };
   },

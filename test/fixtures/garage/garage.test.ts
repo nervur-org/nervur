@@ -31,7 +31,7 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
   });
   t.after(() => garage.down());
   // The relay, granted to the twin's class alone.
-  await garage.hand({ faculty: 'faculties', method: 'add', args: { name: 'relay', make: 'bridge', kinds: ['org.example.garage'] } });
+  await garage.hand({ method: 'facultiesAdd', args: { name: 'relay', make: 'bridge', kinds: ['org.example.garage'] } });
   await garage.add('garage', 'pi', { faculties: ['relay'] });
   await garage.ask({ house: 'garage', method: 'bear', args: { kind: 'org.example.garage', id: 'door' } });
 

@@ -24,21 +24,21 @@ test('A custom faculty brings new code to a house by an update, installed once f
     },
   };
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'shop', names: ['shop.example'], registry: { faculties: { code } } });
-  const faculty = (method: string, args: Record<string, unknown>) => ground.hand({ faculty: 'faculties', method, args: args as never });
-  assert.deepEqual(await faculty('add', { name: 'code', make: 'code', args: { version: 'v1' } }), { result: null });
+  const faculty = (method: string, args: Record<string, unknown>) => ground.hand({ method: `faculties${method[0].toUpperCase()}${method.slice(1)}`, args: args as never });
+  assert.deepEqual(await faculty('add', { name: 'code', make: 'code', args: { version: 'v1' } }), { result: {} });
   const first = await ground.add('store', { classes: { faculty: 'code' } });
   await ground.ask({ house: 'store', method: 'bear', args: { kind: 'org.example.host', id: 'bob' } });
   assert.deepEqual(await ground.ask({ house: 'store', id: 'bob', method: 'greet' }), { result: 'bob greets root' });
 
   assert.match(JSON.stringify(await faculty('add', { name: 'code', make: 'code', args: { version: 'v2' } })), /stands with another entry; update it/, 'another entry is an update');
-  assert.deepEqual(await faculty('update', { name: 'code', make: 'code', args: { version: 'v2' } }), { result: null });
+  assert.deepEqual(await faculty('update', { name: 'code', make: 'code', args: { version: 'v2' } }), { result: {} });
   assert.deepEqual(downs, ['v1'], 'the body went down');
   assert.deepEqual(ups, ['v1', 'v2'], 'and up on its new entry');
   const second = ground.list().find(({ name }) => name === 'store');
   assert.equal(second?.ward, first.ward, 'the house opened again, as the same ward');
   assert.deepEqual(await ground.ask({ house: 'store', id: 'bob', method: 'greet' }), { result: 'bob welcomes root' }, 'new code over the same row');
 
-  assert.deepEqual(await faculty('restart', { name: 'code' }), { result: null });
+  assert.deepEqual(await faculty('restart', { name: 'code' }), { result: {} });
   assert.deepEqual(ups, ['v1', 'v2', 'v2'], 'a restart takes it down and up on its entry');
   assert.deepEqual(installed, ['v1', 'v2'], 'installed once for each entry, and never on a restart');
   assert.equal(ground.list().find(({ name }) => name === 'store')?.ward, first.ward);

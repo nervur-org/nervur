@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // The views a ground hands out of what it holds whole. A house sees the
 // ground's clock and carry as its own, and closing them ends every ask in
-// flight on it. A house and a faculty each keep their places under a
-// prefix of the ground's one memory, and a faculty's are sealed by the
-// ground. No entry exports these; each contract's suite runs against them.
+// flight on it. The dock sees the ladder's carry as it comes to stand. A
+// house and a faculty each keep their places under a prefix of the
+// ground's one memory, and a faculty's are sealed by the ground. No entry
+// exports these; each contract's suite runs against them.
 import type { Carry, Clock, Crypto, Memory, PlaceRead, Sent, Tools } from '../foundation.ts';
 
 // The ground's clock as one house sees it: its waits named apart from every
@@ -85,6 +86,32 @@ export class HouseCarry implements Carry {
     this.#closed = true;
   }
 }
+
+// The carry the dock holds from before the ladder stands: each send goes by
+// the carries standing when it is made, and where none stands it is unheard.
+export class LadderCarry implements Carry {
+  readonly #carry: () => Carry | string;
+
+  constructor(carry: () => Carry | string) {
+    this.#carry = carry;
+  }
+
+  send(options: { ward: string; at: readonly string[]; box: Uint8Array; wait?: number }): Promise<Sent> {
+    const carry = this.#carry();
+    return typeof carry === 'string' ? Promise.resolve({ reply: null, heard: false }) : carry.send(options);
+  }
+
+  at(options: { toward?: string } = {}): readonly string[] {
+    const carry = this.#carry();
+    return typeof carry === 'string' ? [] : carry.at(options);
+  }
+
+  vouched(options: { ward: string; at: readonly string[] }): Promise<readonly string[]> {
+    const carry = this.#carry();
+    return typeof carry === 'string' ? Promise.resolve([]) : carry.vouched(options);
+  }
+}
+
 
 type Writes = Readonly<Record<string, Readonly<Record<string, Uint8Array | null>>>>;
 type Expect = Readonly<Record<string, string | null>>;

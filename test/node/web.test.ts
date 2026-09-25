@@ -6,16 +6,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { ClassList, Ground, WebCarry } from 'nervur';
-import { FileMemory, FileUnlock, NodeGround } from 'nervur/node';
+import { FileMemory, FileUnlock } from 'nervur/node';
+import { loopbackGround } from '../fixtures/node/spawned.ts';
 import { Steward } from '../fixtures/world/steward.ts';
 
 const folder = new URL('../fixtures/node/', import.meta.url).pathname;
 
 test('A holder that dials only the web reaches a NodeGround whose invitation names TCP first', { timeout: 20_000 }, async (t) => {
   const state = await mkdtemp(join(tmpdir(), 'ground-'));
-  t.after(() => rm(state, { recursive: true, force: true }));
-  const far = await NodeGround.open({ folder, state, env: { NERVUR_TCP_PORT: '0', NERVUR_HTTP_PORT: '0', NERVUR_BIND: '127.0.0.1', NERVUR_ALLOW_PRIVATE: '1' } });
+  const far = await loopbackGround(folder, state, { web: true });
   t.after(() => far.close());
+  t.after(() => rm(state, { recursive: true, force: true }));
   assert.ok((await far.ground.add('main', { classes: { faculty: 'folder', at: 'two' } })).ward !== undefined);
 
   // A ground whose one carry is the web, as a page or a service worker has.
@@ -29,8 +30,8 @@ test('A holder that dials only the web reaches a NodeGround whose invitation nam
         steward: { up: () => ({ serves: 'classes', house: () => new ClassList({ steward: Steward }) }) },
       },
     },
-    primordial: { unlock: { make: 'file-unlock' }, memory: { make: 'drawer' }, crypto: { make: 'noble' }, tools: { make: 'strict' } },
-    entries: { clock: { make: 'clock' }, web: { make: 'web' }, steward: { make: 'steward' } },
+    primordial: { unlock: { make: 'file-unlock' }, memory: { make: 'drawer' }, crypto: { make: 'noble' }, tools: { make: 'strict' }, clock: { make: 'clock' } },
+    entries: { web: { make: 'web' }, steward: { make: 'steward' } },
   });
   t.after(() => near.close());
   await near.add('near', { classes: { faculty: 'steward' } });
@@ -41,7 +42,7 @@ test('A holder that dials only the web reaches a NodeGround whose invitation nam
   const { at } = JSON.parse(Buffer.from(handle, 'hex').toString('utf8')) as { at: string[] };
   assert.equal(at.length, 2);
   assert.match(at[0], /^tcp:\/\/127\.0\.0\.1:\d+$/, 'TCP first');
-  assert.equal(at[1], `http://127.0.0.1:${far.httpPort}/quo`, 'then the web, on the ground’s one listener');
+  assert.equal(at[1], `http://127.0.0.1:${await far.port()}/quo`, 'then the web, on the ground’s one listener');
 
   const standing = await near.ask({ house: 'near', method: 'adopt', args: { invitation: handle } });
   assert.ok('result' in standing);

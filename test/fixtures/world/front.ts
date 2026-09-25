@@ -17,7 +17,6 @@ type Calls = Pick<FacultyContext, 'call' | 'describe'>;
 export class Front {
   #context: Calls | undefined;
   #signup: string | undefined;
-  #calls = 0;
 
   arm({ signup }: { signup: string }, context: FacultyContext): Promise<Answer> {
     this.#context = context;
@@ -49,12 +48,12 @@ export class Front {
 
   /** One ask through a door, as its occupant; `after` makes a readOnly one a watch. */
   ask(token: string, method: string | undefined, args: Json = {}, after?: Answer): Promise<Answer> {
-    return this.#held().call({ token, ...(method === undefined ? {} : { method }), args, id: `call:${++this.#calls}`, ...(after === undefined ? {} : { after }) });
+    return this.#held().call({ token, ...(method === undefined ? {} : { method }), args, id: `call:${crypto.randomUUID()}`, ...(after === undefined ? {} : { after }) });
   }
 
   /** One ask through a door whose answer's handles are carried home, as invitation bytes. */
   carryHome(token: string, method: string): Promise<Answer> {
-    return this.#held().call({ token, method, args: {}, id: `call:${++this.#calls}`, home: true });
+    return this.#held().call({ token, method, args: {}, id: `call:${crypto.randomUUID()}`, home: true });
   }
 
   /** What a door's occupant may ask now. */

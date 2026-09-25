@@ -6,6 +6,7 @@
 // closes, the lock passes, and the next opens the ground from the same
 // storage. It only dials: it listens for nothing and serves no face.
 import type { Json } from '../being/being.ts';
+import { s } from '../being/schema.ts';
 import { WebCarry } from '../bodies/web-carry.ts';
 import type { Memory } from '../foundation.ts';
 import { Ground, joinedRegistry, type Registry, type Unlock } from '../ground/ground.ts';
@@ -59,16 +60,16 @@ export interface BrowserGroundOptions {
   readonly allowPrivate?: boolean;
 }
 
-/** One request of the hand, as every terrain serves it. */
+/** One request of the hand, as every terrain serves it: `describe`, or an ask of a being in the house it names, or of the dock's steward where it names none. */
 export interface BrowserHandRequest {
   readonly describe?: true;
-  readonly faculty?: string;
   readonly house?: string;
   readonly id?: string;
   readonly method?: string;
   readonly args?: Json;
   readonly after?: Answer;
   readonly cells?: true;
+  readonly call?: string;
 }
 
 type Said =
@@ -78,6 +79,7 @@ type Said =
   | { readonly kind: 'answer'; readonly id: string; readonly answer: Answer | { readonly describe: Json } };
 
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const NONE = { args: s.object({}) } as const;
 const random = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 
 const defaults = (name: string): BrowserPlatform => ({
@@ -160,8 +162,8 @@ export class BrowserGround {
   }
 
   /**
-   * The hand: `describe`, a faculty's method, or an ask of a being in a
-   * named house, answered by whichever page runs the ground.
+   * The hand: `describe`, or an ask of a being in a named house or of the
+   * dock's steward, answered by whichever page runs the ground.
    */
   async hand(request: BrowserHandRequest): Promise<Answer | { readonly describe: Json }> {
     if (this.#closed) return { error: { message: 'the ground is closed here' } };
@@ -191,18 +193,12 @@ export class BrowserGround {
       const said = event.data as Said;
       if (said.kind === 'who' && this.#ground !== undefined) this.#say({ kind: 'up', leader: this.#self });
       else if (said.kind === 'up') this.#heard(said.leader);
-      else if (said.kind === 'ask' && said.to === this.#self) void this.#answer(said.id, said.request);
       else if (said.kind === 'answer') {
         const pending = this.#pending.get(said.id);
         this.#pending.delete(said.id);
         pending?.settle(said.answer);
       }
     };
-  }
-
-  async #answer(id: string, request: BrowserHandRequest) {
-    const answer = this.#ground === undefined ? { error: { message: 'the ground moved to another page; ask again' } } : await this.#local(request);
-    this.#say({ kind: 'answer', id, answer });
   }
 
   // A new page runs the ground: asks sent to the one before may never be answered, so they fail, and whoever waited goes on.
@@ -226,12 +222,19 @@ export class BrowserGround {
   #queue() {
     this.#platform.locks
       .request(`${this.#name}-ground`, { signal: this.#abort.signal }, async () => {
+        let booted: Ground;
         try {
-          this.#ground = await this.#boot();
+          booted = await this.#boot();
         } catch (error) {
           this.#failed(error);
           return;
         }
+        // A page that closed while its boot ran lets the ground go at once, and the lock with it.
+        if (this.#closed) {
+          await booted.close();
+          return;
+        }
+        this.#ground = booted;
         this.#heard(this.#self);
         this.#say({ kind: 'up', leader: this.#self });
         this.#led();
@@ -253,25 +256,58 @@ export class BrowserGround {
     const own: Registry = {
       faculties: {
         'store-unlock': {
+          takes: NONE,
           up: async () => {
             const unlock = await stores.unlock(`${name}-unlock`);
             return { serves: 'unlock', object: unlock, down: closing(unlock) };
           },
         },
         'store-memory': {
+          takes: NONE,
           up: async () => {
             const memory = await stores.memory(`${name}-ground`);
             return { serves: 'memory', object: memory, down: closing(memory) };
           },
         },
+        // The hand, for every other page of the origin: the asks sent to this page on the channel, each answered there.
+        'channel-hand': {
+          takes: { args: s.object({ channel: s.string(), self: s.string(), persisted: s.boolean() }) },
+          up: ({ args, faculties }) => {
+            const ground = faculties.ground as { hand(request: BrowserHandRequest): Promise<Answer | { readonly describe: Json }> };
+            const channel = platform.channel(args.channel as string);
+            let open = true;
+            channel.onmessage = (event: MessageEvent) => {
+              const said = event.data as Said;
+              if (said.kind !== 'ask' || said.to !== args.self) return;
+              // An ask this hand's close ended is answered by no one here: the page that runs the ground next is asked again.
+              void ground.hand(said.request).then((answer) => {
+                if (!open) return;
+                channel.postMessage({
+                  kind: 'answer',
+                  id: said.id,
+                  answer: said.request.describe === true && 'result' in answer ? { result: { ...(answer.result as Record<string, Json>), persisted: args.persisted === true } } : answer,
+                } satisfies Said);
+              });
+            };
+            return {
+              serves: 'hand',
+              down: () => {
+                open = false;
+                channel.close();
+              },
+            };
+          },
+        },
         // It only dials, so it writes no address into an invitation.
         web: {
+          takes: { args: s.object({ allowPrivate: s.optional(s.boolean()) }) },
           up: ({ args }) => {
             const web = new WebCarry({ allowPrivate: args.allowPrivate === true });
             return { serves: 'carry', schemes: ['https', 'http', 'wss', 'ws'], object: web };
           },
         },
         origin: {
+          takes: NONE,
           up: () => ({
             serves: 'classes',
             house: ({ args }) => {
@@ -285,9 +321,15 @@ export class BrowserGround {
     const wait = this.#options.wait;
     return Ground.open({
       registry: joinedRegistry(own, this.#options.registry ?? {}),
-      primordial: { unlock: { make: 'store-unlock' }, memory: { make: 'store-memory' }, crypto: { make: 'noble' }, tools: { make: 'strict' } },
-      entries: {
+      primordial: {
+        unlock: { make: 'store-unlock' },
+        memory: { make: 'store-memory' },
+        crypto: { make: 'noble' },
+        tools: { make: 'strict' },
         clock: { make: 'clock' },
+        hand: { make: 'channel-hand', args: { channel: `${name}-hand`, self: this.#self, persisted: this.#persisted }, faculties: ['ground'] },
+      },
+      entries: {
         origin: { make: 'origin' },
         web: { make: 'web', args: this.#options.allowPrivate === true ? { allowPrivate: true } : {} },
       },

@@ -4,20 +4,24 @@
 // ground, which passes to the second when the first closes, and a push
 // wakes the service worker. The page, the worker and the house module are
 // built with a shared chunk, so the classes the origin faculty loads and the
-// house that runs them share one `nervur/being`. With NERVUR_BROWSER_ORIGIN
-// set, the same scenes run against that origin, its real device, where the
-// same files were deployed.
+// house that runs them share one `nervur/being`. Where the Cloudflare account
+// is named, the same files are deployed as a new version of an origin of
+// their own that stands there, its real device, and the same scenes run
+// there.
 import assert from 'node:assert/strict';
 import { Resolver } from 'node:dns/promises';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
-import { after, before, test } from 'node:test';
+import { after, before, describe, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import type { Memory } from 'nervur';
 import { memorySuite } from '../test/suites/memory.ts';
 import { buildOrigin } from './fixtures/browser/build.ts';
+import { assetsDeployed, named } from './fixtures/edge/cloudflare.ts';
+
+const ORIGIN = 'nervur-deep-origin';
 
 const out = mkdtempSync(join(tmpdir(), 'nervur-browser-'));
 let server: Server | undefined;
@@ -58,19 +62,11 @@ const resolved = async (at: string): Promise<string[]> => {
   return [`--host-resolver-rules=MAP ${host} ${address}`];
 };
 
-before(async () => {
-  const real = process.env.NERVUR_BROWSER_ORIGIN;
-  origin = real ?? (await serve());
-  browser = await chromium.launch({ args: real === undefined ? [] : await resolved(real) });
+const launched = async (args: string[]) => {
+  browser = await chromium.launch({ args });
   context = await browser.newContext();
   page = await tabAt();
-});
-
-after(async () => {
-  await browser?.close();
-  await new Promise((resolve) => server?.close(resolve));
-  rmSync(out, { recursive: true, force: true });
-});
+};
 
 const tabAt = async (): Promise<Page> => {
   const opened = await context.newPage();
@@ -106,10 +102,12 @@ const remote = (): Memory => {
   };
 };
 
-memorySuite('IndexedDbMemory', remote);
-
 const shop = { name: 'shop', classes: { faculty: 'origin', at: '/houses/shop.js' } };
 const greet = { house: 'shop', id: 'bob', method: 'greet' };
+
+// Every scene, on whichever origin the describe around it opened.
+const scenes = () => {
+memorySuite('IndexedDbMemory', remote);
 
 void test('Two tabs share one ground, and the second runs it when the first closes', async () => {
   const first = await tabAt();
@@ -120,7 +118,7 @@ void test('Two tabs share one ground, and the second runs it when the first clos
   assert.equal(await on(first, 'leading'), true);
   assert.equal(await on(second, 'leading'), false);
 
-  const added = (await on(second, 'hand', { faculty: 'houses', method: 'add', args: shop })) as { result?: { ward: string } };
+  const added = (await on(second, 'hand', { method: 'housesAdd', args: shop })) as { result?: { ward: string } };
   assert.ok(added.result !== undefined, JSON.stringify(added));
   await on(second, 'hand', { house: 'shop', method: 'bear', args: { kind: 'org.example.host', id: 'bob' } });
   assert.deepEqual(await on(first, 'hand', greet), { result: 'bob greets root' });
@@ -128,7 +126,7 @@ void test('Two tabs share one ground, and the second runs it when the first clos
   await first.close();
   await on(second, 'led');
   assert.equal(await on(second, 'leading'), true);
-  const listed = (await on(second, 'hand', { faculty: 'houses', method: 'list' })) as { result: { name: string; ward?: string }[] };
+  const listed = (await on(second, 'hand', { method: 'housesList' })) as { result: { name: string; ward?: string }[] };
   assert.deepEqual(
     listed.result.map(({ name, ward }) => ({ name, ward })),
     [{ name: 'shop', ward: added.result.ward }],
@@ -161,7 +159,7 @@ void test('A push wakes the service worker, which reaches the ground a tab runs,
 
   await on(tab, 'open', 'woken');
   await on(tab, 'led');
-  await on(tab, 'hand', { faculty: 'houses', method: 'add', args: shop });
+  await on(tab, 'hand', { method: 'housesAdd', args: shop });
   await on(tab, 'hand', { house: 'shop', method: 'bear', args: { kind: 'org.example.host', id: 'bob' } });
   assert.deepEqual(await push('woken'), { answer: { result: 'bob greets root' }, leading: false }, 'the worker reached the tab’s ground');
 
@@ -169,4 +167,32 @@ void test('A push wakes the service worker, which reaches the ground a tab runs,
   assert.deepEqual(await push('woken'), { answer: { result: 'bob greets root' }, leading: true }, 'the worker ran the ground from the origin’s storage');
   await cdp.detach();
   await tab.close();
+});
+};
+
+void describe('BrowserGround on localhost', () => {
+  before(async () => {
+    origin = await serve();
+    await launched([]);
+  });
+  after(async () => {
+    await browser?.close();
+    await new Promise((resolve) => server?.close(resolve));
+    rmSync(out, { recursive: true, force: true });
+  });
+  scenes();
+});
+
+void describe('BrowserGround on an origin of its own, on the Cloudflare account', { skip: !named }, () => {
+  const built = mkdtempSync(join(tmpdir(), 'nervur-origin-'));
+  before(async () => {
+    await buildOrigin(built);
+    origin = await assetsDeployed(built, ORIGIN);
+    await launched(await resolved(origin));
+  }, { timeout: 300_000 });
+  after(async () => {
+    await browser?.close();
+    rmSync(built, { recursive: true, force: true });
+  });
+  scenes();
 });

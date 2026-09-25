@@ -641,8 +641,8 @@ export const faculties = {
 A ground is the process houses run in, and you write none. `nervur up`
 runs one on a folder of code: a folder for each house, and each module
 your entries name. It holds one key in `state/`, and keeps every entry
-sealed in its drawer: which faculties stand, and which houses open on
-which bodies.
+sealed as the cells of its dock's beings: which faculties stand, and
+which houses open on which bodies.
 
 ### The shop's folder
 
@@ -681,31 +681,44 @@ npx nervur up .
 The ground boots in one order, and a stop is that order reversed, on an
 interrupt and on `SIGTERM`.
 
-1. **Lock.** One ground to its state.
-2. **Primordial.** Its unlock, its ledger, crypto and tools go up. Its
-   key is read from `state/key`, drawn there on the first start.
-3. **Drawer.** The key opens its drawer in the ledger.
-4. **Entries.** The drawer's entries join the defaults its environment
-   gives, the drawer's winning by name.
-5. **Ladder.** Each body is installed where its entry is new, and goes
-   up. One that fails stays down, and says why.
-6. **Houses.** Each house of the drawer opens on its bodies, and its
-   door joins the carry.
-7. **Ready.** The hand takes its socket, and it tells systemd it is up.
+1. **Primordial.** Its ledger goes up and takes the lock on its state,
+   so one ground runs on it. Its unlock, crypto and tools go up. Its key
+   is read from `state/key`, drawn there on the first start.
+2. **The ground's work.** The library's `ground` faculty goes up, which
+   the dock alone reaches.
+3. **Dock.** The ground's own house opens in the ledger, under a seed
+   its key derives. Its beings hold every entry, seed, secret and
+   setting as their cells.
+4. **Ladder.** The dock's steward joins your entries to the defaults its
+   code fixes, yours winning by name. Each entry is held to what its
+   faculty takes. Each body is installed where its entry is new, and
+   goes up. One that fails stays down, and says why.
+5. **Houses.** Each house opens on its bodies, and its door joins the
+   carry.
+6. **Hand.** The hand takes its socket, and the ground tells systemd it
+   is up.
 
-It is set by its environment.
+Its environment names what opens its memory, its key and its hand, and
+nothing else.
 
-| Setting | What it sets |
+| Variable | What it names |
 | --- | --- |
-| `NERVUR_TCP_PORT` | its TCP port, 9110 where unset |
-| `NERVUR_HTTP_PORT` | its HTTP port, for Quo over the web and every handler; no HTTP where unset |
-| `NERVUR_ADDRESSES` | the public addresses it writes into invitations, by commas: `tcp`, `https`, `http`, `wss` or `ws` |
-| `NERVUR_ORIGINS` | the pages of other origins it answers on the web, by commas; a page of its own host needs none |
-| `NERVUR_ALLOW_PRIVATE` | `1` to dial private and loopback addresses, as two grounds on one machine do |
-| `NERVUR_BIND` | the address it listens on, `0.0.0.0` where unset |
 | `NERVUR_STATE` | its state, `state/` in its folder where unset |
 | `NERVUR_UNLOCK` | `keychain:<account>` keeps its key in the macOS keychain, in place of `state/key` |
-| `NERVUR_WAIT` | its bound on every ask, in milliseconds |
+| `NERVUR_HAND` | its hand's socket, `state/hand` where unset |
+
+Every other setting is an arg of an entry its dock keeps, set through
+the hand. Its `tcp` entry listens on every address at 9110. Its `web`
+entry serves the ground's one listener over HTTP, for Quo over the web
+and every handler, once its args name a `port`. It names that listener
+in its `faculties`. Both take `bind`, the public `addresses` written
+into invitations, and `allowPrivate` to dial loopback addresses, as two
+grounds on one machine do. `web` also takes the `origins` of pages it
+answers. `wait set` keeps its bound on every ask.
+
+```bash
+npx nervur faculties update name=web make=web faculties='["listener"]' args='{"port":8080}'
+```
 
 The state holds the key in a file its owner alone reads, and the
 ground's ledger. Every house keeps its rows in that ledger, sealed. A
@@ -717,10 +730,11 @@ lost key is a lost ground.
 
 The ladder stands once, and the ground stands it again at every start.
 The first entry stands the folder's `recipe.ts` as a registry, by the
-ground's own faculty `module`. The second raises the payments from it.
+faculty `module` the folder's registry holds. The second raises the
+payments from it. An entry names only faculties that stand already.
 
 ```bash
-npx nervur faculties add name=recipe make=module args='{"at":"recipe.ts"}'
+npx nervur faculties add name=recipe from=folder make=module args='{"at":"recipe.ts"}'
 ```
 
 ```bash
@@ -743,8 +757,8 @@ write, and `faculties restart` takes a body down and up again.
 
 A secret reaches a faculty the same way, and never through the
 environment. `npx nervur secrets set -` reads `{ name, value }` from
-standard input into the ground's sealed drawer. A faculty's entry names
-the secrets its `up` receives in `secrets`.
+standard input into a being of the dock, whose cells no one reads. A
+faculty's entry names the secrets its `up` receives in `secrets`.
 
 ### The hand
 
@@ -756,8 +770,10 @@ describes.
 npx nervur help
 ```
 
-A faculty's method is called as its owner calls it, and a faculty named
-alone shows its methods. Args are one JSON object, or words `key=value`.
+Two words ask the dock, the ground's own steward, so `houses list` asks
+her `housesList`. A faculty named alone shows its methods, and a method
+after it is called through the dock. Args are one JSON object, or words
+`key=value`.
 
 ```bash
 npx nervur houses list
@@ -810,9 +826,10 @@ with `loginctl enable-linger`. On macOS, the agent goes to
 houses in a page. Every tab and the service worker of one origin share
 one ground: the one holding the Web Lock runs it, and the others reach
 its hand over a `BroadcastChannel`. When it closes, the next opens the
-ground from the same storage. `hand` answers the same three requests
-the command sends: `describe`, a faculty's method, and an ask of a being
-in a named house.
+ground from the same storage. `hand` takes the same requests the
+command sends: `describe`, and an ask of a being in a named house. A
+request that names no house asks the dock's steward, as
+`{ method: 'housesList' }`.
 
 Its bodies are the browser's. The ground's key is sealed under an AES
 key that IndexedDB holds unextractable, and its memory is IndexedDB.
@@ -907,5 +924,12 @@ at her call, or where an ask arrives.
 - A secret read by a being, a describe or anyone but a faculty whose
   entry names it.
 - A faculty raised any way but its `up`, foundation or custom.
-- A faculty entry for `secrets` or `moves`, which the hand alone reaches.
+- An entry named `dock`, for a house or a faculty. The dock is the
+  library's.
+- A secret or a move asked by anyone but the hand.
+- A grant naming a faculty or a secret the ground does not hold.
+- A secret's cells read through the hand.
+- An entry naming, making or granting `ground` or `shell`. Both are the
+  dock's alone.
+- A second ground on the state one runs on.
 - A ground an owner must write. Each terrain's ships.

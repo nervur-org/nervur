@@ -11,7 +11,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { NodeGround } from 'nervur/node';
+import type { NodeGround } from 'nervur/node';
+import { loopbackGround } from '../test/fixtures/node/spawned.ts';
 import { pulses } from './fixtures/edge/pi/recipe.ts';
 import { built, freePort, started, type Running } from './fixtures/edge/workerd.ts';
 
@@ -40,19 +41,20 @@ void test('An edge answers a watch held across an eviction', { timeout: 60_000 }
     rmSync(state, { recursive: true, force: true });
   });
 
-  // The station names where it is reached, as a deploy names its Worker's route: the held line first.
+  // The station names where it is reached through its hand, as an owner names her Worker's route: the held line first. The drawer keeps it.
   await built(out, 'station', 'station.capnp');
   const port = await freePort();
-  const named = { NERVUR_ADDRESSES: `ws://127.0.0.1:${port}/quo,http://127.0.0.1:${port}/quo` };
-  edge = await started(out, port, named);
-  await hand(edge, { faculty: 'houses', method: 'add', args: { name: 'family', classes: { faculty: 'bundle', at: 'station' } } });
+  edge = await started(out, port);
+  await hand(edge, { method: 'facultiesUpdate', args: { name: 'web', make: 'web', args: { allowPrivate: true, addresses: [`ws://127.0.0.1:${port}/quo`, `http://127.0.0.1:${port}/quo`] } } });
+  await hand(edge, { method: 'facultiesUpdate', args: { name: 'tcp', make: 'socket', args: { allowPrivate: true } } });
+  await hand(edge, { method: 'housesAdd', args: { name: 'family', classes: { faculty: 'bundle', at: 'station' } } });
   await hand(edge, { house: 'family', method: 'bear', args: { kind: 'org.example.garage-mirror', id: 'door' } });
   const { handle } = (await hand(edge, { house: 'family', method: 'offerFor', args: { being: 'door', occupant: 'pi' } })) as { handle: string };
 
-  // The Pi names no address and listens on nothing another reaches: it only dials.
-  ground = await NodeGround.open({ folder, state, env: { NERVUR_TCP_PORT: '0', NERVUR_BIND: '127.0.0.1', NERVUR_ALLOW_PRIVATE: '1' } });
+  // The Pi names no address and listens on nothing another reaches: it only dials, and its web may dial the station on the loopback.
+  ground = await loopbackGround(folder, state, { web: true });
   // Its ladder: the folder's registry, then the relay from it, granted to the twin alone.
-  assert.deepEqual(await ground.ground.stand('recipe', { make: 'module', args: { at: 'recipe.ts' } }), {});
+  assert.deepEqual(await ground.ground.stand('recipe', { from: 'folder', make: 'module', args: { at: 'recipe.ts' } }), {});
   assert.deepEqual(await ground.ground.stand('relay', { from: 'recipe', make: 'relay', kinds: ['org.example.garage-twin'] }), {});
   const added = await ground.ground.add('pi', { classes: { faculty: 'folder', at: 'twin' }, faculties: ['relay'] });
   assert.ok(added.ward !== undefined, added.why ?? 'the Pi’s house did not open');
@@ -67,7 +69,7 @@ void test('An edge answers a watch held across an eviction', { timeout: 60_000 }
 
   // Evicted: the object's memory, its held line and the watch on it are gone; its storage stays.
   await edge.kill();
-  edge = await started(out, port, named);
+  edge = await started(out, port);
   await hand(edge, { house: 'family', id: 'door', method: 'open' });
   await pulses.reached(2);
 

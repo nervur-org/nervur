@@ -16,7 +16,7 @@ import { Host } from '../world/host.ts';
 import { Steward } from '../world/steward.ts';
 import { CountingCarry } from './counting-carry.ts';
 import { handAt } from './hand-client.ts';
-import { stop, up as nervurUp } from './spawned.ts';
+import { onLoopback, stop, up as nervurUp } from './spawned.ts';
 
 /** A house's own ask, as its ground's hand reaches it. */
 export type Ask = Opened['ask'];
@@ -87,8 +87,8 @@ export const groundOne = async (t: TestContext, { dials = false, faculties = {} 
   };
   const ground = await Ground.open({
     registry: { faculties: { ...own, ...Object.fromEntries(Object.entries(faculties).map(([name, body]) => [name, { up: () => body }])) } },
-    primordial: { unlock: { make: 'file-unlock' }, memory: { make: 'drawer' }, crypto: { make: 'noble' }, tools: { make: 'strict' } },
-    entries: { clock: { make: 'clock' }, carry: { make: 'counted' }, file: { make: 'file' }, named: { make: 'named' } },
+    primordial: { unlock: { make: 'file-unlock' }, memory: { make: 'drawer' }, crypto: { make: 'noble' }, tools: { make: 'strict' }, clock: { make: 'clock' } },
+    entries: { carry: { make: 'counted' }, file: { make: 'file' }, named: { make: 'named' } },
   });
   t.after(() => ground.close());
   for (const name of Object.keys(faculties)) {
@@ -114,7 +114,9 @@ export const groundOne = async (t: TestContext, { dials = false, faculties = {} 
 export const groundTwo = async (t: TestContext) => {
   const folder = new URL('./', import.meta.url).pathname;
   const state = mkdtempSync(join(tmpdir(), 'nv-'));
-  const env = { NERVUR_STATE: state, NERVUR_TCP_PORT: String(40_000 + Math.floor(Math.random() * 20_000)), NERVUR_BIND: '127.0.0.1', NERVUR_ALLOW_PRIVATE: '1' };
+  const env = { NERVUR_STATE: state };
+  // Its TCP carry on the loopback at one port, which the drawer keeps across a restart.
+  await onLoopback(folder, state, 40_000 + Math.floor(Math.random() * 20_000));
   let running: { child: Awaited<ReturnType<typeof nervurUp>>['child']; close: () => void } | undefined;
   let current: Ask = async () => ({ error: { message: 'ground two is down' } });
   const up = async () => {
@@ -134,7 +136,7 @@ export const groundTwo = async (t: TestContext) => {
     rmSync(state, { recursive: true, force: true });
   });
   const owner = await up();
-  const added = await owner.ask({ faculty: 'houses', method: 'add', args: { name: 'main', classes: { faculty: 'folder', at: 'two' } } });
+  const added = await owner.ask({ method: 'housesAdd', args: { name: 'main', classes: { faculty: 'folder', at: 'two' } } });
   assert.ok('result' in added, JSON.stringify(added));
   const ask: Ask = (request) => current(request);
   return { ask, up: async () => void (await up()), down };

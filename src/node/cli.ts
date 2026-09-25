@@ -6,17 +6,22 @@
 //
 //   nervur up <folder>                         runs a NodeGround on its folder until it is stopped
 //   nervur service <folder>                    prints its systemd unit, or its launchd job on macOS
-//   nervur help                                what the ground holds: its faculties, their methods, its houses
-//   nervur <faculty> [<method> [args]]         a faculty's method; with none, its methods
+//   nervur help                                what the ground holds: the dock's asks, its faculties, its houses
+//   nervur <word> [<word>] [args]              an ask of the dock, `houses add` asking housesAdd; one word alone, the asks it begins
+//   nervur <faculty> [<method> [args]]         a faculty's method, called through the dock; with none, its methods
 //   nervur ask <house> [--id <being>] [<method> [args]]   an ask of a being; with no method, its describe
 //   nervur ask <house> [--id <being>] --cells            her cells, read and nothing asked
+//   nervur ask dock --id <being> [--cells]               the same of a being of the dock, `faculty.web` or `house.shop`
 //
 // Args are one JSON object, or words `key=value`, each value read as JSON
 // where it reads and as text where it does not, or `-`, one JSON object
-// read from standard input, so no secret stands in a shell's history.
+// read from standard input, so no secret stands in a shell's history, or
+// `-- <command> [<arg>...]`, a command line: `nervur shell run -- ls -l`.
 // `--at <socket>` or `NERVUR_HAND` names the hand, and `state/hand` in
-// this folder is it where neither does. Each prints one JSON value and exits 0 on a result, 1 on
-// an error answered, and 2 where nothing was asked.
+// this folder is it where neither does. `--call <id>` names the ask's call
+// id, so the same ask sent again answers what the first answered. Each
+// prints one JSON value and exits 0 on a result, 1 on an error answered,
+// and 2 where nothing was asked.
 import { existsSync } from 'node:fs';
 import { connect } from 'node:net';
 import { basename, join, resolve } from 'node:path';
@@ -26,7 +31,7 @@ import { handAt } from './hand.ts';
 import { NodeGround } from './node-ground.ts';
 import { notifyReady } from './notify.ts';
 
-const USAGE = 'nervur up <folder> | service <folder> | [--at <socket>] help | ask <house> [--id <being>] [--cells | <method> [args | -]] | <faculty> [<method> [args | -]]';
+const USAGE = 'nervur up <folder> | service <folder> | [--at <socket>] [--call <id>] help | ask <house> [--id <being>] [--cells | <method> [args | -]] | <word> [<word>] [args | - | -- <command> [<arg>...]]';
 
 const fail = (message: string): never => {
   process.stderr.write(`${message}\n${USAGE}\n`);
@@ -56,6 +61,8 @@ const argsOf = async (words: readonly string[]): Promise<Record<string, unknown>
   if (words.length === 0) return undefined;
   if (words.length === 1 && words[0] === '-') return objectOf(await stdin()) ?? fail('standard input holds no JSON object');
   if (words.length === 1 && words[0].startsWith('{')) return objectOf(words[0]) ?? fail('args are one JSON object');
+  // A command line after `--`, taken whole: its first word the command, and every word after it an arg.
+  if (words[0] === '--') return words.length > 1 ? { command: words[1], args: words.slice(2) } : fail('-- names no command');
   return Object.fromEntries(
     words.map((word) => {
       const at = word.indexOf('=');
@@ -70,20 +77,28 @@ const argsOf = async (words: readonly string[]): Promise<Record<string, unknown>
   );
 };
 
-// One line to the hand; its answer printed, or shaped first by `shape`.
-const send = (at: string | undefined, line: Record<string, unknown>, shape: (answer: Record<string, unknown>) => Record<string, unknown> = (answer) => answer) => {
+// One line to the hand, and its answer.
+const exchange = (at: string | undefined, line: Record<string, unknown>): Promise<Record<string, unknown>> => {
   if (at === undefined || at === '') return fail('no socket: pass --at or set NERVUR_HAND');
-  const socket = connect(at);
-  socket.on('error', (error) => fail(`the hand at ${at} does not answer: ${error.message}`));
-  socket.on('connect', () => socket.write(`${JSON.stringify(line)}\n`));
-  createInterface({ input: socket }).once('line', (text) => {
-    socket.end();
-    const answer = shape(JSON.parse(text) as Record<string, unknown>);
-    process.stdout.write(`${JSON.stringify(answer)}\n`);
-    // A result and a describe are what was asked; an error answered is the one refusal.
-    process.exitCode = 'error' in answer ? 1 : 0;
+  return new Promise((answered) => {
+    const socket = connect(at);
+    socket.on('error', (error) => fail(`the hand at ${at} does not answer: ${error.message}`));
+    socket.on('connect', () => socket.write(`${JSON.stringify(line)}\n`));
+    createInterface({ input: socket }).once('line', (text) => {
+      socket.end();
+      answered(JSON.parse(text) as Record<string, unknown>);
+    });
   });
 };
+
+// An answer printed. A result and a describe are what was asked; an error answered is the one refusal.
+const print = (answer: Record<string, unknown>) => {
+  process.stdout.write(`${JSON.stringify(answer)}\n`);
+  process.exitCode = 'error' in answer ? 1 : 0;
+};
+
+// One line to the hand, with the call's id where one was named, and its answer printed.
+const send = async (at: string | undefined, line: Record<string, unknown>) => print(await exchange(at, { ...line, ...(call === undefined || 'describe' in line ? {} : { call }) }));
 
 const up = async (folder: string) => {
   const ground = await NodeGround.open({ folder }).catch((error: unknown) => {
@@ -151,16 +166,24 @@ if (words[0] === '--at') {
   at = words[1] ?? fail('--at names no socket');
   words.splice(0, 2);
 }
+// The call's id: the same ask sent again with it answers what the first answered, and runs nothing twice.
+let call: string | undefined;
+if (words[0] === '--call') {
+  call = words[1] ?? fail('--call names no id');
+  words.splice(0, 2);
+}
 const [command, ...rest] = words;
 if (command === undefined) fail('no command');
 else if (command === 'up' || command === 'service') {
   if (rest.length !== 1) fail(`${command} names one folder`);
   if (command === 'up') await up(resolve(rest[0]));
   else service(resolve(rest[0]));
-} else if (command === 'help') send(at, { describe: true });
+} else if (command === 'help') await send(at, { describe: true });
 else if (command === 'ask') {
-  const [house, ...more] = rest;
-  if (house === undefined) fail('ask names a house');
+  const [named, ...more] = rest;
+  if (named === undefined) fail('ask names a house');
+  // The dock is the name no house takes: asked by it, the hand reaches the dock's own beings.
+  const house = named === 'dock' ? {} : { house: named };
   let id: string | undefined;
   if (more[0] === '--id') {
     id = more[1] ?? fail('--id names no being');
@@ -168,18 +191,25 @@ else if (command === 'ask') {
   }
   if (more[0] === '--cells') {
     if (more.length > 1) fail('--cells reads her cells alone');
-    send(at, { house, ...(id === undefined ? {} : { id }), cells: true });
+    await send(at, { ...house, ...(id === undefined ? {} : { id }), cells: true });
   } else {
     const [method, ...args] = more;
-    send(at, { house, ...(id === undefined ? {} : { id }), ...(method === undefined ? {} : { method }), ...(args.length === 0 ? {} : { args: await argsOf(args) }) });
+    await send(at, { ...house, ...(id === undefined ? {} : { id }), ...(method === undefined ? {} : { method }), ...(args.length === 0 ? {} : { args: await argsOf(args) }) });
   }
 } else {
-  const [method, ...args] = rest;
-  // A faculty named alone shows its methods, read from what the ground describes.
-  if (method === undefined)
-    send(at, { describe: true }, (answer) => {
-      const faculty = (answer.result as { faculties?: Record<string, unknown> } | undefined)?.faculties?.[command];
-      return faculty === undefined ? { error: { message: `no faculty ${command}` } } : { result: faculty };
-    });
-  else send(at, { faculty: command, method, ...(args.length === 0 ? {} : { args: await argsOf(args) }) });
+  // Every other word is read from what the ground describes: an ask of the dock, as one word or two, or a faculty of its ladder.
+  const described = (await exchange(at, { describe: true })).result as { dock?: { asks?: { method: string }[] }; faculties?: Record<string, unknown> } | undefined;
+  const asks = (described?.dock?.asks ?? []).map(({ method }) => method);
+  const [word, ...more] = rest;
+  const joined = word === undefined ? undefined : `${command}${word[0].toUpperCase()}${word.slice(1)}`;
+  const faculty = described?.faculties?.[command];
+  if (joined !== undefined && asks.includes(joined)) await send(at, { method: joined, ...(more.length === 0 ? {} : { args: await argsOf(more) }) });
+  else if (asks.includes(command)) await send(at, { method: command, ...(rest.length === 0 ? {} : { args: await argsOf(rest) }) });
+  else if (faculty !== undefined && word === undefined) print({ result: faculty });
+  else if (faculty !== undefined) await send(at, { method: 'callFaculty', args: { faculty: command, method: word, ...(more.length === 0 ? {} : { args: await argsOf(more) }) } });
+  else {
+    // A word the dock's asks begin with shows those asks.
+    const begun = (described?.dock?.asks ?? []).filter(({ method }) => method.startsWith(command) && /^[A-Z]/.test(method.slice(command.length)));
+    print(word === undefined && begun.length > 0 ? { result: begun } : { error: { message: `no ask and no faculty ${command}` } });
+  }
 }

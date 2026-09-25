@@ -3,10 +3,12 @@
 // handler at /echo, its prefix from its entry's args and its signature
 // from a secret the drawer keeps.
 import type { Registry } from 'nervur';
+import { s } from 'nervur/being';
 import { Echo } from './echo.ts';
 
 export const faculties: Registry['faculties'] = {
   echo: {
+    takes: { args: s.object({ prefix: s.optional(s.string()) }), secrets: { signature: 'the words it signs with' } },
     up: ({ args, secrets }) => ({
       blueprint: Echo,
       object: { say: async ({ text }: { text: string }) => ({ result: `${String(args.prefix ?? '')}${text}${secrets.signature === undefined ? '' : ` ${secrets.signature}`}` }) },

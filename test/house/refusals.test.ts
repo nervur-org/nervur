@@ -98,7 +98,7 @@ test('It refuses a foundation reference handed to a being, or offered as a custo
     faculties: { leak: { blueprint: need('leak', { read: { args: s.object({ place: s.string() }) } }), object: leaked } },
   });
   t.after(() => ground.down());
-  await ground.hand({ faculty: 'faculties', method: 'add', args: { name: 'leaked', make: 'leaked' } });
+  await ground.hand({ method: 'facultiesAdd', args: { name: 'leaked', make: 'leaked' } });
   const standing = await ground.add('house', { memory: { faculty: 'leaked' }, classes: { faculty: 'module', name: 'house' }, faculties: ['leak'] });
   assert.match(standing.why ?? '', /the offer leak is a reference of the house's foundation/);
 });

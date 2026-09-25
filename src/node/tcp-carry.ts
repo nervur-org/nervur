@@ -48,12 +48,20 @@ export class TcpCarry implements Carry {
   /** Answers for a house's ward on this carry's listener, which starts with the first; one that only dials hands it boxes by pointer alone. */
   async listen({ ward, door }: Listened): Promise<void> {
     this.#doors.set(ward, door);
+    await this.open();
+  }
+
+  /** Its listener bound now, where it listens at all: a port another holds throws here, so the body that owns it stays down with why. */
+  async open(): Promise<void> {
     if (this.#server !== undefined || this.#port === null) return;
     const port = this.#port;
     const server = createServer((socket) => this.#answer(socket));
     this.#server = server;
     await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
+      server.once('error', (error) => {
+        this.#server = undefined;
+        reject(error);
+      });
       server.listen(port, this.#host, () => {
         const address = server.address();
         this.#bound = typeof address === 'object' && address !== null ? address.port : port;

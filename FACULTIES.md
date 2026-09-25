@@ -15,16 +15,22 @@ the package's own tests run.
 ## What a faculty owes
 
 A faculty answers a blueprint: a name, and methods with their schemas.
-A registry holds it by name as `{ up, install? }`. The ground raises it
-by its `up` into a body, and hands the body to its houses as an offer,
-with the kinds its entry grants.
+A registry holds it by name as `{ takes?, up, install? }`. The ground
+raises it by its `up` into a body, and hands the body to its houses as
+an offer, with the kinds its entry grants.
 
 ```text
-faculty = { install?, up }
+faculty = { takes?, install?, up }
+takes   = { args?: schema, secrets?: { [name]: what it holds } }
 body    = { blueprint?, object?, window?, handler?, registry?, down? }
 offer   = { blueprint, object, kinds?, window? }
 ```
 
+- **It declares what it takes.** `takes.args` is a schema built with
+  `s` from `nervur/being`, which its entry's args meet. `takes.secrets`
+  names each secret its entry must name, with a line saying what it
+  holds. The hand refuses an entry that fails either, before it lands,
+  and `facultiesCatalog` shows it to whoever writes the entry.
 - **The object has the blueprint's methods.** Each takes one args object
   and a context, and answers `{ result }` or `{ error: { message } }`.
 - **An error is final, and a throw is not.** An error reaches the being
@@ -93,7 +99,8 @@ receives four things beside the faculty's name.
 
 - **`args`** are its entry's, as the owner wrote them.
 - **`secrets`** are the secrets its entry names, set through the hand
-  and kept sealed in the ground's drawer. No other code reads them.
+  and kept sealed in a being of the ground's dock. No other code reads
+  them.
 - **`memory`** is the faculty's own, a view of the ground's memory
   sealed under a key the ground derives for it. Its call ids live there,
   so they move with the ground.
@@ -378,11 +385,11 @@ it later, once.
 
 The Pi's folder holds the program and a folder of classes for its
 house, and no code of the ground's. The relay stands from its entry,
-raised by the NodeGround's own faculty `bridge`, and granted to the
-twin's class alone.
+raised by the faculty `bridge` of the NodeGround's folder, and granted
+to the twin's class alone.
 
 ```bash
-npx nervur faculties add name=relay make=bridge args='{"command":"python3","args":["relay.py"]}' kinds='["org.example.garage"]'
+npx nervur faculties add name=relay from=folder make=bridge args='{"command":"python3","args":["relay.py"]}' kinds='["org.example.garage"]'
 ```
 
 The house is added once, and names the relay among the faculties it
@@ -392,8 +399,8 @@ receives.
 npx nervur houses add name=garage classes='{"faculty":"folder","at":"classes"}' faculties='["relay"]'
 ```
 
-Both entries rest sealed in the ground's drawer, so the ground stands
-the relay again at every start.
+Both entries rest sealed as cells of the ground's dock, so the ground
+stands the relay again at every start.
 
 ## In JavaScript
 
@@ -493,7 +500,7 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
   });
   t.after(() => garage.down());
   // The relay, granted to the twin's class alone.
-  await garage.hand({ faculty: 'faculties', method: 'add', args: { name: 'relay', make: 'bridge', kinds: ['org.example.garage'] } });
+  await garage.hand({ method: 'facultiesAdd', args: { name: 'relay', make: 'bridge', kinds: ['org.example.garage'] } });
   await garage.add('garage', 'pi', { faculties: ['relay'] });
   await garage.ask({ house: 'garage', method: 'bear', args: { kind: 'org.example.garage', id: 'door' } });
 

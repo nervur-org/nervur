@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { FolderClasses, serveHand, takeLock } from 'nervur/node';
 import { cli } from '../fixtures/node/grounds.ts';
-import { stop, up } from '../fixtures/node/spawned.ts';
+import { onLoopback, stop, up } from '../fixtures/node/spawned.ts';
 
 const folder = new URL('../fixtures/node/', import.meta.url).pathname;
 const classes = new URL('../fixtures/node/classes/', import.meta.url).pathname;
@@ -23,7 +23,8 @@ const nervur = (...args: string[]) => {
 
 test('An unattended ground holds its state alone, is asked through the command, and opens again on what it kept', { timeout: 30_000 }, async (t) => {
   const state = mkdtempSync(join(tmpdir(), 'nervur-unattended-'));
-  const start = () => up(cli, folder, { env: { NERVUR_STATE: state, NERVUR_TCP_PORT: '0', NERVUR_BIND: '127.0.0.1' }, conditions: ['nervur-source'] });
+  const start = () => up(cli, folder, { env: { NERVUR_STATE: state }, conditions: ['nervur-source'] });
+  await onLoopback(folder, state);
   let first = await start();
   t.after(async () => {
     await stop(first.child);

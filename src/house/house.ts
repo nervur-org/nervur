@@ -65,9 +65,10 @@ export interface Opened {
    * The hand: a being asked by `id` as `root`, the steward where no id is
    * named. `after` is the answer the caller holds, which makes a `readOnly`
    * ask a watch. `cells` reads her cells and asks nothing, which no other
-   * way into the house can.
+   * way into the house can. `call` is the ask's call id: asked again, it
+   * answers what the first answered and runs nothing twice.
    */
-  ask(request: { id?: string; method?: string; args?: Json; after?: Answer; cells?: true }): Promise<Answer | { readonly describe: Json }>;
+  ask(request: { id?: string; method?: string; args?: Json; after?: Answer; cells?: true; call?: string }): Promise<Answer | { readonly describe: Json }>;
 }
 
 const DAY = 86_400_000;
@@ -391,16 +392,17 @@ class House {
    * none is named. `cells` reads her cells as last landed, her defaults
    * under them, and asks nothing.
    */
-  async hand({ id = STEWARD, method, args, after, cells }: { id?: string; method?: string; args?: Json; after?: Answer; cells?: true }): Promise<Answer | { describe: Json }> {
+  async hand({ id = STEWARD, method, args, after, cells, call }: { id?: string; method?: string; args?: Json; after?: Answer; cells?: true; call?: string }): Promise<Answer | { describe: Json }> {
     const found = await this.#being(id);
     if (found === null) return errorOf(`no being ${id} is here`);
     if (cells === true) {
-      if (method !== undefined || args !== undefined || after !== undefined) return errorOf('the hand reads her cells alone');
+      if (method !== undefined || args !== undefined || after !== undefined || call !== undefined) return errorOf('the hand reads her cells alone');
+      await this.#born(id);
       const row = await this.#rows.get<BeingRow>(await this.#place(id));
       return { result: { ...(copy(found.resolved.table.cells) as Record<string, Json>), ...row?.cells } };
     }
     const watch = after === undefined ? {} : { after: await this.digest(after) };
-    const outcome = await this.ask({ being: id, occupant: 'root', ...(method === undefined ? {} : { method }), args: args ?? {}, ...watch });
+    const outcome = await this.ask({ being: id, occupant: 'root', ...(method === undefined ? {} : { method }), args: args ?? {}, ...watch, ...(call === undefined ? {} : { call }) });
     if (outcome === null) return errorOf('the house answered nothing');
     if ('describe' in outcome) return { describe: outcome.describe };
     return outcome.answer;
@@ -408,8 +410,7 @@ class House {
 
   /** One ask to one being. Asks run one at a time, and `readOnly` ones beside them. */
   async ask(request: Request): Promise<Outcome> {
-    const borning = request.house === true && request.method === 'born' ? undefined : this.#borning.get(request.being);
-    if (borning !== undefined) await borning.catch(() => undefined);
+    if (!(request.house === true && request.method === 'born')) await this.#born(request.being);
     const silent = async (): Promise<Outcome> => {
       if (request.always && (await this.#rows.transact((draft) => request.always!.change(draft, null)))) request.always.landed?.();
       return null;
@@ -573,6 +574,17 @@ class House {
     return run;
   }
 
+  /**
+   * Her `born` run first where it is pending: the one her steward's write
+   * started, or one a stop left between that write and her first ask.
+   */
+  async #born(being: string): Promise<void> {
+    const borning = this.#borning.get(being);
+    if (borning !== undefined) return borning.catch(() => undefined);
+    const row = await this.#rows.get<BeingRow>(await this.#place(being)).catch(() => null);
+    if (row?.born !== undefined) await this.bornOf(being).catch(() => undefined);
+  }
+
   async #bornOf(being: string): Promise<void> {
     const place = await this.#place(being);
     const row = await this.#rows.get<BeingRow>(place);
@@ -678,7 +690,15 @@ class House {
       if (!to.includes(after)) throw new Error(`she landed in ${after}`);
       if (!isJson(tx.cells)) throw new Fail('a handle, an invitation or a value that is not JSON stands in her cells');
       if (entry.hints.readOnly && (tx.ops.length > 0 || this.#tools.canonical(tx.cells) !== this.#tools.canonical(cells))) throw new Error('a readOnly ask wrote');
-      const result = entry.result === undefined ? null : await outward(this.#tools, this.#marks, entry.result, returned, request.being, (handle) => tx.mint(handle, request.reader ?? 'house'));
+      const result = entry.result === undefined ? null : await outward(
+              this.#tools,
+              this.#marks,
+              entry.result,
+              returned,
+              request.being,
+              (handle) => tx.mint(handle, request.reader ?? 'house'),
+              (hex) => tx.redeem(hex, request.reader ?? 'house'),
+            );
       answer = { result: result as Json };
     } catch (error) {
       await tx.abandon();
@@ -688,15 +708,17 @@ class House {
     }
 
     const outcome = { answer, mark: await markOf(tx.cells) };
-    // A read writes none of her cells: it ran on the cells last landed, and an ask may have landed beside it.
-    const writes = !entry.hints.readOnly || callKey !== undefined || request.always !== undefined || asker.handle?.once === true;
+    // A read writes none of her cells: it ran on the cells last landed, and an ask may have landed beside it. It records no call id, since running it again writes nothing.
+    // An ask that changed nothing and carries no call id writes nothing either.
+    const changed = tx.ops.length > 0 || callKey !== undefined || this.#tools.canonical(tx.cells) !== this.#tools.canonical(cells);
+    const writes = (!entry.hints.readOnly && changed) || request.always !== undefined || asker.handle?.once === true;
     let landed = true;
     try {
       if (writes) landed = await this.#rows.transact(async (draft) => {
         const current = await draft.get<BeingRow>(place);
         if (current === null) throw new Error('she was removed while she was asked');
         if (!entry.hints.readOnly) current.cells = tx.cells;
-        if (callKey !== undefined) current.calls[callKey] = { answer, at: this.#clock.now() };
+        if (callKey !== undefined && !entry.hints.readOnly) current.calls[callKey] = { answer, at: this.#clock.now() };
         if (asker.handle?.once === true) await this.#dismiss(draft, current, request.occupant);
         for (const op of tx.ops) await op(draft, current);
         await request.always?.change(draft, outcome);
@@ -1474,18 +1496,7 @@ class Tx {
     const own = being === this.#being;
     if (own ? this.#row.occupants[occupant] === undefined : !this.#invited.has(`${being}\n${occupant}`)) throw new Fail('the handle was let go');
     const target = async (draft: Draft, row: BeingRow) => (own ? row : draft.get<BeingRow>(await house.place(being)));
-    if (reader !== 'house') {
-      const token = house.tools.hex(house.crypto.random(16));
-      this.tokens.push(token);
-      house.tokening.set(token, this.ended);
-      this.#op(async (draft, row) => {
-        const held = (await target(draft, row))?.occupants[occupant];
-        if (held === undefined) return;
-        held.tokens = [...(held.tokens ?? []), token];
-        draft.set(await house.tokenPlace(token), { being, occupant, faculty: reader.faculty } satisfies OwnerRow);
-      });
-      return token;
-    }
+    if (reader !== 'house') return this.#token(being, occupant, reader);
     const { invitation, occupant: end } = await house.room.invite(house.carry.at({}));
     const until = expires === undefined ? undefined : house.clock.now() + expires;
     this.heirs.push(invitation.heir);
@@ -1503,6 +1514,63 @@ class Tx {
       draft.set(await house.heirPlace(invitation.heir), { being, occupant } satisfies OwnerRow);
     });
     return house.tools.hex(house.tools.utf8(house.tools.canonical(invitation)));
+  }
+
+  // A token a faculty calls, for one occupant of a being of this house.
+  #token(being: string, occupant: string, reader: { readonly faculty: string }): string {
+    const house = this.#house;
+    const token = house.tools.hex(house.crypto.random(16));
+    this.tokens.push(token);
+    house.tokening.set(token, this.ended);
+    this.#op(async (draft, row) => {
+      const held = (being === this.#being ? row : await draft.get<BeingRow>(await house.place(being)))?.occupants[occupant];
+      if (held === undefined) return;
+      held.tokens = [...(held.tokens ?? []), token];
+      draft.set(await house.tokenPlace(token), { being, occupant, faculty: reader.faculty } satisfies OwnerRow);
+    });
+    return token;
+  }
+
+  /**
+   * An invitation this house minted, carried unopened to a faculty, made a
+   * token for its occupant there. Its heir is spent, so no house ever binds
+   * it after. Any other invitation, or one bound already, stays itself.
+   */
+  async redeem(hex: string, reader: Reader): Promise<string | undefined> {
+    if (reader === 'house') return undefined;
+    const house = this.#house;
+    const bytes = house.tools.bytes(hex);
+    const text = bytes === null ? null : house.tools.text(bytes);
+    if (text === null) return undefined;
+    let read: unknown;
+    try {
+      read = JSON.parse(text);
+    } catch {
+      return undefined;
+    }
+    const { ward, heir } = (read ?? {}) as { ward?: unknown; heir?: unknown };
+    if (ward !== house.ward || typeof heir !== 'string') return undefined;
+    const minting = house.minting.get(heir);
+    const owner = minting ?? (await house.heir(heir))?.owner;
+    if (owner === undefined) return undefined;
+    const { being, occupant } = owner;
+    // An heir minted in an ask still running lands spent; one landed is let go here.
+    if (minting !== undefined) house.minting.delete(heir);
+    else {
+      const bound = (await house.heir(heir))?.row.occupants[occupant]?.quo?.[heir];
+      if (bound === undefined || bound.spent) return undefined;
+    }
+    this.#op(async (draft, row) => {
+      const minted = being === this.#being ? row : await draft.get<BeingRow>(await house.place(being));
+      const held = minted?.occupants[occupant];
+      if (held !== undefined) {
+        if (held.quo !== undefined) delete held.quo[heir];
+        if (held.told !== undefined) delete held.told[heir];
+        if (held.until !== undefined) delete held.until[heir];
+      }
+      draft.set(await house.heirPlace(heir), null);
+    });
+    return this.#token(being, occupant, reader);
   }
 
   #fresh(prefix: string): string {

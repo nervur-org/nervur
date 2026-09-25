@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { groundOne, hand } from '../fixtures/node/grounds.ts';
-import { ground, stop, up } from '../fixtures/node/spawned.ts';
+import { ground, onLoopback, stop, up } from '../fixtures/node/spawned.ts';
 
 const pkg = new URL('../../', import.meta.url).pathname;
 const fixtures = new URL('../fixtures/', import.meta.url).pathname;
@@ -71,7 +71,8 @@ test('The packed tarball ships dist alone, and runs a written ground and the gui
   const readme = join(stranger, 'r');
   mkdirSync(join(readme, 'house'), { recursive: true });
   for (const file of ['greeter.ts', 'house/index.ts']) copyFileSync(join(fixtures, 'readme', file), join(readme, file));
-  const readmeEnv = { env: { NERVUR_TCP_PORT: String(Number(port) + 1), NERVUR_BIND: '127.0.0.1' }, cwd: readme };
+  const readmeEnv = { env: {}, cwd: readme };
+  await onLoopback(readme, join(readme, 'state'));
   let greeter = await up(cli, '.', readmeEnv);
   t.after(() => stop(greeter.child));
   assert.equal(nervur(readme, 'houses', 'add', 'name=main', 'classes={"faculty":"folder","at":"house"}').code, 0);
@@ -86,10 +87,11 @@ test('The packed tarball ships dist alone, and runs a written ground and the gui
   const shop = join(stranger, 'g');
   mkdirSync(join(shop, 'classes'), { recursive: true });
   for (const file of ['recipe.ts', 'payments.ts', 'classes/index.ts', 'classes/order.ts', 'classes/shop.ts', 'classes/lobby.ts']) copyFileSync(join(fixtures, 'guides', file), join(shop, file));
-  const shopEnv = { env: { NERVUR_TCP_PORT: String(Number(port) + 2), NERVUR_BIND: '127.0.0.1' }, cwd: shop };
+  const shopEnv = { env: {}, cwd: shop };
+  await onLoopback(shop, join(shop, 'state'));
   let guide = await up(cli, '.', shopEnv);
   t.after(() => stop(guide.child));
-  assert.equal(nervur(shop, 'faculties', 'add', 'name=recipe', 'make=module', 'args={"at":"recipe.ts"}').code, 0);
+  assert.equal(nervur(shop, 'faculties', 'add', 'name=recipe', 'from=folder', 'make=module', 'args={"at":"recipe.ts"}').code, 0);
   assert.equal(nervur(shop, 'faculties', 'add', 'name=payments', 'from=recipe', 'make=payments').code, 0);
   assert.equal(nervur(shop, 'houses', 'add', 'name=shop', 'classes={"faculty":"folder","at":"classes"}', 'faculties=["payments"]').code, 0);
   assert.equal(nervur(shop, 'ask', 'shop', 'open', 'id=first').code, 0);

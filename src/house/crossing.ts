@@ -79,9 +79,18 @@ const branchFits = (tools: Tools, branch: Node, value: unknown) => tools.check(b
  * receiver can call. `owner` is her id: a handle she does not hold is refused.
  * A handle under `s.invitation` leaves as an invitation, as one carried does.
  * An invitation carried under `s.handle` leaves as itself, for its receiver
- * to take.
+ * to take. `redeem` turns a carried invitation this house minted into what
+ * its reader calls, where the reader is a faculty: a token for its occupant.
  */
-export const outward = async (tools: Tools, marks: Marks, schema: Node | undefined, value: unknown, owner: string, mint: (handle: Pointed) => Promise<string>): Promise<unknown> => {
+export const outward = async (
+  tools: Tools,
+  marks: Marks,
+  schema: Node | undefined,
+  value: unknown,
+  owner: string,
+  mint: (handle: Pointed) => Promise<string>,
+  redeem: (hex: string) => Promise<string | undefined> = () => Promise.resolve(undefined),
+): Promise<unknown> => {
   const held = (at: unknown) => {
     const handle = marks.handleOf(at);
     return handle !== undefined && handle.holder === owner ? handle : undefined;
@@ -94,14 +103,14 @@ export const outward = async (tools: Tools, marks: Marks, schema: Node | undefin
       // An invitation carried unopened is handed on, and its receiver takes it.
       const hex = marks.hexOf(at);
       if (hex === undefined) throw new Crossing('a handle is owed where a value stands');
-      return hex;
+      return (await redeem(hex)) ?? hex;
     }
     if (node.contentMediaType === INVITATION_MEDIA) {
       const handle = held(at);
       if (handle !== undefined) return mint(handle);
       const hex = marks.hexOf(at);
       if (hex === undefined) throw new Crossing('an invitation is owed where a value stands');
-      return hex;
+      return (await redeem(hex)) ?? hex;
     }
     if (node.contentEncoding === 'base16' && at instanceof Uint8Array) return tools.hex(at);
     if (Array.isArray(node.anyOf)) {

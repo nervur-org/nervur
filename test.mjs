@@ -35,6 +35,9 @@ const DEFAULT = Number(process.env.NERVUR_TEST_TIMEOUT ?? 5_000);
 const CAP = Number(process.env.NERVUR_TEST_CAP ?? 180_000);
 const QUIET = Number(process.env.NERVUR_TEST_QUIET ?? 400);
 const DRAIN = Number(process.env.NERVUR_TEST_DRAIN ?? 4_000);
+// `NERVUR_TEST_COVER=1` reports the lines of `src` the run reached, which
+// Node takes as a flag and never from NODE_OPTIONS.
+const COVER = process.env.NERVUR_TEST_COVER === '1' ? ['--experimental-test-coverage', '--test-coverage-include=src/**'] : [];
 
 const files = process.argv.slice(2);
 if (files.length === 0) {
@@ -47,7 +50,7 @@ const tap = join(kept, 'run.tap');
 const swept = () => rmSync(kept, { recursive: true, force: true });
 const child = spawn(
   process.execPath,
-  ['--conditions=nervur-source', '--test', `--test-timeout=${DEFAULT}`, '--test-reporter=spec', '--test-reporter-destination=stdout', '--test-reporter=tap', `--test-reporter-destination=${tap}`, ...files],
+  ['--conditions=nervur-source', '--test', ...COVER, `--test-timeout=${DEFAULT}`, '--test-reporter=spec', '--test-reporter-destination=stdout', '--test-reporter=tap', `--test-reporter-destination=${tap}`, ...files],
   { stdio: ['ignore', 'pipe', 'inherit'], detached: true },
 );
 

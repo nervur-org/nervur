@@ -17,8 +17,8 @@ const ground = await Ground.open({
       steward: { up: () => ({ serves: 'classes', house: () => new ClassList({ steward: Steward }) }) },
     },
   },
-  primordial: { unlock: { make: 'env-unlock' }, memory: { make: 'drawer' }, crypto: { make: 'noble' }, tools: { make: 'strict' } },
-  entries: { clock: { make: 'clock' }, tcp: { make: 'tcp' }, file: { make: 'file' }, steward: { make: 'steward' } },
+  primordial: { unlock: { make: 'env-unlock' }, memory: { make: 'drawer' }, crypto: { make: 'noble' }, tools: { make: 'strict' }, clock: { make: 'clock' } },
+  entries: { tcp: { make: 'tcp' }, file: { make: 'file' }, steward: { make: 'steward' } },
 });
 const { ward } = await ground.add('main', { memory: { faculty: 'file' }, classes: { faculty: 'steward' } });
 

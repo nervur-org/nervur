@@ -2,9 +2,10 @@
 # Durable Object namespace kept on disk in `store`, so an object killed and
 # started again finds what it wrote, and an outbound network that reaches
 # this machine. The run copies this file beside the bundle and starts
-# workerd there, naming the station's address in its environment once it
-# has chosen the port. The two secrets stand here because the run is
-# local; a deploy sets them as Worker secrets.
+# workerd there, then names the station's address through the hand once
+# it has chosen the port. The two secrets are all its environment holds,
+# and they stand here because the run is local; a deploy sets them as
+# Worker secrets.
 using Workerd = import "/workerd/workerd.capnp";
 
 const config :Workerd.Config = (
@@ -25,8 +26,6 @@ const station :Workerd.Worker = (
     (name = "GROUND", durableObjectNamespace = "Ground"),
     (name = "NERVUR_SECRET", text = "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"),
     (name = "NERVUR_HAND", text = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"),
-    (name = "NERVUR_ALLOW_PRIVATE", text = "1"),
-    (name = "NERVUR_ADDRESSES", fromEnvironment = "NERVUR_ADDRESSES"),
   ],
   globalOutbound = "internet",
 );

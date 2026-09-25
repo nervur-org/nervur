@@ -96,8 +96,8 @@ Run the ground in the folder, and leave it running.
 npx nervur up .
 ```
 
-In a second shell, add the house once. The ground keeps its entry in its
-sealed drawer, and opens it again at every start.
+In a second shell, add the house once. The ground keeps its entry as a
+sealed cell of its dock, and opens it again at every start.
 
 ```bash
 npx nervur houses add name=main classes='{"faculty":"folder","at":"house"}'
@@ -130,8 +130,7 @@ const ground = await BrowserGround.open();
 
 // The house's code is a module on this origin, and its rows rest sealed in IndexedDB.
 await ground.hand({
-  faculty: 'houses',
-  method: 'add',
+  method: 'housesAdd',
   args: { name: 'main', classes: { faculty: 'origin', at: '/house/index.js' } },
 });
 
@@ -154,10 +153,11 @@ keeps. [Writing for nervur](AUTHORING.md) shows both.
 | Entry | For |
 | --- | --- |
 | `nervur/being` | writing a being: `Being`, `s`, `need`, `tableOf`, `Args`, `Result`, `Json`, `Table` |
-| `nervur` | any engine: `Ground`, `House` and the bodies they take |
+| `nervur` | any engine: `Ground`, `House`, `DockPilot`, `vouchesOf` and the bodies they take |
 | `nervur/node` | a ground on Node: `NodeGround`, the `nervur` command, and its bodies |
 | `nervur/browser` | a ground in a page or its service worker: `BrowserGround` and its bodies |
-| `nervur/app` | a ground in a phone's app: `AppGround`, and the two interfaces its shell fills |
+| `nervur/edge` | a ground on the edge, a Worker and its Durable Object: `EdgeGround` and its bodies |
+| `nervur/app` | a ground in a phone's app: `AppGround`, and the three interfaces its shell fills: `NativeShell`, `NativeSecrets` and `NativeStore` |
 | `nervur/serve` | a faculty's program in JavaScript: `serve` |
 | `nervur/bench` | tests: `Bench`, `BenchGround` and `FakeNetwork` |
 

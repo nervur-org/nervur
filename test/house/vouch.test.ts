@@ -79,10 +79,10 @@ test('A ward that moves is read again where it tells its holder it is reached no
   assert.deepEqual(await holder('vouched'), { result: [[]] }, 'nothing vouched yet');
 
   // The house moves to a ground at a new name, which vouches for it; the old name follows it.
-  const out = await acme.ground.hand({ faculty: 'moves', method: 'out', args: { name: 'shop' } });
+  const out = await acme.ground.hand({ method: 'movesOut', args: { name: 'shop' } });
   const store = await shopAt('store', ['acme.store', 'acme.shop']);
   store.site.wards = [ward];
-  assert.deepEqual(await store.ground.hand({ faculty: 'moves', method: 'in', args: { name: 'shop', ...entry, ...(out as { result: object }).result } }), { result: { ward } });
+  assert.deepEqual(await store.ground.hand({ method: 'movesIn', args: { name: 'shop', ...entry, ...(out as { result: object }).result } }), { result: { ward } });
   assert.ok('result' in (await holder('look')));
   await network.settle();
   const [seen] = ((await holder('vouched')) as { result: string[][] }).result;

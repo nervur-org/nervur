@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import { NodeGround } from 'nervur/node';
+import { loopbackGround } from '../fixtures/node/spawned.ts';
 import { chain } from '../fixtures/ground/chain.ts';
 import * as shop from '../fixtures/world/shop.ts';
 import * as next from '../fixtures/world/host-next.ts';
@@ -19,14 +19,15 @@ test('A body calls another through its entry, and the ladder raises it after its
   const { ups, registry } = chain();
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', registry });
   t.after(() => ground.down());
-  const faculty = (method: string, args: Json) => ground.hand({ faculty: 'faculties', method, args });
+  const faculty = (method: string, args: Json) => ground.hand({ method: `faculties${method[0].toUpperCase()}${method.slice(1)}`, args });
 
   const early = await faculty('add', { name: 'bell', make: 'bell', faculties: ['post'] });
-  assert.deepEqual(early, { error: { message: 'the faculty bell did not stand: no faculty post stands here' } }, 'its callee is not there yet');
-  assert.deepEqual(await faculty('add', { name: 'post', make: 'post' }), { result: null });
-  assert.deepEqual(ups, ['post', 'bell'], 'the caller went up once its callee did');
-  assert.deepEqual(await ground.hand({ faculty: 'bell', method: 'ring', args: { who: 'ada' } }), { result: null });
-  assert.deepEqual(await ground.hand({ faculty: 'post', method: 'sent' }), { result: ['ada rang'] }, 'the bell called the post directly');
+  assert.deepEqual(early, { error: { message: 'the faculty bell is refused: no faculty post is here' } }, 'its callee is not there yet, and nothing lands');
+  assert.deepEqual(await faculty('add', { name: 'post', make: 'post' }), { result: {} });
+  assert.deepEqual(await faculty('add', { name: 'bell', make: 'bell', faculties: ['post'] }), { result: {} });
+  assert.deepEqual(ups, ['post', 'bell'], 'the caller went up after its callee');
+  assert.deepEqual(await ground.hand({ method: 'callFaculty', args: { faculty: 'bell', method: 'ring', args: { who: 'ada' } } }), { result: null });
+  assert.deepEqual(await ground.hand({ method: 'callFaculty', args: { faculty: 'post', method: 'sent' } }), { result: ['ada rang'] }, 'the bell called the post directly');
   assert.match(JSON.stringify(await faculty('remove', { name: 'post' })), /the faculty post is in use by the faculty bell/);
 
   ups.length = 0;
@@ -35,7 +36,7 @@ test('A body calls another through its entry, and the ladder raises it after its
   assert.deepEqual(ups, ['post', 'bell'], 'at the boot, the callee first, whatever their names');
 
   ups.length = 0;
-  assert.deepEqual(await faculty('restart', { name: 'post' }), { result: null });
+  assert.deepEqual(await faculty('restart', { name: 'post' }), { result: {} });
   assert.deepEqual(ups, ['post', 'bell'], 'a restart takes its caller down and up with it');
 });
 
@@ -43,7 +44,7 @@ test('A house updated through the hand lands its new entry in one write, and kee
   const network = new FakeNetwork();
   const ground = await BenchGround.open({ network, host: 'shop', modules: { shop, next } });
   t.after(() => ground.down());
-  const houses = (method: string, args: Json) => ground.hand({ faculty: 'houses', method, args });
+  const houses = (method: string, args: Json) => ground.hand({ method: `houses${method[0].toUpperCase()}${method.slice(1)}`, args });
   const added = (await houses('add', { name: 'store', classes: { faculty: 'module', name: 'shop' } })) as { result: { ward: string } };
   await ground.ask({ house: 'store', method: 'bear', args: { kind: 'org.example.host', id: 'bob' } });
   assert.deepEqual(await ground.ask({ house: 'store', id: 'bob', method: 'greet' }), { result: 'bob greets root' });
@@ -61,12 +62,11 @@ test('A house updated through the hand lands its new entry in one write, and kee
 
 test('A TCP entry that names no port only dials: its invitations name no TCP address, and it still asks a far ground over TCP', { timeout: 20_000 }, async (t) => {
   const folder = new URL('../fixtures/node/', import.meta.url).pathname;
-  const env = { NERVUR_TCP_PORT: '0', NERVUR_BIND: '127.0.0.1', NERVUR_ALLOW_PRIVATE: '1' };
   const open = async (name: string) => {
     const state = await mkdtemp(join(tmpdir(), `${name}-`));
-    t.after(() => rm(state, { recursive: true, force: true }));
-    const node = await NodeGround.open({ folder, state, env });
+    const node = await loopbackGround(folder, state);
     t.after(() => node.close());
+    t.after(() => rm(state, { recursive: true, force: true }));
     const added = await node.ground.add('main', { classes: { faculty: 'folder', at: 'two' } });
     assert.ok(added.ward !== undefined, added.why ?? 'it did not open');
     return node.ground;
@@ -74,8 +74,8 @@ test('A TCP entry that names no port only dials: its invitations name no TCP add
   const far = await open('far');
   const near = await open('near');
 
-  const dials = await near.hand({ faculty: 'faculties', method: 'update', args: { name: 'tcp', make: 'tcp', args: { bind: '127.0.0.1', allowPrivate: true } } });
-  assert.deepEqual(dials, { result: null });
+  const dials = await near.hand({ method: 'facultiesUpdate', args: { name: 'tcp', make: 'tcp', args: { bind: '127.0.0.1', allowPrivate: true } } });
+  assert.deepEqual(dials, { result: {} });
   const paper = (await near.ask({ house: 'main', method: 'offer' })) as { result: { handle: string } };
   const { at } = JSON.parse(Buffer.from(paper.result.handle, 'hex').toString('utf8')) as { at: string[] };
   assert.deepEqual(
@@ -94,19 +94,22 @@ test('The lists answer every entry whole, and an entry names its secrets and hol
   const { registry } = chain();
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', registry, modules: { shop } });
   t.after(() => ground.down());
-  assert.deepEqual(await ground.hand({ faculty: 'secrets', method: 'set', args: { name: 'post-key', value: 'hush' } }), { result: null });
-  assert.deepEqual(await ground.hand({ faculty: 'faculties', method: 'add', args: { name: 'post', make: 'post', secrets: ['post-key'] } }), { result: null });
+  assert.deepEqual(await ground.hand({ method: 'secretsSet', args: { name: 'post-key', value: 'hush' } }), { result: null });
+  assert.deepEqual(await ground.hand({ method: 'facultiesAdd', args: { name: 'post', make: 'post', secrets: ['post-key'] } }), { result: {} });
   await ground.add('store', 'shop', { faculties: ['post'] });
 
-  const faculties = (await ground.hand({ faculty: 'faculties', method: 'list' })) as { result: { name: string; entry: Json; serves?: string }[] };
+  const faculties = (await ground.hand({ method: 'facultiesList' })) as { result: { name: string; entry: Json; serves?: string }[] };
   const post = faculties.result.find(({ name }) => name === 'post');
   assert.deepEqual(post, { name: 'post', entry: { make: 'post', secrets: ['post-key'] } }, 'the secret’s name, never its value');
   assert.ok(!JSON.stringify(faculties).includes('hush'));
   assert.deepEqual(
-    faculties.result.find(({ name }) => name === 'clock'),
-    { name: 'clock', entry: { make: 'bench-clock' }, serves: 'clock' },
-    'the terrain’s entries too',
+    faculties.result.find(({ name }) => name === 'fake'),
+    { name: 'fake', entry: { make: 'fake' }, terrain: true, serves: 'memory' },
+    'the terrain’s entries too, marked as the terrain’s',
   );
-  const houses = (await ground.hand({ faculty: 'houses', method: 'list' })) as { result: { name: string; entry: Json }[] };
+  assert.equal(await ground.hand({ method: 'facultiesUpdate', args: { name: 'fake', make: 'fake', args: {} } }).then((answer) => JSON.stringify(answer)), '{"result":{}}');
+  const replaced = (await ground.hand({ method: 'facultiesList' })) as { result: { name: string; terrain?: boolean }[] };
+  assert.equal(replaced.result.find(({ name }) => name === 'fake')?.terrain, undefined, 'an entry the drawer names in its place is the owner’s');
+  const houses = (await ground.hand({ method: 'housesList' })) as { result: { name: string; entry: Json }[] };
   assert.deepEqual(houses.result[0].entry, { classes: { faculty: 'module', name: 'shop' }, faculties: ['post'] });
 });
