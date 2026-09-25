@@ -71,13 +71,15 @@ npx nervur help
 
 A faculty is called by its name and a method. Named alone, it prints its
 methods. Four faculties are the ground's own. `secrets` keeps a secret
-in the ground's sealed drawer. `faculties` stands a faculty on the maker
-its entry names, and `houses` opens a house on its entry.
+in the ground's sealed drawer. `faculties` raises a faculty by the `up`
+its entry names, and `houses` opens a house on its entry. Each takes
+`update` to land a new entry in one write, and `faculties restart`
+takes a body down and up again.
 
 ```bash
 npx nervur faculties add name=recipe make=module args='{"at":"recipe.ts"}'
 npx nervur faculties add name=payments from=recipe make=payments secrets='["stripe-key"]'
-npx nervur houses add name=main classes='{"body":"folder","at":"house"}' faculties='["payments"]'
+npx nervur houses add name=main classes='{"faculty":"folder","at":"house"}' faculties='["payments"]'
 ```
 
 `ask` asks a being of a house, as the house's owner. `--id <being>` names

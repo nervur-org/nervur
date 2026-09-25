@@ -2,7 +2,7 @@
 // opens that ground, which it runs where no page holds the lock and reaches
 // through the page that runs it otherwise, asks one being, and says what it
 // heard on a channel the run listens to. A service worker may not import(),
-// so its own build hands the origin body the shop's module by its path.
+// so its own build hands the origin faculty the shop's module by its path.
 import { BrowserGround } from 'nervur/browser';
 import * as shop from './shop.ts';
 

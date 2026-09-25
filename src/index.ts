@@ -13,7 +13,7 @@ export { JoinedCarry } from './bodies/joined-carry.ts';
 export { WebCarry, type Handler } from './bodies/web-carry.ts';
 export { vouchesOf } from './bodies/vouch.ts';
 export type { FacultyContext, Offer, Opened } from './house/house.ts';
-export { Ground, type Faculty, type Hooked, type Made, type Registry, type Unlock } from './ground/ground.ts';
+export { Ground, type Body, type Faculty, type FacultyEntry, type ForHouse, type Hooked, type Registry, type Serves, type Unlock, type Up } from './ground/ground.ts';
 export { ClassList } from './bodies/class-list.ts';
 export { NobleCrypto } from './bodies/noble-crypto.ts';
 export { SeedKeys } from './bodies/seed-keys.ts';

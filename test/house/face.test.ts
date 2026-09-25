@@ -22,6 +22,25 @@ const open = async (t: { after(done: () => unknown): void }) => {
   return { ground, front };
 };
 
+test('A face is told its house opened, so a door’s token answers after a restart before any being calls the face', async (t) => {
+  const network = new FakeNetwork();
+  const bodyOf = (front: Front) => ({ blueprint: FrontBlueprint, object: front, handler: front.handler, opened: (context: Parameters<Front['opened']>[0]) => front.opened(context) });
+  const armed = new Front();
+  const first = await BenchGround.open({ network, host: 'desk', modules: { desk }, faculties: { front: bodyOf(armed) } });
+  await first.add('desk', 'desk', { faculties: ['front'] });
+  await first.ask({ house: 'desk', method: 'arm' });
+  const alice = await armed.signup('alice');
+  await first.down();
+
+  // The same ground on its machine, with a face no being has called: the steward never arms it again.
+  const fresh = new Front();
+  const second = await BenchGround.open({ network, host: 'desk', modules: { desk }, faculties: { front: bodyOf(fresh) }, machine: first.machine });
+  t.after(() => second.down());
+  assert.deepEqual(await fresh.ask(alice, 'hello'), { result: 'hello, web' }, 'her door answers at once');
+  const bearer = await second.fetch(new Request('https://desk.example/hello', { method: 'POST', headers: { authorization: `Bearer ${alice}` }, body: '{}' }));
+  assert.deepEqual(await bearer.json(), { result: 'hello, web' }, 'and on the listener');
+});
+
 test('A face’s token lists and asks every ask its occupant may, and nothing more', async (t) => {
   const { front } = await open(t);
   const alice = await front.signup('alice');

@@ -33,7 +33,7 @@ test('An unattended ground holds its state alone, is asked through the command, 
   const at = ['--at', socket];
 
   assert.equal(statSync(socket).mode & 0o777, 0o600, 'the hand is the ground user’s alone');
-  const added = nervur(...at, 'houses', 'add', 'name=main', 'classes={"body":"folder","at":"classes"}');
+  const added = nervur(...at, 'houses', 'add', 'name=main', 'classes={"faculty":"folder","at":"classes"}');
   assert.equal(added.code, 0, added.out);
   const ward = (JSON.parse(added.out) as { result: { ward: string } }).result.ward;
   assert.deepEqual(nervur(...at, 'ask', 'main', 'whoami'), { code: 0, out: '{"result":"root"}' });

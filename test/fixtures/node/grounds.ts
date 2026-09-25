@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { ClassList, Ground, JoinedCarry, WebCarry, type Faculty, type Opened } from 'nervur';
+import { ClassList, Ground, JoinedCarry, WebCarry, type Body, type Faculty, type Opened } from 'nervur';
 import { FileMemory, FileUnlock, serveHttp, TcpCarry } from 'nervur/node';
 import { Guest } from '../world/guest.ts';
 import { Host } from '../world/host.ts';
@@ -64,7 +64,7 @@ export const paper = async (ask: Ask, being: string, occupant: string) => ((awai
  * on this machine, and proves no pointer then. `faculties` are the ground's,
  * each stood by its entry, and granted to a house by name when it opens.
  */
-export const groundOne = async (t: TestContext, { dials = false, faculties = {} }: { dials?: boolean; faculties?: Readonly<Record<string, Faculty>> } = {}) => {
+export const groundOne = async (t: TestContext, { dials = false, faculties = {} }: { dials?: boolean; faculties?: Readonly<Record<string, Body>> } = {}) => {
   const tcp = new TcpCarry({ host: '127.0.0.1', allowPrivate: dials });
   t.after(() => tcp.close());
   let httpAt = '';
@@ -78,15 +78,17 @@ export const groundOne = async (t: TestContext, { dials = false, faculties = {} 
   t.after(() => rmSync(state, { recursive: true, force: true }));
   // Each house's classes, by its name, as the entry that opens it names them.
   const classes = new Map<string, ClassList>();
+  const own: Record<string, Faculty> = {
+    'file-unlock': { up: () => ({ serves: 'unlock', object: new FileUnlock(join(state, 'key')) }) },
+    drawer: { up: () => ({ serves: 'memory', object: new FileMemory(join(state, 'drawer')) }) },
+    counted: { up: () => ({ serves: 'carry', schemes: ['tcp', 'http'], object: carry }) },
+    file: { up: () => ({ serves: 'memory', house: ({ house }) => new FileMemory(join(state, `${house}.memory`)) }) },
+    named: { up: () => ({ serves: 'classes', house: ({ house }) => classes.get(house)! }) },
+  };
   const ground = await Ground.open({
-    unlock: new FileUnlock(join(state, 'key')),
-    memory: new FileMemory(join(state, 'drawer')),
-    carry,
-    registry: {
-      faculties: Object.fromEntries(Object.entries(faculties).map(([name, faculty]) => [name, () => faculty])),
-      memory: { file: ({ house }) => new FileMemory(join(state, `${house}.memory`)) },
-      classes: { named: ({ house }) => classes.get(house)! },
-    },
+    registry: { faculties: { ...own, ...Object.fromEntries(Object.entries(faculties).map(([name, body]) => [name, { up: () => body }])) } },
+    primordial: { unlock: { make: 'file-unlock' }, memory: { make: 'drawer' }, crypto: { make: 'noble' }, tools: { make: 'strict' } },
+    entries: { clock: { make: 'clock' }, carry: { make: 'counted' }, file: { make: 'file' }, named: { make: 'named' } },
   });
   t.after(() => ground.close());
   for (const name of Object.keys(faculties)) {
@@ -95,7 +97,7 @@ export const groundOne = async (t: TestContext, { dials = false, faculties = {} 
   }
   const open = async (name: string, { beings = [Host, Guest], granted = [] }: { beings?: Beings; granted?: readonly string[] } = {}) => {
     classes.set(name, new ClassList({ steward: Steward, beings }));
-    const standing = await ground.add(name, { memory: { body: 'file' }, classes: { body: 'named' }, faculties: [...granted] });
+    const standing = await ground.add(name, { memory: { faculty: 'file' }, classes: { faculty: 'named' }, faculties: [...granted] });
     assert.ok(standing.ward !== undefined, `the house ${name} did not open: ${standing.why}`);
     const ask: Ask = (request) => ground.ask({ house: name, ...request });
     return { ask, ward: standing.ward };
@@ -132,7 +134,7 @@ export const groundTwo = async (t: TestContext) => {
     rmSync(state, { recursive: true, force: true });
   });
   const owner = await up();
-  const added = await owner.ask({ faculty: 'houses', method: 'add', args: { name: 'main', classes: { body: 'folder', at: 'two' } } });
+  const added = await owner.ask({ faculty: 'houses', method: 'add', args: { name: 'main', classes: { faculty: 'folder', at: 'two' } } });
   assert.ok('result' in added, JSON.stringify(added));
   const ask: Ask = (request) => current(request);
   return { ask, up: async () => void (await up()), down };

@@ -18,7 +18,7 @@ const context = (id: string): FacultyContext => ({
 test('A program started again that describes another blueprint is refused and stopped', { timeout: 30_000 }, async (t) => {
   const { cwd, until } = folder(t);
   const turncoat = await bridge({ command: process.execPath, args: program('turncoat.ts'), cwd });
-  t.after(() => turncoat.stop?.());
+  t.after(() => turncoat.down?.());
   const methods = turncoat.object as Methods;
   assert.deepEqual(await methods.ring({}, context('first')), { result: null });
   // Its next life describes a knocker, not the bell it was at the boot.

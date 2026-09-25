@@ -8,7 +8,7 @@ import { AppGround } from 'nervur/app';
 import { phone } from '../fixtures/app/shell.ts';
 
 const origin = pathToFileURL(new URL('../fixtures/', import.meta.url).pathname).href;
-const shop = { name: 'shop', classes: { body: 'origin', at: 'world/shop.ts' } };
+const shop = { name: 'shop', classes: { faculty: 'origin', at: 'world/shop.ts' } };
 
 const launch = async (device: ReturnType<typeof phone>, name: string) => {
   const ground = await AppGround.open({ name, shell: device, origin });

@@ -25,7 +25,8 @@ interface Dialled {
 }
 
 export class TcpCarry implements Carry {
-  readonly #port: number;
+  /** The port it listens on, `0` for one the system picks, or `null` where it only dials. */
+  readonly #port: number | null;
   readonly #host: string;
   readonly #addresses: readonly string[] | undefined;
   readonly #allowPrivate: boolean;
@@ -36,7 +37,7 @@ export class TcpCarry implements Carry {
   #server: Server | undefined;
   #bound: number | undefined;
 
-  constructor({ port = 0, host = '0.0.0.0', addresses, allowPrivate = false, wait = 30_000 }: { port?: number; host?: string; addresses?: readonly string[]; allowPrivate?: boolean; wait?: number } = {}) {
+  constructor({ port = 0, host = '0.0.0.0', addresses, allowPrivate = false, wait = 30_000 }: { port?: number | null; host?: string; addresses?: readonly string[]; allowPrivate?: boolean; wait?: number } = {}) {
     this.#port = port;
     this.#host = host;
     this.#addresses = addresses;
@@ -44,17 +45,18 @@ export class TcpCarry implements Carry {
     this.#wait = wait;
   }
 
-  /** Answers for a house's ward on this carry's listener, which starts with the first. */
+  /** Answers for a house's ward on this carry's listener, which starts with the first; one that only dials hands it boxes by pointer alone. */
   async listen({ ward, door }: Listened): Promise<void> {
     this.#doors.set(ward, door);
-    if (this.#server !== undefined) return;
+    if (this.#server !== undefined || this.#port === null) return;
+    const port = this.#port;
     const server = createServer((socket) => this.#answer(socket));
     this.#server = server;
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
-      server.listen(this.#port, this.#host, () => {
+      server.listen(port, this.#host, () => {
         const address = server.address();
-        this.#bound = typeof address === 'object' && address !== null ? address.port : this.#port;
+        this.#bound = typeof address === 'object' && address !== null ? address.port : port;
         resolve();
       });
     });

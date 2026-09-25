@@ -8,7 +8,7 @@ const ground = await BrowserGround.open();
 await ground.hand({
   faculty: 'houses',
   method: 'add',
-  args: { name: 'main', classes: { body: 'origin', at: '/house/index.js' } },
+  args: { name: 'main', classes: { faculty: 'origin', at: '/house/index.js' } },
 });
 
 console.log(await ground.hand({ house: 'main', method: 'hello', args: { name: 'Ada' } }));

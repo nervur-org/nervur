@@ -3,7 +3,7 @@
 // and its memory in a machine that outlives it, and opens house modules by
 // name. So a test turns it off, opens it again on the same machine, or
 // moves the machine to another host.
-import { ClassList, Ground, type Faculty, type Registry } from '../index.ts';
+import { ClassList, Ground, type Body, type Faculty, type Registry } from '../index.ts';
 import { FakeMemory } from './fake-memory.ts';
 import { clockOf, type FakeNetwork } from './fake-network.ts';
 import { FakeUnlock } from './fake-unlock.ts';
@@ -21,8 +21,20 @@ export interface HouseModule {
   readonly beings?: readonly BeingClass[];
 }
 
-/** A faculty the test writes, living, with the kinds it is granted. */
-export type Living = Faculty & { readonly kinds?: readonly string[] };
+/** A body the test writes, living, with the kinds it is granted. */
+export type Living = Body & { readonly kinds?: readonly string[] };
+
+// Registries' faculties as one, the first first: a name one holds is refused to the next, never replaced.
+const joined = (...each: readonly Readonly<Record<string, Faculty>>[]): Record<string, Faculty> => {
+  const all: Record<string, Faculty> = {};
+  for (const faculties of each) {
+    for (const [name, faculty] of Object.entries(faculties)) {
+      if (Object.hasOwn(all, name)) throw new TypeError(`the faculty ${name} is the bench's own`);
+      all[name] = faculty;
+    }
+  }
+  return all;
+};
 
 /** What a ground keeps across its lives: its key, its randomness, its memory, and each house's own where it names the `fake` body. */
 export class Machine {
@@ -88,34 +100,34 @@ export class BenchGround {
     if (this.#ground !== undefined) return;
     const { network, host, names = [], modules = {}, faculties = {}, registry = {} } = this.#options;
     network.up(host);
-    const carry = network.join(host, { names, listens: names.length > 0, serve: (request) => this.fetch(request) });
-    // The bench's own makers, and the test's beside them, never in their place.
-    const joined = <T>(kind: string, own: Readonly<Record<string, T>>, added: Readonly<Record<string, T>> = {}): Readonly<Record<string, T>> => {
-      for (const name of Object.keys(added)) if (Object.hasOwn(own, name)) throw new TypeError(`the ${kind} ${name} is the bench's own`);
-      return { ...own, ...added };
-    };
-    const living = Object.fromEntries(Object.entries(faculties).map(([name, { kinds: _kinds, ...faculty }]) => [name, () => faculty]));
-    this.#ground = await Ground.open({
-      unlock: this.machine.unlock,
-      memory: this.machine.memory,
-      carry,
-      clock: clockOf(network),
-      crypto: this.machine.crypto,
-      registry: {
-        faculties: joined('faculty', living, registry.faculties),
-        memory: joined('body', { fake: ({ house }) => this.machine.memoryOf(house) }, registry.memory),
-        classes: joined(
-          'body',
-          {
-            module: ({ args }) => {
+    const machine = this.machine;
+    // Each living body the test hands stands through a faculty whose `up` answers it, as any body stands.
+    const living: Record<string, Faculty> = Object.fromEntries(Object.entries(faculties).map(([name, { kinds: _kinds, ...body }]) => [name, { up: () => body }]));
+    const own: Registry = {
+      faculties: {
+        'bench-unlock': { up: () => ({ serves: 'unlock', object: machine.unlock }) },
+        'bench-memory': { up: () => ({ serves: 'memory', object: machine.memory }) },
+        seeded: { up: () => ({ serves: 'crypto', object: machine.crypto }) },
+        'bench-clock': { up: () => ({ serves: 'clock', object: clockOf(network) }) },
+        'bench-carry': { up: () => ({ serves: 'carry', schemes: ['bench'], object: network.join(host, { names, listens: names.length > 0, serve: (request) => this.fetch(request) }) }) },
+        fake: { up: () => ({ serves: 'memory', house: ({ house }) => machine.memoryOf(house) }) },
+        module: {
+          up: () => ({
+            serves: 'classes',
+            house: ({ args }) => {
               const module = modules[args.name as string];
               if (module === undefined) throw new Error(`no house module ${String(args.name)}`);
               return new ClassList({ steward: module.steward, ...(module.public === undefined ? {} : { public: module.public }), beings: module.beings ?? [] });
             },
-          },
-          registry.classes,
-        ),
+          }),
+        },
       },
+    };
+    this.#ground = await Ground.open({
+      // The bench's own faculties, then the test's beside them, never in their place.
+      registry: { faculties: joined(own.faculties ?? {}, living, registry.faculties ?? {}) },
+      primordial: { unlock: { make: 'bench-unlock' }, memory: { make: 'bench-memory' }, crypto: { make: 'seeded' }, tools: { make: 'strict' } },
+      entries: { clock: { make: 'bench-clock' }, carry: { make: 'bench-carry' }, module: { make: 'module' }, fake: { make: 'fake' } },
     });
     // Each living faculty stands on its first up, as its owner would stand it through the hand.
     for (const [name, { kinds }] of Object.entries(faculties)) {
@@ -139,7 +151,7 @@ export class BenchGround {
    * and all.
    */
   add(name: string, from: string | Entry = name, rest: Omit<Entry, 'classes'> = {}): Promise<Standing> {
-    return this.#live().add(name, typeof from === 'string' ? { classes: { body: 'module', name: from }, ...rest } : from);
+    return this.#live().add(name, typeof from === 'string' ? { classes: { faculty: 'module', name: from }, ...rest } : from);
   }
 
   remove(name: string): Promise<void> {

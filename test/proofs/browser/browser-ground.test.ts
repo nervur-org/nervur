@@ -42,7 +42,7 @@ const tab = async (t: TestContext, name: string, stores: Stores, { platform = {}
   return opened;
 };
 
-const shop = { classes: { body: 'origin', at: 'world/shop.ts' } };
+const shop = { classes: { faculty: 'origin', at: 'world/shop.ts' } };
 
 test('The first tab runs the ground, and a second reaches its hand', async (t) => {
   const { stores } = originStorage();
@@ -91,7 +91,7 @@ test('An ask in flight when the tab running the ground closes is told to ask aga
       },
     },
   };
-  const registry: Registry = { faculties: { slow: () => slow } };
+  const registry: Registry = { faculties: { slow: { up: () => slow } } };
   const first = await tab(t, 'in-flight', stores, { registry });
   await first.led();
   await first.hand({ faculty: 'faculties', method: 'add', args: { name: 'slow', make: 'slow' } });
@@ -137,7 +137,7 @@ test('Its classes come from its origin, and a path off it is refused', async (t)
   const { stores } = originStorage();
   const only = await tab(t, 'off-origin', stores);
   await only.led();
-  const off = await only.hand({ faculty: 'houses', method: 'add', args: { name: 'stray', classes: { body: 'origin', at: '../../src/index.ts' } } });
+  const off = await only.hand({ faculty: 'houses', method: 'add', args: { name: 'stray', classes: { faculty: 'origin', at: '../../src/index.ts' } } });
   assert.deepEqual(off, { error: { message: `the house stray did not open: the code at ../../src/index.ts stands off ${origin}` } });
 });
 
@@ -156,9 +156,9 @@ test('A page’s registry stands beside the terrain’s own and never in its pla
   const { stores } = originStorage();
   await assert.rejects(
     (async () => {
-      const only = await tab(t, 'replaced', stores, { registry: { classes: { origin: () => Promise.reject(new Error('never made')) } } });
+      const only = await tab(t, 'replaced', stores, { registry: { faculties: { origin: { up: () => Promise.reject(new Error('never raised')) } } } });
       await only.led();
     })(),
-    /the registry names a classes body origin, which is the ground's own/,
+    /the registry names a faculty origin, which the ground holds already/,
   );
 });

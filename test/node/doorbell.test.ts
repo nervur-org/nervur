@@ -14,7 +14,7 @@ import { folder, program } from '../fixtures/node/folder.ts';
 test('A faculty served in JavaScript calls a handle it was handed back through the house', { timeout: 30_000 }, async (t) => {
   const network = new FakeNetwork();
   const doorbell = await bridge({ command: process.execPath, args: program('doorbell.ts') });
-  t.after(() => doorbell.stop?.());
+  t.after(() => doorbell.down?.());
   const ground = await BenchGround.open({ network, host: 'porch', names: ['porch.local'], modules: { porch }, faculties: { bell: doorbell } });
   t.after(() => ground.down());
   await ground.add('porch', 'porch', { faculties: ['bell'] });
@@ -29,7 +29,7 @@ test('A handle called from a second life of its program acts once, as the first 
   const { cwd, until } = folder(t);
   const network = new FakeNetwork();
   const bell = await bridge({ command: process.execPath, args: program('lasting-bell.ts'), cwd });
-  t.after(() => bell.stop?.());
+  t.after(() => bell.down?.());
   const ground = await BenchGround.open({ network, host: 'porch', names: ['porch.local'], modules: { porch }, faculties: { bell } });
   t.after(() => ground.down());
   await ground.add('porch', 'porch', { faculties: ['bell'] });

@@ -27,7 +27,7 @@ const pkg = new URL('../', import.meta.url).pathname;
 const ssh = ['-i', key, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15'];
 // The folder of each ground: its classes, the same on both machines.
 const GROUND = 'deep/fixtures/ground';
-const house = { classes: { body: 'folder', at: 'classes' } };
+const house = { classes: { faculty: 'folder', at: 'classes' } };
 // A hook or a test here crosses SSH and the internet, where the runner's default would call a slow line a freeze.
 const REMOTE = { timeout: 300_000 };
 
@@ -92,7 +92,9 @@ void describe('Invitations between this machine and a real device', { timeout: 6
 
   before(async () => {
     assert.ok(device !== '' && key !== '' && port !== '', 'NERVUR_DEVICE, NERVUR_DEVICE_KEY and NERVUR_DEVICE_PORT name the device');
-    const [packed] = JSON.parse(local('npm', ['pack', '--json', '--pack-destination', here], pkg)) as { filename: string }[];
+    // npm 11 answers a list of packs, and npm 12 an object keyed by the package's name.
+    const answered = JSON.parse(local('npm', ['pack', '--json', '--pack-destination', here], pkg)) as { filename: string }[] | Record<string, { filename: string }>;
+    const packed = Array.isArray(answered) ? answered[0] : answered.nervur;
     folder = remote('mktemp -d "$HOME/nervur-deep-XXXXXX"');
     remote(`mkdir -p ${folder}/${GROUND}/classes ${folder}/test/fixtures/world`);
     local('scp', [...ssh, join(here, packed.filename), `${device}:${folder}/`]);

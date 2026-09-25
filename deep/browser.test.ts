@@ -3,7 +3,7 @@
 // suite runs against IndexedDbMemory through the page, two tabs share one
 // ground, which passes to the second when the first closes, and a push
 // wakes the service worker. The page, the worker and the house module are
-// built with a shared chunk, so the classes the origin body loads and the
+// built with a shared chunk, so the classes the origin faculty loads and the
 // house that runs them share one `nervur/being`. With NERVUR_BROWSER_ORIGIN
 // set, the same scenes run against that origin, its real device, where the
 // same files were deployed.
@@ -108,7 +108,7 @@ const remote = (): Memory => {
 
 memorySuite('IndexedDbMemory', remote);
 
-const shop = { name: 'shop', classes: { body: 'origin', at: '/houses/shop.js' } };
+const shop = { name: 'shop', classes: { faculty: 'origin', at: '/houses/shop.js' } };
 const greet = { house: 'shop', id: 'bob', method: 'greet' };
 
 void test('Two tabs share one ground, and the second runs it when the first closes', async () => {

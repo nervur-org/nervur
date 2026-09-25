@@ -46,7 +46,7 @@ const ladder = async (hand: string) => {
   return echo;
 };
 
-const shop = ['name=shop', 'classes={"body":"folder","at":"shop"}', 'faculties=["echo"]'];
+const shop = ['name=shop', 'classes={"faculty":"folder","at":"shop"}', 'faculties=["echo"]'];
 
 test('A NodeGround stands its ladder, opens houses from its folder, serves its faculties, and keeps its drawer', { timeout: 20_000 }, async (t) => {
   const state = await mkdtemp(join(tmpdir(), 'ground-'));
@@ -59,8 +59,8 @@ test('A NodeGround stands its ladder, opens houses from its folder, serves its f
   assert.equal(lacking.code, 1, 'a faculty whose secret is not kept stays down');
   assert.match((lacking.answer.error as { message: string }).message, /no secret signature is kept/);
   assert.deepEqual((await piped(first.hand, '{"name":"signature","value":"— polly"}', 'secrets', 'set')).answer, { result: null }, 'a secret read from standard input');
-  assert.equal((await nervur(first.hand, 'faculties', 'remove', 'name=echo')).code, 0);
-  assert.equal((await ladder(first.hand)).code, 0, 'it stands once its secret is kept');
+  assert.equal((await nervur(first.hand, 'faculties', 'restart', 'name=echo')).code, 0, 'it stands once its secret is kept and it goes up again');
+  assert.equal((await ladder(first.hand)).code, 0, 'the same entries answer as they stand');
 
   const added = await nervur(first.hand, 'houses', 'add', ...shop);
   assert.equal(added.code, 0, JSON.stringify(added.answer));
@@ -78,7 +78,7 @@ test('A NodeGround stands its ladder, opens houses from its folder, serves its f
   const second = await NodeGround.open({ folder, state, env });
   open = second;
   const listed = await nervur(second.hand, 'houses', 'list');
-  assert.deepEqual(listed.answer, { result: [{ name: 'shop', ward }] });
+  assert.deepEqual(listed.answer, { result: [{ name: 'shop', entry: { classes: { faculty: 'folder', at: 'shop' }, faculties: ['echo'] }, ward }] }, 'each house with its whole entry');
   assert.deepEqual((await nervur(second.hand, 'ask', 'shop', '--id', 'polly', 'repeat', 'text=again')).answer, { result: '~again — polly' }, 'her row and the ladder stayed in the drawer');
 });
 
@@ -92,8 +92,9 @@ test('The command reads every word from what the ground describes', { timeout: 2
 
   const help = await nervur(ground.hand, 'help');
   const faculties = (help.answer.result as { faculties: Record<string, { methods: Record<string, unknown> }> }).faculties;
-  assert.deepEqual(Object.keys(faculties).sort(), ['echo', 'faculties', 'houses', 'moves', 'recipe', 'secrets']);
-  assert.deepEqual(Object.keys(faculties.houses.methods).sort(), ['add', 'list', 'remove']);
+  assert.deepEqual(Object.keys(faculties).sort(), ['clock', 'echo', 'faculties', 'folder', 'houses', 'moves', 'recipe', 'secrets', 'tcp', 'web']);
+  assert.deepEqual(Object.keys(faculties.houses.methods).sort(), ['add', 'list', 'remove', 'update']);
+  assert.deepEqual(Object.keys(faculties.faculties.methods).sort(), ['add', 'list', 'remove', 'restart', 'update']);
   assert.deepEqual(faculties.recipe.methods, {}, 'a registry offers beings nothing');
   assert.deepEqual(Object.keys((await nervur(ground.hand, 'echo')).answer.result as { methods: object }), ['blueprint', 'methods']);
   assert.deepEqual((await nervur(ground.hand, 'echo', 'say', 'text=yo')).answer, { result: '~yo !' }, 'any faculty, called as its owner');
@@ -108,7 +109,7 @@ test('A house’s code and a module stand inside the ground’s folder', { timeo
   t.after(() => rm(state, { recursive: true, force: true }));
   const ground = await NodeGround.open({ folder, state, env });
   t.after(() => ground.close());
-  const outside = await nervur(ground.hand, 'houses', 'add', 'name=loose', 'classes={"body":"folder","at":"../where"}');
+  const outside = await nervur(ground.hand, 'houses', 'add', 'name=loose', 'classes={"faculty":"folder","at":"../where"}');
   assert.equal(outside.code, 1);
   assert.match((outside.answer.error as { message: string }).message, /a folder of code stands inside/);
   assert.deepEqual((await nervur(ground.hand, 'ask', 'loose', 'bear')).answer, { error: { message: 'no house loose is open here' } });

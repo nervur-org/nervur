@@ -6,8 +6,8 @@
 // first reaches it, and an alarm opens every house so each arms its own
 // times again. Its held lines hibernate, so an object with nothing to do
 // but hold them may be evicted, and a message wakes it.
+import type { Json } from '../being/being.ts';
 import { ClassList } from '../bodies/class-list.ts';
-import { JoinedCarry } from '../bodies/joined-carry.ts';
 import { WebCarry, type Handler, type Held, type HeldSocket } from '../bodies/web-carry.ts';
 import type { BeingClass } from '../foundation.ts';
 import { Ground, joinedRegistry, type Registry } from '../ground/ground.ts';
@@ -97,6 +97,9 @@ const listed = (value: string | undefined): string[] =>
     .map((item) => item.trim())
     .filter((item) => item !== '');
 
+// Words an entry's args list, or none.
+const strings = (value: Json | undefined): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
+
 const socketOf = (socket: Socket): HeldSocket => ({
   send: (data) => socket.send(data),
   close: () => socket.close(),
@@ -133,34 +136,61 @@ export const EdgeGround = Object.freeze({
       async #boot(): Promise<Woken> {
         const env = this.#env;
         const storage = this.#state.storage;
-        const clock = new DurableClock(storage);
+        // The clock this wake stands, which the object's alarm ends each wait of.
+        const ticking: { clock?: DurableClock } = {};
         const allowPrivate = env.NERVUR_ALLOW_PRIVATE === '1';
-        // A Worker learns no name it is reached by before a request, so it writes only the addresses it is given.
-        const web = new WebCarry({ allowPrivate, origins: listed(env.NERVUR_ORIGINS), addresses: listed(env.NERVUR_ADDRESSES) });
-        const carries = { https: web, http: web, wss: web, ws: web };
-        const carry = new JoinedCarry(connect === undefined ? carries : { ...carries, tcp: new SocketCarry({ connect, allowPrivate }) });
         const own: Registry = {
-          classes: {
-            bundle: ({ args }) => {
-              const bundled = typeof args.at === 'string' && Object.hasOwn(code, args.at) ? code[args.at] : undefined;
-              if (bundled === undefined) throw new Error(`the deploy bundles no code named ${String(args.at)}`);
-              return new ClassList(bundled);
+          faculties: {
+            'secret-unlock': { up: () => ({ serves: 'unlock', object: new SecretUnlock(env.NERVUR_SECRET) }) },
+            durable: { up: () => ({ serves: 'memory', object: new DurableMemory(storage, 'ground') }) },
+            native: { up: () => ({ serves: 'crypto', object: new NativeCrypto() }) },
+            'durable-clock': {
+              up: () => {
+                const clock = new DurableClock(storage);
+                ticking.clock = clock;
+                return { serves: 'clock', object: clock };
+              },
+            },
+            web: {
+              up: ({ args }) => {
+                const web = new WebCarry({ allowPrivate: args.allowPrivate === true, origins: strings(args.origins), addresses: strings(args.addresses) });
+                return { serves: 'carry', schemes: ['https', 'http', 'wss', 'ws'], object: web, handler: web };
+              },
+            },
+            ...(connect === undefined
+              ? {}
+              : { socket: { up: ({ args }) => ({ serves: 'carry', schemes: ['tcp'], object: new SocketCarry({ connect, allowPrivate: args.allowPrivate === true }) }) } }),
+            bundle: {
+              up: () => ({
+                serves: 'classes',
+                house: ({ args }) => {
+                  const bundled = typeof args.at === 'string' && Object.hasOwn(code, args.at) ? code[args.at] : undefined;
+                  if (bundled === undefined) throw new Error(`the deploy bundles no code named ${String(args.at)}`);
+                  return new ClassList(bundled);
+                },
+              }),
             },
           },
         };
         const wait = env.NERVUR_WAIT === undefined ? WAIT : Number(env.NERVUR_WAIT);
         if (!(Number.isSafeInteger(wait) && wait > 0)) throw new TypeError('NERVUR_WAIT is whole milliseconds above zero');
+        const privately: Record<string, Json> = allowPrivate ? { allowPrivate } : {};
         const ground = await Ground.open({
-          unlock: new SecretUnlock(env.NERVUR_SECRET),
-          memory: new DurableMemory(storage, 'ground'),
-          carry,
-          registry: joinedRegistry(own, registry),
-          clock,
-          crypto: new NativeCrypto(),
+          registry: joinedRegistry(own, registry ?? {}),
+          primordial: { unlock: { make: 'secret-unlock' }, memory: { make: 'durable' }, crypto: { make: 'native' }, tools: { make: 'strict' } },
+          // A Worker learns no name it is reached by before a request, so it writes only the addresses it is given.
+          entries: {
+            clock: { make: 'durable-clock' },
+            bundle: { make: 'bundle' },
+            web: { make: 'web', args: { ...privately, addresses: listed(env.NERVUR_ADDRESSES), origins: listed(env.NERVUR_ORIGINS) } },
+            ...(connect === undefined ? {} : { tcp: { make: 'socket', args: privately } }),
+          },
           wait,
           lazy: true,
         });
-        return { ground, clock, handlers: [web, ground.handler] };
+        const clock = ticking.clock;
+        if (clock === undefined) throw new Error('the edge stands no clock');
+        return { ground, clock, handlers: [ground.handler] };
       }
 
       async fetch(request: Request): Promise<Response> {

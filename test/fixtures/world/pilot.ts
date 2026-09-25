@@ -5,7 +5,7 @@ import { Being, need, s, type Args } from 'nervur/being';
 // Her need names the bodies she hands, at their minimum; the ground's offer checks the args.
 export const Houses = need('houses', {
   add: {
-    args: s.object({ name: s.string(), memory: s.object({ body: s.string() }), classes: s.object({ body: s.string(), set: s.string() }) }),
+    args: s.object({ name: s.string(), memory: s.object({ faculty: s.string() }), classes: s.object({ faculty: s.string(), set: s.string() }) }),
     result: s.object({ ward: s.string() }),
     hints: { idempotent: true },
   },
@@ -21,7 +21,7 @@ export class Pilot extends Being.of({
   },
 }) {
   async open({ name, set }: Args<Pilot, 'open'>) {
-    const { ward } = await this.houses.add({ name, memory: { body: 'fake' }, classes: { body: 'list', set } });
+    const { ward } = await this.houses.add({ name, memory: { faculty: 'fake' }, classes: { faculty: 'list', set } });
     return ward;
   }
 
@@ -39,7 +39,7 @@ export class Stowaway extends Being.of({
   },
 }) {
   async open({ name, set }: Args<Stowaway, 'open'>) {
-    const { ward } = await this.houses.add({ name, memory: { body: 'fake' }, classes: { body: 'list', set } });
+    const { ward } = await this.houses.add({ name, memory: { faculty: 'fake' }, classes: { faculty: 'list', set } });
     return ward;
   }
 }

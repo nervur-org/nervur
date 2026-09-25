@@ -12,8 +12,10 @@ export const FrontBlueprint = need('front', {
   arm: { args: s.object({ signup: s.handle() }), hints: { idempotent: true } },
 });
 
+type Calls = Pick<FacultyContext, 'call' | 'describe'>;
+
 export class Front {
-  #context: FacultyContext | undefined;
+  #context: Calls | undefined;
   #signup: string | undefined;
   #calls = 0;
 
@@ -23,7 +25,12 @@ export class Front {
     return Promise.resolve({ result: null });
   }
 
-  #held(): FacultyContext {
+  /** Told the house opened: its doors' tokens answer before any being calls the face. */
+  opened(context: Calls): void {
+    this.#context = context;
+  }
+
+  #held(): Calls {
     if (this.#context === undefined) throw new Error('the face is not armed');
     return this.#context;
   }

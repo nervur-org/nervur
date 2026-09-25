@@ -2,15 +2,16 @@
 // The ground on Node, for a server, a container, a desktop or a Pi. Its
 // folder holds its code: a folder for each house, and each module or
 // program its entries name. Its state holds the key, the ground's ledger
-// and the hand's socket. It takes the lock, opens the ground on its key and
-// its ledger, listens on TCP and on HTTP, and serves the hand.
+// and the hand's socket. It takes the lock, raises its primordial bodies,
+// the key in a file or the keychain and the ledger, then stands its
+// carries, its clock and its folder from entries its environment gives,
+// the drawer's winning by name. It serves the hand.
 import { mkdir } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Json } from '../being/being.ts';
-import { JoinedCarry } from '../bodies/joined-carry.ts';
 import { WebCarry } from '../bodies/web-carry.ts';
-import { Ground, type Registry, type Unlock } from '../ground/ground.ts';
+import { Ground, type FacultyEntry, type Registry, type Unlock } from '../ground/ground.ts';
 import { bridge } from './bridge.ts';
 import { FolderClasses } from './folder-classes.ts';
 import { handAt, serveHand, type Hand } from './hand.ts';
@@ -26,13 +27,20 @@ export interface NodeGroundOptions {
   /** The folder of its state; `NERVUR_STATE`, or `<folder>/state`, where none is named. */
   readonly state?: string;
   /**
-   * Its settings: `NERVUR_STATE`, `NERVUR_TCP_PORT`, `NERVUR_HTTP_PORT`, `NERVUR_BIND`,
-   * `NERVUR_ADDRESSES`, `NERVUR_ORIGINS`, `NERVUR_ALLOW_PRIVATE`, `NERVUR_UNLOCK`,
-   * `NERVUR_HAND` and `NERVUR_WAIT`. The process's own where none are named.
+   * Its settings: `NERVUR_STATE`, `NERVUR_UNLOCK`, `NERVUR_HAND` and
+   * `NERVUR_WAIT`, and the default entries of its carries, `NERVUR_TCP_PORT`,
+   * `NERVUR_HTTP_PORT`, `NERVUR_BIND`, `NERVUR_ADDRESSES`, `NERVUR_ORIGINS`
+   * and `NERVUR_ALLOW_PRIVATE`. The process's own where none are named.
    */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Its unlock, where the host opens the ground from its own code; `NERVUR_UNLOCK`'s, or the key file in its state, where omitted. */
   readonly unlock?: Unlock;
+}
+
+/** The ground the web carry serves, and the port its listener holds. */
+interface Listener {
+  ground?: Ground;
+  port?: number | undefined;
 }
 
 const port = (value: string | undefined, fallback: number | undefined): number | undefined => {
@@ -57,51 +65,167 @@ const strings = (value: Json | undefined, what: string): string[] => {
   return value;
 };
 
-// The terrain's registry: a house's classes from a folder, a module as a registry, and a program over the bridge.
-const nodeRegistry = (folder: string): Registry => ({
-  classes: { folder: ({ args }) => FolderClasses.open(inside(folder, args.at, 'a folder of code')) },
+const text = (value: Json | undefined, what: string): string | undefined => {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') throw new TypeError(`${what} is text`);
+  return value;
+};
+
+const portOf = (value: Json | undefined, what: string): number | undefined => {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 65_535) throw new TypeError(`${what} is a port`);
+  return value as number;
+};
+
+/**
+ * The terrain's registry: the key in a file or the keychain, the ledger,
+ * each house's classes from a folder, a module as a registry, a program
+ * over the bridge, and the TCP and web carries. `listener` holds the
+ * ground, whose one handler the web carry serves once the ground stands,
+ * and the port it listens on.
+ */
+const nodeRegistry = (folder: string, listener: Listener, given: Unlock | undefined): Registry => ({
   faculties: {
-    module: async ({ args }) => {
-      const module = (await import(pathToFileURL(inside(folder, args.at, 'a module')).href)) as Registry;
-      return { registry: { ...(module.faculties === undefined ? {} : { faculties: module.faculties }), ...(module.memory === undefined ? {} : { memory: module.memory }), ...(module.classes === undefined ? {} : { classes: module.classes }) } };
+    'file-unlock': {
+      up: ({ args }) => {
+        const path = text(args.path, 'a key file’s path');
+        if (path === undefined) throw new TypeError('a key file names its path');
+        return { serves: 'unlock', object: new FileUnlock(path) };
+      },
     },
-    bridge: ({ args, secrets, memory }) => {
-      if (typeof args.command !== 'string') throw new TypeError('a bridge names its program in command');
-      const cwd = args.cwd === undefined ? folder : inside(folder, args.cwd, 'a program’s folder');
-      return bridge({ command: args.command, args: strings(args.args, 'a program’s args'), env: secrets, cwd, memory });
+    'keychain-unlock': { up: ({ args }) => ({ serves: 'unlock', object: new KeychainUnlock({ account: text(args.account, 'a keychain account') ?? '' }) }) },
+    ...(given === undefined ? {} : { 'given-unlock': { up: () => ({ serves: 'unlock', object: given }) } }),
+    ledger: {
+      up: ({ args }) => {
+        const path = text(args.path, 'a ledger’s path');
+        if (path === undefined) throw new TypeError('a ledger names its path');
+        const witness = text(args.witness, 'a ledger’s witness');
+        return { serves: 'memory', object: new LedgerMemory(path, witness === undefined ? {} : { witness }) };
+      },
+    },
+    folder: { up: () => ({ serves: 'classes', house: ({ args }) => FolderClasses.open(inside(folder, args.at, 'a folder of code')) }) },
+    module: {
+      up: async ({ args }) => {
+        const module = (await import(pathToFileURL(inside(folder, args.at, 'a module')).href)) as Registry;
+        return { registry: module.faculties === undefined ? {} : { faculties: module.faculties } };
+      },
+    },
+    bridge: {
+      up: ({ args, secrets, memory }) => {
+        if (typeof args.command !== 'string') throw new TypeError('a bridge names its program in command');
+        const cwd = args.cwd === undefined ? folder : inside(folder, args.cwd, 'a program’s folder');
+        return bridge({ command: args.command, args: strings(args.args, 'a program’s args'), env: secrets, cwd, memory });
+      },
+    },
+    tcp: {
+      up: ({ args }) => {
+        const addresses = strings(args.addresses, 'a carry’s addresses');
+        const carry = new TcpCarry({
+          port: portOf(args.port, 'the TCP port') ?? null,
+          host: text(args.bind, 'a bind address') ?? '0.0.0.0',
+          allowPrivate: args.allowPrivate === true,
+          ...(addresses.length === 0 ? {} : { addresses }),
+        });
+        return { serves: 'carry', schemes: ['tcp'], object: carry, down: () => carry.close() };
+      },
+    },
+    web: {
+      up: async ({ args }) => {
+        const bind = text(args.bind, 'a bind address') ?? '0.0.0.0';
+        const named = strings(args.addresses, 'a carry’s addresses');
+        const listens = portOf(args.port, 'the HTTP port');
+        let http: Served | undefined;
+        const carry = new WebCarry({
+          allowPrivate: args.allowPrivate === true,
+          origins: strings(args.origins, 'the origins'),
+          addresses: named.length > 0 ? named : () => (http === undefined ? [] : [`http://${bind === '0.0.0.0' ? '127.0.0.1' : bind}:${http.port}/quo`]),
+        });
+        // The ground's one listener, chaining this carry's handler and every face's, as the ground reads them.
+        if (listens !== undefined) {
+          http = await serveHttp({ port: listens, host: bind }, [
+            {
+              fetch: (request) => listener.ground?.handler.fetch(request) ?? Promise.resolve(null),
+              upgrade: (request) => listener.ground?.handler.upgrade?.(request) ?? null,
+            },
+          ]);
+        }
+        const served = http;
+        listener.port = served?.port;
+        return {
+          serves: 'carry',
+          schemes: ['https', 'http', 'wss', 'ws'],
+          object: carry,
+          handler: carry,
+          down: async () => {
+            if (listener.port === served?.port) listener.port = undefined;
+            await served?.close();
+          },
+        };
+      },
     },
   },
 });
 
-// The unlock `NERVUR_UNLOCK` names: `keychain:<account>` on macOS, or the key file in its state.
-const unlockOf = (named: string | undefined, state: string): Unlock => {
-  if (named === undefined || named === '') return new FileUnlock(join(state, 'key'));
+// The environment's default entries: the clock, the folder, and the two carries.
+const entriesOf = (env: Readonly<Record<string, string | undefined>>): Record<string, FacultyEntry> => {
+  const addresses = (env.NERVUR_ADDRESSES ?? '')
+    .split(',')
+    .map((address) => address.trim())
+    .filter((address) => address !== '');
+  const ofScheme = (...schemes: string[]) => addresses.filter((address) => schemes.some((scheme) => address.toLowerCase().startsWith(`${scheme}://`)));
+  const allowPrivate = env.NERVUR_ALLOW_PRIVATE === '1';
+  const bind = env.NERVUR_BIND ?? '0.0.0.0';
+  const tcpPort = port(env.NERVUR_TCP_PORT, 9110);
+  const httpPort = port(env.NERVUR_HTTP_PORT, undefined);
+  const origins = (env.NERVUR_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin !== '');
+  const common = { bind, ...(allowPrivate ? { allowPrivate } : {}) };
+  return {
+    clock: { make: 'clock' },
+    folder: { make: 'folder' },
+    tcp: { make: 'tcp', args: { ...common, ...(tcpPort === undefined ? {} : { port: tcpPort }), ...(ofScheme('tcp').length === 0 ? {} : { addresses: ofScheme('tcp') }) } },
+    web: {
+      make: 'web',
+      args: {
+        ...common,
+        ...(httpPort === undefined ? {} : { port: httpPort }),
+        ...(ofScheme('https', 'http', 'wss', 'ws').length === 0 ? {} : { addresses: ofScheme('https', 'http', 'wss', 'ws') }),
+        ...(origins.length === 0 ? {} : { origins }),
+      },
+    },
+  };
+};
+
+// The unlock's entry: the host's own, `keychain:<account>` on macOS, or the key file in its state.
+const unlockOf = (named: string | undefined, state: string, given: Unlock | undefined): FacultyEntry => {
+  if (given !== undefined) return { make: 'given-unlock' };
+  if (named === undefined || named === '') return { make: 'file-unlock', args: { path: join(state, 'key') } };
   const account = /^keychain:(.+)$/.exec(named)?.[1];
   if (account === undefined) throw new TypeError(`NERVUR_UNLOCK names keychain:<account>, not ${named}`);
-  return new KeychainUnlock({ account });
+  return { make: 'keychain-unlock', args: { account } };
 };
 
 export class NodeGround {
   readonly ground: Ground;
   /** The socket of the ground's hand. */
   readonly hand: string;
-  readonly #tcp: TcpCarry;
   readonly #lock: Lock;
   readonly #served: Hand;
-  readonly #http: Served | undefined;
+  readonly #listener: Listener;
 
-  private constructor(parts: { ground: Ground; hand: string; tcp: TcpCarry; lock: Lock; served: Hand; http: Served | undefined }) {
+  private constructor(parts: { ground: Ground; hand: string; lock: Lock; served: Hand; listener: Listener }) {
     this.ground = parts.ground;
     this.hand = parts.hand;
-    this.#tcp = parts.tcp;
     this.#lock = parts.lock;
     this.#served = parts.served;
-    this.#http = parts.http;
+    this.#listener = parts.listener;
   }
 
-  /** The port HTTP listens on, where it listens. */
+  /** The port HTTP listens on, where its web carry listens. */
   get httpPort(): number | undefined {
-    return this.#http?.port;
+    return this.#listener.port;
   }
 
   static async open({ folder: given, state: stateGiven, env = process.env, unlock }: NodeGroundOptions): Promise<NodeGround> {
@@ -112,60 +236,39 @@ export class NodeGround {
     // 1. Lock.
     const lock = await takeLock(state);
     try {
-      // The carry: TCP and the web, each writing the addresses of its schemes.
-      const addresses = (env.NERVUR_ADDRESSES ?? '')
-        .split(',')
-        .map((address) => address.trim())
-        .filter((address) => address !== '');
-      const ofScheme = (...schemes: string[]) => addresses.filter((address) => schemes.some((scheme) => address.toLowerCase().startsWith(`${scheme}://`)));
-      const allowPrivate = env.NERVUR_ALLOW_PRIVATE === '1';
-      const bind = env.NERVUR_BIND ?? '0.0.0.0';
-      const tcpNamed = ofScheme('tcp');
-      const tcp = new TcpCarry({ port: port(env.NERVUR_TCP_PORT, 9110), host: bind, allowPrivate, ...(tcpNamed.length === 0 ? {} : { addresses: tcpNamed }) });
-      const httpPort = port(env.NERVUR_HTTP_PORT, undefined);
-      let http: Served | undefined;
-      const webNamed = ofScheme('https', 'http', 'wss', 'ws');
-      // The pages of other origins it answers, by commas: a page of its own host needs none.
-      const origins = (env.NERVUR_ORIGINS ?? '')
-        .split(',')
-        .map((origin) => origin.trim())
-        .filter((origin) => origin !== '');
-      const web = new WebCarry({
-        allowPrivate,
-        origins,
-        addresses: webNamed.length > 0 ? webNamed : () => (http === undefined ? [] : [`http://${bind === '0.0.0.0' ? '127.0.0.1' : bind}:${http.port}/quo`]),
-      });
-      // The web carries the post and the held line alike, so it speaks all four of its schemes.
-      const carry = new JoinedCarry({ tcp, https: web, http: web, wss: web, ws: web });
-
       const wait = env.NERVUR_WAIT === undefined ? undefined : Number(env.NERVUR_WAIT);
       if (wait !== undefined && !(Number.isSafeInteger(wait) && wait > 0)) throw new TypeError('NERVUR_WAIT is whole milliseconds above zero');
-      // 2 to 5, which the Ground runs: the key, the drawer on the ledger, the ladder, then the drawer's houses.
+      const listener: Listener = {};
+      // 2 to 6, which the Ground runs: the primordial bodies, the drawer, the entries, the ladder, the houses.
       const ground = await Ground.open({
-        unlock: unlock ?? unlockOf(env.NERVUR_UNLOCK, state),
-        memory: new LedgerMemory(join(state, 'ground.ledger'), { witness: join(state, 'ground.witness') }),
-        carry,
-        registry: nodeRegistry(folder),
+        registry: nodeRegistry(folder, listener, unlock),
+        primordial: {
+          unlock: unlockOf(env.NERVUR_UNLOCK, state, unlock),
+          memory: { make: 'ledger', args: { path: join(state, 'ground.ledger'), witness: join(state, 'ground.witness') } },
+          crypto: { make: 'noble' },
+          tools: { make: 'strict' },
+        },
+        entries: entriesOf(env),
         ...(wait === undefined ? {} : { wait }),
       });
-
-      // 6. Hook: HTTP chains the web carry and every faculty's handler, and the hand takes its socket.
-      if (httpPort !== undefined) http = await serveHttp({ port: httpPort, host: bind }, [web, ground.handler]);
+      listener.ground = ground;
+      // 7. Ready: the hand takes its socket.
       const hand = env.NERVUR_HAND ?? handAt(state);
-      const served = await serveHand((request) => ground.hand(request), hand);
-      return new NodeGround({ ground, hand, tcp, lock, served, http });
+      const served = await serveHand((request) => ground.hand(request), hand).catch(async (error: unknown) => {
+        await ground.close();
+        throw error;
+      });
+      return new NodeGround({ ground, hand, lock, served, listener });
     } catch (error) {
       await lock.release();
       throw error;
     }
   }
 
-  /** A stop is the boot reversed: the listeners, the houses and faculties, the carry, the lock. */
+  /** A stop is the boot reversed: the hand, the houses and every body, then the lock. */
   async close(): Promise<void> {
-    await this.#http?.close();
     await this.#served.close();
     await this.ground.close();
-    await this.#tcp.close();
     await this.#lock.release();
   }
 }

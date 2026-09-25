@@ -31,6 +31,15 @@ export interface Offer {
   readonly kinds?: readonly string[];
   /** How long the faculty remembers a call id, in milliseconds. */
   readonly window?: number;
+  /** Told once the house opens, with the house's context, so its tokens answer before any being calls it. */
+  opened?(context: OpenedContext): void | Promise<void>;
+}
+
+/** What a faculty is handed when a house that offers it opens: the house's ward, and its tokens called as a method's context calls them. */
+export interface OpenedContext {
+  readonly ward: string;
+  readonly call: FacultyContext['call'];
+  readonly describe: FacultyContext['describe'];
 }
 
 /** What a faculty's method receives beside its args. */
@@ -176,6 +185,7 @@ const names = (value: readonly string[] | null) => value;
 export const openHouse = async (foundation: Foundation, offers: readonly Offer[], options: Options = {}): Promise<Opened> => {
   const house = new House(foundation, offers, options);
   await house.open();
+  await house.tellOpened();
   return {
     ward: house.ward,
     door: (box) => house.door(box),
@@ -1025,12 +1035,21 @@ class House {
     return errorOf('the far being answered no answer');
   }
 
-  async #faculty(offer: Offer & { bp: Blueprint }, method: string, args: Json, id: string, want: BlueprintMethod | undefined): Promise<Answer | null> {
-    const context: FacultyContext = {
-      id,
+  // What calls a faculty's tokens: the same for a method's context and for the one it is told the house opened with.
+  #calls(offer: Offer & { bp: Blueprint }): Pick<FacultyContext, 'call' | 'describe'> {
+    return {
       call: ({ token, method: asked, args: called, id: callId, after, home }) => this.#token(token, { method: asked, args: called ?? {}, id: callId, after, home }, offer),
       describe: ({ token }) => this.#tokenDescribe(token, offer),
     };
+  }
+
+  /** Each offer told the house opened, with the context that calls its tokens. */
+  async tellOpened(): Promise<void> {
+    for (const offer of this.#offers) await offer.opened?.({ ward: this.ward, ...this.#calls(offer) });
+  }
+
+  async #faculty(offer: Offer & { bp: Blueprint }, method: string, args: Json, id: string, want: BlueprintMethod | undefined): Promise<Answer | null> {
+    const context: FacultyContext = { id, ...this.#calls(offer) };
     // Her need let the args pass, and the offer may be narrower: covering is decided on names, and types on each call.
     const spec = offer.bp.methods[method];
     const refused = spec === undefined ? `the offer ${offer.bp.name} has no method ${method}` : this.#tools.check(spec.args, args);

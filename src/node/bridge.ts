@@ -28,7 +28,7 @@ import type { Json } from '../being/being.ts';
 import { need } from '../being/need.ts';
 import { StrictTools } from '../bodies/strict-tools.ts';
 import type { Memory } from '../foundation.ts';
-import type { Faculty } from '../ground/ground.ts';
+import type { Body } from '../ground/ground.ts';
 import type { Answer, FacultyContext } from '../house/house.ts';
 
 export interface BridgeOptions {
@@ -279,11 +279,11 @@ class Bridge {
 }
 
 /**
- * A program in any language, offered as a faculty: its blueprint and its
+ * A program in any language, raised as a body: its blueprint and its
  * window from its own `describe`, and an object whose every method is a
  * line to it. It answers once the program has described itself.
  */
-export const bridge = async (options: BridgeOptions): Promise<Faculty> => {
+export const bridge = async (options: BridgeOptions): Promise<Body> => {
   const held = new Bridge(options);
   // A program that never described itself is offered to no one, so nothing starts it again.
   const { blueprint, window } = await held.start().catch(async (error: unknown) => {
@@ -292,5 +292,5 @@ export const bridge = async (options: BridgeOptions): Promise<Faculty> => {
   });
   const { name, methods } = blueprint as { name: string; methods: Record<string, object> };
   const object = Object.fromEntries(Object.keys(methods).map((method) => [method, (args: Json, context: FacultyContext) => held.call(method, args, context)]));
-  return { blueprint: need(name, methods), object, ...(window === undefined ? {} : { window }), stop: () => held.stop() };
+  return { blueprint: need(name, methods), object, ...(window === undefined ? {} : { window }), down: () => held.stop() };
 };

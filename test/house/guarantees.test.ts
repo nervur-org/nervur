@@ -3,7 +3,7 @@
 // effect queued behind one that gives up.
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
-import type { Faculty } from 'nervur';
+import type { Body } from 'nervur';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
 import { Gauge, Latch, latch } from '../fixtures/world/gauge.ts';
 import { Post, Sender } from '../fixtures/world/sender.ts';
@@ -11,7 +11,7 @@ import { Steward } from '../fixtures/world/steward.ts';
 
 type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
 
-const open = async (t: TestContext, faculties: Record<string, Faculty>, beings: readonly string[]) => {
+const open = async (t: TestContext, faculties: Record<string, Body>, beings: readonly string[]) => {
   const network = new FakeNetwork();
   const ground = await BenchGround.open({ network, host: 'home', modules: { house: { steward: Steward, beings: [Gauge, Sender] } }, faculties });
   t.after(() => ground.down());

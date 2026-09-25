@@ -4,7 +4,7 @@
 // her steward would ask it.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Faculty } from 'nervur';
+import type { Body } from 'nervur';
 import { need, s } from 'nervur/being';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
 import { FakeFaculty } from '../fixtures/fake-faculty.ts';
@@ -14,7 +14,7 @@ import { Steward } from '../fixtures/world/steward.ts';
 type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
 
 // A house holding one looker, granted the probe the test hands.
-const open = async (t: { after(done: () => unknown): void }, probe: Faculty) => {
+const open = async (t: { after(done: () => unknown): void }, probe: Body) => {
   const network = new FakeNetwork();
   const ground = await BenchGround.open({ network, host: 'home', modules: { house: { steward: Steward, beings: [Looker] } }, faculties: { probe } });
   t.after(() => ground.down());

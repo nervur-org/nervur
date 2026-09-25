@@ -2,7 +2,7 @@
 // method answers what the test gives it; the next calls may throw, which is
 // a failure to answer and tried again, refuse with an error, which is
 // final, or never answer. Every call is kept, with its call id.
-import type { Faculty, FacultyContext } from 'nervur';
+import type { Body, FacultyContext } from 'nervur';
 import type { Json } from 'nervur/being';
 
 type Method = (args: Json) => Json | Promise<Json>;
@@ -44,8 +44,8 @@ export class FakeFaculty {
     this.#hang += count;
   }
 
-  /** The offer a ground hands: the blueprint, and an object whose methods take args and a context. */
-  get offer(): Faculty {
+  /** The body a ground raises: the blueprint, and an object whose methods take args and a context. */
+  get offer(): Body {
     const object = Object.fromEntries(
       Object.entries(this.#methods).map(([method, answer]) => [
         method,

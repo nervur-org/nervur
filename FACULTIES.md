@@ -15,11 +15,13 @@ the package's own tests run.
 ## What a faculty owes
 
 A faculty answers a blueprint: a name, and methods with their schemas.
-A maker in a registry makes it, and the ground hands it to its houses as
-an offer, with the kinds its entry grants.
+A registry holds it by name as `{ up, install? }`. The ground raises it
+by its `up` into a body, and hands the body to its houses as an offer,
+with the kinds its entry grants.
 
 ```text
-faculty = { blueprint?, object?, window?, handler?, stop?, registry? }
+faculty = { install?, up }
+body    = { blueprint?, object?, window?, handler?, registry?, down? }
 offer   = { blueprint, object, kinds?, window? }
 ```
 
@@ -45,7 +47,7 @@ answered, with the same call id every time.
 So one call arrives more than once. A reply lost on its way back brings
 it again, and so does a program that died before it answered. A faculty
 that changes the world keeps each call id with the answer it gave, in
-the memory its maker receives, where a restart and a move keep it. It
+the memory its `up` receives, where a restart and a move keep it. It
 answers a call id it has seen with that answer, and acts once.
 
 It keeps them for its `window`, seven days where the offer names none.
@@ -84,10 +86,10 @@ reaches her through a standing, so policy is written as a being.
 
 ### It lives in the ground
 
-The object arrives living. The ground stands each faculty its entries
-name, awaiting its maker, and the house never starts, stops or restarts
-it. Every being whose need it covers holds the same object. A maker
-receives three things beside the faculty's name.
+The object arrives living. The ground raises each faculty its entries
+name, awaiting its `up`, and the house never starts, stops or restarts
+it. Every being whose need it covers holds the same object. Its `up`
+receives four things beside the faculty's name.
 
 - **`args`** are its entry's, as the owner wrote them.
 - **`secrets`** are the secrets its entry names, set through the hand
@@ -95,19 +97,30 @@ receives three things beside the faculty's name.
 - **`memory`** is the faculty's own, a view of the ground's memory
   sealed under a key the ground derives for it. Its call ids live there,
   so they move with the ground.
+- **`faculties`** holds the object of each body its entry names in
+  `faculties`, so one body calls another directly. It goes up after
+  each of them.
 
-A faculty answers four things beside its methods, each where it has
-one.
+`install` receives the same, and does the slow work once for each entry.
+A program's packages and a repository's checkout are installed there, so
+going up again installs nothing.
+
+A body answers four things beside its methods, each where it has one.
 
 - **`handler`** answers HTTP on the ground's one listener. It takes a
   `Request` and answers a `Response`, or `null` where the request is not
-  its own. A site, an API or an MCP server is a faculty with a handler.
-- **`stop`** is called when the ground stops, faculties in the reverse
-  of the order they stood.
-- **`registry`** makes more faculties and bodies, for every entry that
-  names this faculty in `from`. A module of code, a git repository and a
-  program's catalogue are each a registry.
+  its own. A site, an API or an MCP server is a body with a handler.
+- **`down`** lets go of what its `up` opened. The ground calls it when
+  the body is updated, restarted or removed, and when the ground stops,
+  bodies in the reverse of the order they stood.
+- **`registry`** holds more faculties, for every entry that names this
+  body in `from`. A module of code, a git repository and a program's
+  catalogue are each a registry.
 - **`window`** is how long it remembers a call id.
+
+The hand changes a body. `faculties update` lands a new entry, and the
+body goes down and up on it. `faculties restart` takes it down and up on
+the same entry. Each house that names it opens again.
 
 ## Three ways to wrap a program
 
@@ -120,7 +133,7 @@ one.
 ## The bridge
 
 `bridge({ command, args, env, cwd, memory })` from `nervur/node` starts
-a program and answers a faculty. A NodeGround makes one by the maker
+a program and answers a body. A NodeGround raises one by its faculty
 `bridge`, from its entry alone. The program may be written in any
 language. It speaks one JSON value a line on its standard streams.
 
@@ -143,7 +156,7 @@ in   { id, result } | { id, error }      the ground's answer to that
   the same every time that call is sent, in every life of the program.
   A handle called with no `call` is refused.
 - **It starts with an empty environment.** It holds only what `env`
-  names, so it never reads the ground's key. The maker `bridge` names
+  names, so it never reads the ground's key. The faculty `bridge` names
   there the secrets of its entry, each under its name.
 - **It keeps its state in the faculty's memory.** A memory line names
   `read`, `list` or `write` and the memory's args, every entry's bytes
@@ -365,8 +378,8 @@ it later, once.
 
 The Pi's folder holds the program and a folder of classes for its
 house, and no code of the ground's. The relay stands from its entry,
-made by the NodeGround's own maker `bridge`, and granted to the twin's
-class alone.
+raised by the NodeGround's own faculty `bridge`, and granted to the
+twin's class alone.
 
 ```bash
 npx nervur faculties add name=relay make=bridge args='{"command":"python3","args":["relay.py"]}' kinds='["org.example.garage"]'
@@ -376,7 +389,7 @@ The house is added once, and names the relay among the faculties it
 receives.
 
 ```bash
-npx nervur houses add name=garage classes='{"body":"folder","at":"classes"}' faculties='["relay"]'
+npx nervur houses add name=garage classes='{"faculty":"folder","at":"classes"}' faculties='["relay"]'
 ```
 
 Both entries rest sealed in the ground's drawer, so the ground stands
@@ -423,16 +436,16 @@ serve(Doorbell, {
 });
 ```
 
-Its entry makes it with the maker `bridge`, its command `node` and its
-args `["doorbell.js"]`. A faculty that needs no process of its own is a
-plain object a registry's maker answers instead, as the shop's payments
+Its entry raises it with the faculty `bridge`, its command `node` and
+its args `["doorbell.js"]`. A faculty that needs no process of its own
+is a plain object its `up` answers instead, as the shop's payments
 are in [Writing for nervur](AUTHORING.md).
 
 ## Testing a faculty
 
 A faculty is tested on BenchGround, the ground in memory from
 `nervur/bench`, with the program itself behind the bridge. The test
-hands the bench a registry whose maker bridges the program, as a
+hands the bench a registry whose `bridge` faculty bridges the program, as a
 NodeGround's own does, and stands the relay through the ground's hand,
 as an owner does. A `FakeNetwork` joins
 grounds and loses what the test tells it to lose, and its one clock
@@ -476,7 +489,7 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
     host: 'pi',
     names: ['garage.local'],
     modules: { pi },
-    registry: { faculties: { bridge: ({ memory }) => bridge({ command: 'python3', args: [relay], cwd: pin, memory }) } },
+    registry: { faculties: { bridge: { up: ({ memory }) => bridge({ command: 'python3', args: [relay], cwd: pin, memory }) } } },
   });
   t.after(() => garage.down());
   // The relay, granted to the twin's class alone.

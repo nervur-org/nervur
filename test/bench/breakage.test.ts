@@ -13,7 +13,7 @@ const world = async () => {
   const mail = new FakeFaculty(Mail, { send: (args) => `sent to ${(args as { to: string }).to}` });
   const ground = await BenchGround.open({ network, host: 'office', names: ['office.example'], modules: { office }, faculties: { mail: mail.offer } });
   // Its memory apart, so a test has it refuse a write.
-  await ground.add('office', 'office', { memory: { body: 'fake' }, faculties: ['mail'] });
+  await ground.add('office', 'office', { memory: { faculty: 'fake' }, faculties: ['mail'] });
   await ground.ask({ house: 'office', method: 'bear', args: { kind: 'org.example.mailer', id: 'mailer' } });
   const log = async () => ((await ground.ask({ house: 'office', id: 'mailer', method: 'log' })) as { result: { sent: string[]; failed: string[]; count: number } }).result;
   return { network, mail, ground, log };

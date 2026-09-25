@@ -100,7 +100,7 @@ In a second shell, add the house once. The ground keeps its entry in its
 sealed drawer, and opens it again at every start.
 
 ```bash
-npx nervur houses add name=main classes='{"body":"folder","at":"house"}'
+npx nervur houses add name=main classes='{"faculty":"folder","at":"house"}'
 ```
 
 Then ask the steward through the ground's hand.
@@ -132,7 +132,7 @@ const ground = await BrowserGround.open();
 await ground.hand({
   faculty: 'houses',
   method: 'add',
-  args: { name: 'main', classes: { body: 'origin', at: '/house/index.js' } },
+  args: { name: 'main', classes: { faculty: 'origin', at: '/house/index.js' } },
 });
 
 console.log(await ground.hand({ house: 'main', method: 'hello', args: { name: 'Ada' } }));

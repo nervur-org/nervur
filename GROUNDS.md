@@ -26,35 +26,52 @@ house seals its own rows, and the ground seals each faculty's. So what
 rests on the disk is ciphertext, and copying the key, the memory and the
 code moves the whole ground.
 
-**It stands its faculties on a ladder.** A registry is code that makes
-faculties and bodies by name. The ground's own registry is its
-terrain's. A faculty may carry a registry of its own, and the faculties
-an entry makes `from` it stand after it. A faculty that fails to stand
-stays down and says why, and the ground boots beside it.
+**Every faculty has one lifecycle.** A registry holds faculties by name,
+each an object `{ up, install? }`. Standing a faculty raises it by its
+`up` into a body, the living instance houses and other bodies use.
+`install` does the slow work once for each entry. A body's `down` lets
+go of what its `up` opened. A foundation body says what it `serves`: a
+carry, the clock, or each house's memory or code.
+
+**It stands its bodies on a ladder.** The ground's own registry is its
+terrain's. A body may carry a registry of its own, and the faculties an
+entry raises `from` it stand after it. A body stands after each body its
+entry names in `faculties`, whose objects its `up` receives. A body that
+fails to stand stays down and says why, and the ground boots beside it.
+
+**Its terrain names default entries, and the drawer's win.** Each ground
+stands its clock, its carries and its bodies of code from entries of its
+own. An entry of the same name in the drawer stands in its place.
 
 ```text
 recipe    { make: 'module', args: { at: 'recipe.ts' } }
 payments  { from: 'recipe', make: 'payments', secrets: ['stripe-key'], kinds: ['com.acme.order'] }
 ```
 
-**It opens each house on its entry.** An entry names the body of the
-house's code, the custom faculties it may use, and the longest any of
-its asks may run. It names a body of memory only where the house keeps
-its places apart from the ground's memory.
+**It opens each house on its entry.** An entry names the body that
+serves the house's code, the custom faculties it may use, and the
+longest any of its asks may run. It names a body serving memory only
+where the house keeps its places apart from the ground's memory. Beside
+each body's name, it holds the args that body hands this house.
 
 ```text
-shop  { classes: { body: 'folder', at: 'shop' }, faculties: ['payments'], wait: 60000 }
+shop  { classes: { faculty: 'folder', at: 'shop' }, faculties: ['payments'], wait: 60000 }
 ```
+
+**It updates an entry in one write.** `update` lands the new entry over
+the old. A house closes and opens again on it, as the same ward. A body
+goes down, installs where its entry moved, and goes up, and each house
+naming it opens again. `restart` takes a body down and up on its entry.
 
 **It grants a faculty in two steps.** A house uses only the faculties its
 entry names. Inside it, a being holds one only where the faculty's entry
 names her class in `kinds`, or where it names none. So a raw shell
 reaches one house and one class inside it.
 
-**It hands each maker its secrets.** A secret is set through the hand
-and kept in the drawer. A faculty's entry names the secrets its maker
+**It hands each faculty its secrets.** A secret is set through the hand
+and kept in the drawer. A faculty's entry names the secrets its `up`
 receives, and no other code reads one. The hand lists their names, and
-never a value.
+never a value. A changed secret reaches a body when it goes up again.
 
 **It hooks every door and runs one listener.** Each house's door goes to
 the ground's carry, which also delivers between the ground's own houses
@@ -68,8 +85,8 @@ as the house's owner. Four faculties are the ground's own.
 
 | Faculty | Its methods | Who reaches it |
 | --- | --- | --- |
-| `houses` | `add`, `remove`, `list` | the hand, and the kinds its entry grants |
-| `faculties` | `add`, `remove`, `list` | the hand, and the kinds its entry grants |
+| `houses` | `add`, `update`, `remove`, `list` | the hand, and the kinds its entry grants |
+| `faculties` | `add`, `update`, `restart`, `remove`, `list` | the hand, and the kinds its entry grants |
 | `secrets` | `set`, `remove`, `list` | the hand alone |
 | `moves` | `out`, `in` | the hand alone |
 
@@ -108,11 +125,18 @@ shows. The ground's folder is an ES module package, so its
 port is set, on the web. [The command](COMMAND.md) lists its settings
 and runs its hand.
 
-**Its registry makes three things.** The body `folder` loads a house's
-classes from a folder inside it. The maker `module` imports a module
-inside it as a registry, whose `faculties`, `memory` and `classes` are
-maps of makers. The maker `bridge` starts a program, in any language,
-and hands it the secrets its entry names as its environment.
+**Its registry holds its terrain's faculties.** `folder` serves each
+house its classes from a folder inside it. `module` imports a module
+inside it as a registry, whose `faculties` export holds `{ up, install? }`
+by name. `bridge` starts a program, in any language, and hands it the
+secrets its entry names as its environment. `tcp` and `web` are its
+carries, and `clock` its clock.
+
+**Its environment gives the default entries.** `clock`, `folder`, `tcp`
+and `web` stand from entries its settings write. An entry of the same
+name in the drawer stands in their place, so a port changes through the
+hand. A `tcp` entry whose args name no port only dials, and its
+invitations name no TCP address.
 
 **Its key rests in `state/key`, its owner's alone.** A key file others
 may read is refused, as ssh refuses a key. On macOS,
@@ -151,9 +175,9 @@ export default EdgeGround.worker();
 ```
 
 The Worker binds the object's class as `GROUND`, with SQLite storage.
-`registry` joins the terrain's own, so an entry makes `payments` with no
-`from`. A house's entry names its code with `classes: { body: 'bundle',
-at: 'shop' }`.
+`registry` joins the terrain's own, so an entry raises `payments` with
+no `from`. A house's entry names its code with `classes: { faculty:
+'bundle', at: 'shop' }`.
 
 **Its settings are the Worker's.**
 
@@ -167,8 +191,9 @@ at: 'shop' }`.
 | `NERVUR_WAIT` | the longest any ask may run, a minute where unset |
 
 A Worker learns no name it is reached by, so it writes only the
-addresses `NERVUR_ADDRESSES` names. Its faculties take their secrets
-from its drawer, as on every ground.
+addresses `NERVUR_ADDRESSES` names. These settings give the default
+entry of its web carry, and an entry in the drawer stands in its place.
+Its faculties take their secrets from its drawer, as on every ground.
 
 **Its hand answers its key alone.** The hand is `POST /nervur/hand`, with
 the key as a bearer token and one request as the body. Every other
@@ -196,8 +221,8 @@ ground, so its origin serves nothing else.
 [The package's start](README.md) opens one in a page.
 
 **Its registry is the one the page hands.** `BrowserGround.open({
-registry })` joins it to the terrain's own, whose body `origin` loads a
-house's classes from the origin.
+registry })` joins it to the terrain's own, whose faculty `origin`
+serves each house its classes from the origin.
 
 **An AppGround is a BrowserGround with the shell's bodies.** The shell
 hands in two small interfaces, one for secrets and one for a store, and

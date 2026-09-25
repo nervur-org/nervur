@@ -94,11 +94,12 @@ test('It refuses a foundation reference handed to a being, or offered as a custo
     network,
     host: 'home',
     modules: { house: { steward: Steward, beings: [Prober] } },
-    registry: { memory: { leaked: () => leaked } },
+    registry: { faculties: { leaked: { up: () => ({ serves: 'memory', house: () => leaked }) } } },
     faculties: { leak: { blueprint: need('leak', { read: { args: s.object({ place: s.string() }) } }), object: leaked } },
   });
   t.after(() => ground.down());
-  const standing = await ground.add('house', { memory: { body: 'leaked' }, classes: { body: 'module', name: 'house' }, faculties: ['leak'] });
+  await ground.hand({ faculty: 'faculties', method: 'add', args: { name: 'leaked', make: 'leaked' } });
+  const standing = await ground.add('house', { memory: { faculty: 'leaked' }, classes: { faculty: 'module', name: 'house' }, faculties: ['leak'] });
   assert.match(standing.why ?? '', /the offer leak is a reference of the house's foundation/);
 });
 

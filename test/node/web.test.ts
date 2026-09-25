@@ -16,21 +16,24 @@ test('A holder that dials only the web reaches a NodeGround whose invitation nam
   t.after(() => rm(state, { recursive: true, force: true }));
   const far = await NodeGround.open({ folder, state, env: { NERVUR_TCP_PORT: '0', NERVUR_HTTP_PORT: '0', NERVUR_BIND: '127.0.0.1', NERVUR_ALLOW_PRIVATE: '1' } });
   t.after(() => far.close());
-  assert.ok((await far.ground.add('main', { classes: { body: 'folder', at: 'two' } })).ward !== undefined);
+  assert.ok((await far.ground.add('main', { classes: { faculty: 'folder', at: 'two' } })).ward !== undefined);
 
   // A ground whose one carry is the web, as a page or a service worker has.
   const web = new WebCarry({ allowPrivate: true });
   const near = await Ground.open({
-    unlock: new FileUnlock(join(state, 'near', 'key')),
-    memory: new FileMemory(join(state, 'near', 'drawer')),
-    carry: web,
-    registry: { classes: { steward: () => new ClassList({ steward: Steward }) } },
+    registry: {
+      faculties: {
+        'file-unlock': { up: () => ({ serves: 'unlock', object: new FileUnlock(join(state, 'near', 'key')) }) },
+        drawer: { up: () => ({ serves: 'memory', object: new FileMemory(join(state, 'near', 'drawer')) }) },
+        web: { up: () => ({ serves: 'carry', schemes: ['https', 'http', 'wss', 'ws'], object: web, down: () => web.close() }) },
+        steward: { up: () => ({ serves: 'classes', house: () => new ClassList({ steward: Steward }) }) },
+      },
+    },
+    primordial: { unlock: { make: 'file-unlock' }, memory: { make: 'drawer' }, crypto: { make: 'noble' }, tools: { make: 'strict' } },
+    entries: { clock: { make: 'clock' }, web: { make: 'web' }, steward: { make: 'steward' } },
   });
-  t.after(async () => {
-    await near.close();
-    await web.close();
-  });
-  await near.add('near', { classes: { body: 'steward' } });
+  t.after(() => near.close());
+  await near.add('near', { classes: { faculty: 'steward' } });
 
   const offered = await far.ground.ask({ house: 'main', method: 'offer' });
   assert.ok('result' in offered);

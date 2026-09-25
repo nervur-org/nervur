@@ -1,9 +1,10 @@
 // api.ts
-import type { Faculty, FacultyContext, Handler } from 'nervur';
+import type { Body, FacultyContext, Handler } from 'nervur';
 import { need, s, type Json } from 'nervur/being';
 
 type Answer = Awaited<ReturnType<FacultyContext['call']>>;
 type Entry = { method: string; description?: string; args?: Json; hints?: Json };
+type Calls = Pick<FacultyContext, 'call' | 'describe'>;
 
 /** What the steward arms the face with. */
 export const FaceBlueprint = need('face', {
@@ -17,7 +18,7 @@ export const FaceBlueprint = need('face', {
  * asks to an agent as tools.
  */
 export class Api {
-  #context: FacultyContext | undefined;
+  #context: Calls | undefined;
   #signup = '';
   #calls = 0;
 
@@ -27,7 +28,12 @@ export class Api {
     return Promise.resolve({ result: null });
   }
 
-  #held(): FacultyContext {
+  // Told its house opened: every door's token answers from the first request, after any restart.
+  opened(context: Calls): void {
+    this.#context = context;
+  }
+
+  #held(): Calls {
     if (this.#context === undefined) throw new Error('the face is not armed');
     return this.#context;
   }
@@ -72,5 +78,5 @@ export class Api {
   };
 }
 
-/** The offer a ground hands: the blueprint, the object, and its handler on the ground's listener. */
-export const apiOffer = (api: Api): Faculty => ({ blueprint: FaceBlueprint, object: api, handler: api.handler });
+/** The face as a body. */
+export const apiOffer = (api: Api): Body => ({ blueprint: FaceBlueprint, object: api, handler: api.handler, opened: (context) => api.opened(context) });

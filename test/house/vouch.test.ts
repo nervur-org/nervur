@@ -9,7 +9,7 @@ import { BenchGround, FakeNetwork } from 'nervur/bench';
 import { shop } from '../fixtures/world/booker.ts';
 import { home, Site, SiteBlueprint } from '../fixtures/world/vouched.ts';
 
-const entry = { memory: { body: 'fake' }, classes: { body: 'module', name: 'shop' } };
+const entry = { memory: { faculty: 'fake' }, classes: { faculty: 'module', name: 'shop' } };
 
 const open = async (t: { after(done: () => unknown): void }) => {
   const network = new FakeNetwork();

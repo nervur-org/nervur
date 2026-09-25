@@ -6,7 +6,6 @@
 // closes, the lock passes, and the next opens the ground from the same
 // storage. It only dials: it listens for nothing and serves no face.
 import type { Json } from '../being/being.ts';
-import { JoinedCarry } from '../bodies/joined-carry.ts';
 import { WebCarry } from '../bodies/web-carry.ts';
 import type { Memory } from '../foundation.ts';
 import { Ground, joinedRegistry, type Registry, type Unlock } from '../ground/ground.ts';
@@ -100,8 +99,6 @@ export class BrowserGround {
   // Asks sent to another page's ground, by id, with the page they went to.
   readonly #pending = new Map<string, { readonly to: string; readonly settle: (answer: Answer | { readonly describe: Json }) => void }>();
   #ground: Ground | undefined;
-  // The unlock and the memory its boot opened, each closed when it closes.
-  readonly #opened: unknown[] = [];
   #persisted = false;
   #leader: string | undefined;
   #waiting: (() => void)[] = [];
@@ -249,27 +246,53 @@ export class BrowserGround {
   async #boot(): Promise<Ground> {
     const name = this.#name;
     const platform = this.#platform;
-    // Every store it opens is kept, so its close lets each go before the lock passes.
-    const kept = <T>(opened: T): T => {
-      this.#opened.push(opened);
-      return opened;
-    };
-    const unlock = kept(await this.#stores.unlock(`${name}-unlock`));
-    const memory = kept(await this.#stores.memory(`${name}-ground`));
+    const stores = this.#stores;
     this.#persisted = await platform.persist().catch(() => false);
-    // It only dials, so it writes no address into an invitation.
-    const web = new WebCarry({ allowPrivate: this.#options.allowPrivate === true });
-    const carry = new JoinedCarry({ https: web, http: web, wss: web, ws: web });
+    // Each store it opens is let go when its body goes down, so the next ground in this page opens on none of its.
+    const closing = (opened: unknown) => () => (opened as { close?: () => void }).close?.();
     const own: Registry = {
-      classes: {
-        origin: ({ args }) => {
-          if (typeof args.at !== 'string') throw new Error('the origin body names its module in at');
-          return OriginClasses.open(args.at, platform.origin, platform.load);
+      faculties: {
+        'store-unlock': {
+          up: async () => {
+            const unlock = await stores.unlock(`${name}-unlock`);
+            return { serves: 'unlock', object: unlock, down: closing(unlock) };
+          },
+        },
+        'store-memory': {
+          up: async () => {
+            const memory = await stores.memory(`${name}-ground`);
+            return { serves: 'memory', object: memory, down: closing(memory) };
+          },
+        },
+        // It only dials, so it writes no address into an invitation.
+        web: {
+          up: ({ args }) => {
+            const web = new WebCarry({ allowPrivate: args.allowPrivate === true });
+            return { serves: 'carry', schemes: ['https', 'http', 'wss', 'ws'], object: web };
+          },
+        },
+        origin: {
+          up: () => ({
+            serves: 'classes',
+            house: ({ args }) => {
+              if (typeof args.at !== 'string') throw new Error('the origin faculty names a house’s module in at');
+              return OriginClasses.open(args.at, platform.origin, platform.load);
+            },
+          }),
         },
       },
     };
     const wait = this.#options.wait;
-    return Ground.open({ unlock, memory, carry, registry: joinedRegistry(own, this.#options.registry), ...(wait === undefined ? {} : { wait }) });
+    return Ground.open({
+      registry: joinedRegistry(own, this.#options.registry ?? {}),
+      primordial: { unlock: { make: 'store-unlock' }, memory: { make: 'store-memory' }, crypto: { make: 'noble' }, tools: { make: 'strict' } },
+      entries: {
+        clock: { make: 'clock' },
+        origin: { make: 'origin' },
+        web: { make: 'web', args: this.#options.allowPrivate === true ? { allowPrivate: true } : {} },
+      },
+      ...(wait === undefined ? {} : { wait }),
+    });
   }
 
   /** This page leaves: its ground closes where it ran one, and the lock passes to the next page. */
@@ -280,8 +303,6 @@ export class BrowserGround {
     const ground = this.#ground;
     this.#ground = undefined;
     await ground?.close();
-    // Its IndexedDB connections go with it, so the next ground in this page opens on none of its.
-    for (const opened of this.#opened.splice(0)) (opened as { close?: () => void }).close?.();
     this.#release?.();
     this.#orphan(() => true);
     for (const resolve of this.#waiting) resolve();

@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
-// The ground: the process houses run in, on any engine. It holds one key
-// outside itself, which its unlock answers, and seals everything else in
-// its drawer, its own places in its one memory. The drawer holds every
-// entry, each house's seed, every secret and each house's ward. Faculties
-// stand on a ladder of registries, the terrain's own first, then any a
-// faculty carries. Houses open on the bodies their entries name, each
-// keeping its places in its view of the ground's memory where it names
-// none. The ground holds every door, every hand and every faculty, and
-// closes a house through the bodies it handed it, never asking it.
+// The ground: the process houses run in, on any engine. Every faculty has
+// one lifecycle, foundation and custom alike: a registry holds it by name,
+// and its `up` raises it into a body. Four are primordial, the unlock, the
+// memory, crypto and tools, raised on the host's entries before the drawer
+// opens. Every other body stands on the ladder from the terrain's default
+// entries and the drawer's, the drawer's winning by name. The drawer holds
+// every entry, each house's seed, every secret and each house's ward.
+// Houses open on the bodies their entries name, each receiving what a body
+// serves it. The ground closes a house through the views it handed it,
+// never asking it.
 import type { Json } from '../being/being.ts';
 import { need, s } from '../being/index.ts';
 import { blueprintOf, type Blueprint } from '../being/need.ts';
 import { offered } from '../being/table.ts';
+import { JoinedCarry } from '../bodies/joined-carry.ts';
 import { NobleCrypto } from '../bodies/noble-crypto.ts';
 import { SeedKeys } from '../bodies/seed-keys.ts';
 import { StrictTools } from '../bodies/strict-tools.ts';
 import { WebClock } from '../bodies/web-clock.ts';
 import type { Handler } from '../bodies/web-carry.ts';
 import type { Carry, Classes, Clock, Crypto, Memory, Tools } from '../foundation.ts';
-import { openHouse, type Answer, type FacultyContext, type Offer, type Opened } from '../house/house.ts';
+import { openHouse, type Answer, type FacultyContext, type Offer, type Opened, type OpenedContext } from '../house/house.ts';
 import { Rows } from '../house/rows.ts';
 import { HouseCarry, HouseClock, SealedMemory, ViewMemory } from './views.ts';
 
@@ -37,58 +39,92 @@ export interface Hooked extends Carry {
   unlisten(options: { ward: string }): void;
 }
 
-/**
- * What a maker answers: an offer for beings, a handler for the listener, a
- * stop, and a registry for the rungs above it, each where it has one.
- */
-export interface Faculty {
-  readonly blueprint?: unknown;
-  readonly object?: object;
-  /** How long the faculty remembers a call id, in milliseconds. */
-  readonly window?: number;
-  readonly handler?: Handler;
-  stop?(): void | Promise<void>;
-  readonly registry?: Registry;
-}
+/** The foundation contract a body fills: the four primordial, then what every house receives. */
+export type Serves = 'unlock' | 'memory' | 'crypto' | 'tools' | 'carry' | 'clock' | 'classes';
 
-/** What a faculty's maker receives: its name, its args, the secrets its entry names, and its own sealed memory. */
-export interface Made {
+/** What a faculty's `up` and `install` receive: its name, its args, its secrets, its sealed memory, and the bodies it calls. */
+export interface Up {
   readonly name: string;
   readonly args: Readonly<Record<string, Json>>;
   readonly secrets: Readonly<Record<string, string>>;
   readonly memory: Memory;
+  /** The object of each body its entry names in `faculties`. */
+  readonly faculties: Readonly<Record<string, object>>;
 }
 
-/** What a body's maker receives: the house's name and the body's args. */
-export interface BodyMade {
+/** What one house receives of a foundation body: the house's name, and the args its entry holds. */
+export interface ForHouse {
   readonly house: string;
   readonly args: Readonly<Record<string, Json>>;
 }
 
-/** Code that makes faculties and bodies by name. */
-export interface Registry {
-  readonly faculties?: Readonly<Record<string, (made: Made) => Faculty | Promise<Faculty>>>;
-  readonly memory?: Readonly<Record<string, (made: BodyMade) => Memory | Promise<Memory>>>;
-  readonly classes?: Readonly<Record<string, (made: BodyMade) => Classes | Promise<Classes>>>;
+/**
+ * A faculty stood: the living instance houses and bodies use. Each part
+ * where it has one: an offer to beings, a handler for the listener, a
+ * registry for the rungs above it, the foundation contract it serves, and
+ * what it lets go of when it goes down.
+ */
+export interface Body {
+  readonly blueprint?: unknown;
+  readonly object?: object;
+  /** How long the body remembers a call id, in milliseconds. */
+  readonly window?: number;
+  readonly handler?: Handler;
+  readonly registry?: Registry;
+  readonly serves?: Serves;
+  /** The schemes of the addresses a carry body speaks. */
+  readonly schemes?: readonly string[];
+  /** What one house receives of a body serving `memory` or `classes`. */
+  house?(options: ForHouse): unknown;
+  /** Told when a house it is offered to opens, with the context that calls its tokens there. */
+  opened?(context: OpenedContext): void | Promise<void>;
+  down?(): void | Promise<void>;
 }
 
-/**
- * A terrain's registry and the one its host installs beside it, as one
- * rung. A name the terrain holds is refused to the host, never replaced.
- * No entry exports it; every shipped ground joins its first rung with it.
- */
-export const joinedRegistry = (own: Registry, added: Registry = {}): Registry => {
-  const join = <T>(kind: string, mine: Readonly<Record<string, T>> = {}, theirs: Readonly<Record<string, T>> = {}): Readonly<Record<string, T>> => {
-    for (const name of Object.keys(theirs)) if (Object.hasOwn(mine, name)) throw new TypeError(`the registry names a ${kind} ${name}, which is the ground's own`);
-    return { ...mine, ...theirs };
-  };
-  return { faculties: join('maker', own.faculties, added.faculties), memory: join('memory body', own.memory, added.memory), classes: join('classes body', own.classes, added.classes) };
+/** Code a registry holds by name: `up` raises it into a body, and `install` does the slow work once for each entry. */
+export interface Faculty {
+  install?(made: Up): void | Promise<void>;
+  up(made: Up): Body | Promise<Body>;
+}
+
+/** Code that holds faculties by name. */
+export interface Registry {
+  readonly faculties?: Readonly<Record<string, Faculty>>;
+}
+
+/** The faculties every terrain holds: the library's crypto, tools and clock. */
+export const libraryRegistry: Registry = {
+  faculties: {
+    noble: { up: () => ({ serves: 'crypto', object: new NobleCrypto() }) },
+    strict: { up: () => ({ serves: 'tools', object: new StrictTools() }) },
+    clock: {
+      up: () => {
+        const clock = new WebClock();
+        return { serves: 'clock', object: clock };
+      },
+    },
+  },
 };
 
-/** One body in an entry: its maker, the faculty whose registry holds it, and its args. */
+/**
+ * Registries joined as one rung, the first first. A name one holds is
+ * refused to the next, never replaced. No entry exports it; every shipped
+ * ground joins its first rung with it.
+ */
+export const joinedRegistry = (...registries: readonly Registry[]): Registry => {
+  const faculties: Record<string, Faculty> = {};
+  for (const registry of registries) {
+    for (const [name, faculty] of Object.entries(registry.faculties ?? {})) {
+      if (Object.hasOwn(faculties, name)) throw new TypeError(`the registry names a faculty ${name}, which the ground holds already`);
+      faculties[name] = faculty;
+    }
+  }
+  return { faculties };
+};
+
+/** One foundation body a house names: the faculty that serves it, and the args it hands this house. */
 export interface BodyNamed {
-  readonly body: string;
-  readonly from?: string;
+  readonly faculty: string;
   readonly [argument: string]: Json | undefined;
 }
 
@@ -100,12 +136,13 @@ export interface Entry {
   readonly wait?: number;
 }
 
-/** One faculty in the drawer: its maker and where it stands, what it is handed, and its grant. */
+/** One faculty's entry: where it stands, what it is handed, the bodies it calls, and its grant. */
 export interface FacultyEntry {
   readonly make?: string;
   readonly from?: string;
   readonly args?: Readonly<Record<string, Json>>;
   readonly secrets?: readonly string[];
+  readonly faculties?: readonly string[];
   readonly kinds?: readonly string[];
 }
 
@@ -129,16 +166,21 @@ export interface HandAsk {
   readonly cells?: true;
 }
 
-/** What `Ground.open` takes. The unlock, the memory and the registry are the host's, never the drawer's. */
+/** The four entries the host names, raised on the terrain's args before the drawer opens. */
+export interface Primordial {
+  readonly unlock: FacultyEntry;
+  readonly memory: FacultyEntry;
+  readonly crypto: FacultyEntry;
+  readonly tools: FacultyEntry;
+}
+
+/** What `Ground.open` takes, all of it the host's. */
 export interface GroundOptions {
-  readonly unlock: Unlock;
-  readonly memory: Memory;
-  readonly carry: Hooked;
-  /** The ladder's first rung: the terrain's own makers, and whatever the host installs beside them. */
+  /** The ladder's first rung: the terrain's faculties, and whatever the host installs beside them. */
   readonly registry: Registry;
-  readonly clock?: Clock;
-  readonly crypto?: Crypto;
-  readonly tools?: Tools;
+  readonly primordial: Primordial;
+  /** The terrain's default entries; an entry of the same name in the drawer stands in its place. */
+  readonly entries?: Readonly<Record<string, FacultyEntry>>;
   /** The ground's bound on every ask of every house, in milliseconds. */
   readonly wait?: number;
   /**
@@ -158,19 +200,38 @@ const GRANTED = new Set([HOUSES, FACULTIES]);
 // Those the hand alone reaches.
 const HAND_ALONE = new Set([SECRETS, MOVES]);
 const OWN = new Set([...GRANTED, ...HAND_ALONE]);
+// What a house's entry names for its memory and its code, and what every house receives.
+const FOR_HOUSES = new Set<Serves>(['memory', 'classes']);
+const EVERY_HOUSE = new Set<Serves>(['carry', 'clock']);
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const NAMED = 'lowercase letters, digits, dots, dashes and underscores, at most sixty-four';
 const DRAWER = 'drawer';
-const body = { type: 'object', properties: { body: { type: 'string' }, from: { type: 'string' } }, required: ['body'], additionalProperties: true } as const;
+const body = { type: 'object', properties: { faculty: { type: 'string' } }, required: ['faculty'], additionalProperties: true } as const;
 const OBJECT = { type: 'object', properties: {}, additionalProperties: true } as const;
 // Every place of a memory, by its name: each entry's bytes as hex.
 const PLACES = OBJECT;
+const houseArgs = { name: s.string(), classes: body, memory: s.optional(body), faculties: s.optional(s.array(s.string())), wait: s.optional(s.integer({ minimum: 1 })) };
+const facultyArgs = {
+  name: s.string(),
+  make: s.optional(s.string()),
+  from: s.optional(s.string()),
+  args: s.optional(OBJECT),
+  secrets: s.optional(s.array(s.string())),
+  faculties: s.optional(s.array(s.string())),
+  kinds: s.optional(s.array(s.string())),
+};
 
 /** The blueprint of the ground's own faculty for its houses. */
 export const HousesBlueprint = need(HOUSES, {
   add: {
     description: 'Opens a house on the bodies its entry names; the same name and entry answer the same ward.',
-    args: s.object({ name: s.string(), classes: body, memory: s.optional(body), faculties: s.optional(s.array(s.string())), wait: s.optional(s.integer({ minimum: 1 })) }),
+    args: s.object(houseArgs),
+    result: s.object({ ward: s.string() }),
+    hints: { idempotent: true },
+  },
+  update: {
+    description: 'Lands a new entry over a house’s in one write, and opens the house again on it.',
+    args: s.object(houseArgs),
     result: s.object({ ward: s.string() }),
     hints: { idempotent: true },
   },
@@ -180,8 +241,8 @@ export const HousesBlueprint = need(HOUSES, {
     hints: { idempotent: true },
   },
   list: {
-    description: 'Every house in the drawer, open with its ward or closed with why.',
-    result: s.array(s.object({ name: s.string(), ward: s.optional(s.string()), why: s.optional(s.string()) })),
+    description: 'Every house in the drawer with its whole entry, open with its ward or closed with why.',
+    result: s.array(s.object({ name: s.string(), entry: OBJECT, ward: s.optional(s.string()), why: s.optional(s.string()) })),
     hints: { readOnly: true },
   },
 });
@@ -189,25 +250,28 @@ export const HousesBlueprint = need(HOUSES, {
 /** The blueprint of the ground's own faculty for its ladder. */
 export const FacultiesBlueprint = need(FACULTIES, {
   add: {
-    description: 'Stands a faculty on the registry its entry names; the same name and entry answer as it stands. An entry for houses or faculties holds kinds alone, and grants it.',
-    args: s.object({
-      name: s.string(),
-      make: s.optional(s.string()),
-      from: s.optional(s.string()),
-      args: s.optional(OBJECT),
-      secrets: s.optional(s.array(s.string())),
-      kinds: s.optional(s.array(s.string())),
-    }),
+    description: 'Raises a body from the registry its entry names; the same name and entry answer as it stands. An entry for houses or faculties holds kinds alone, and grants it.',
+    args: s.object(facultyArgs),
+    hints: { idempotent: true },
+  },
+  update: {
+    description: 'Lands a new entry over a faculty’s in one write: its body goes down, installs where the entry moved, and goes up, and each house and body that uses it follows.',
+    args: s.object(facultyArgs),
+    hints: { idempotent: true },
+  },
+  restart: {
+    description: 'Takes a body down and up again on its entry, and each house and body that uses it follows.',
+    args: s.object({ name: s.string() }),
     hints: { idempotent: true },
   },
   remove: {
-    description: 'Stops a faculty no house and no faculty uses, and drops its entry.',
+    description: 'Takes down a body no house and no body uses, and drops its entry.',
     args: s.object({ name: s.string() }),
     hints: { idempotent: true },
   },
   list: {
-    description: 'Every faculty entry in the drawer, standing, or down with why.',
-    result: s.array(s.object({ name: s.string(), why: s.optional(s.string()) })),
+    description: 'Every faculty entry whole, the terrain’s and the drawer’s, standing, or down with why. An entry names its secrets and holds none.',
+    result: s.array(s.object({ name: s.string(), entry: OBJECT, serves: s.optional(s.string()), why: s.optional(s.string()) })),
     hints: { readOnly: true },
   },
 });
@@ -215,7 +279,7 @@ export const FacultiesBlueprint = need(FACULTIES, {
 /** The blueprint of the ground's own faculty for its secrets, which the hand alone calls. */
 export const SecretsBlueprint = need(SECRETS, {
   set: {
-    description: 'Keeps a secret in the drawer, for the makers whose entries name it.',
+    description: 'Keeps a secret in the drawer, for the faculties whose entries name it.',
     args: s.object({ name: s.string(), value: s.string() }),
     hints: { idempotent: true },
   },
@@ -241,36 +305,28 @@ export const MovesBlueprint = need(MOVES, {
   },
   in: {
     description: 'Keeps a moved seed, writes its places into an empty memory, and opens the house on the bodies its entry names.',
-    args: s.object({
-      name: s.string(),
-      classes: body,
-      memory: s.optional(body),
-      faculties: s.optional(s.array(s.string())),
-      wait: s.optional(s.integer({ minimum: 1 })),
-      seed: s.string(),
-      places: PLACES,
-    }),
+    args: s.object({ ...houseArgs, seed: s.string(), places: PLACES }),
     result: s.object({ ward: s.string() }),
   },
 });
 
-/** The drawer's one row: every entry, each house's seed, every secret, and each house's ward once it opened. */
+/** The drawer's one row: every entry, what each faculty installed, each house's seed, every secret, and each house's ward once it opened. */
 interface Drawer {
   readonly houses: Record<string, Entry>;
   readonly faculties: Record<string, FacultyEntry>;
+  readonly installed: Record<string, string>;
   readonly seeds: Record<string, string>;
   readonly secrets: Record<string, string>;
   readonly wards: Record<string, string>;
 }
 
-const emptyDrawer = (): Drawer => ({ houses: {}, faculties: {}, seeds: {}, secrets: {}, wards: {} });
+const emptyDrawer = (): Drawer => ({ houses: {}, faculties: {}, installed: {}, seeds: {}, secrets: {}, wards: {} });
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const isNames = (value: unknown): value is readonly string[] => Array.isArray(value) && value.every((name) => typeof name === 'string');
 
 const bodyOf = (held: unknown, what: string): BodyNamed | string => {
-  if (!isObject(held) || typeof held.body !== 'string') return `an entry's ${what} names no body`;
-  if (held.from !== undefined && typeof held.from !== 'string') return `an entry's ${what} names from as a faculty's name`;
+  if (!isObject(held) || typeof held.faculty !== 'string') return `an entry's ${what} names no faculty`;
   return held as BodyNamed;
 };
 
@@ -290,36 +346,47 @@ const entryOf = (value: unknown): Entry | string => {
 const facultyEntryOf = (name: string, value: unknown): FacultyEntry | string => {
   if (HAND_ALONE.has(name)) return `the faculty ${name} is the hand’s alone, and takes no entry`;
   if (!isObject(value)) return 'an entry is an object';
-  const { make, from, args, secrets, kinds, ...rest } = value;
+  const { make, from, args, secrets, faculties, kinds, ...rest } = value;
   if (Object.keys(rest).length > 0) return `an entry names ${Object.keys(rest).join(', ')}, which no entry holds`;
   if (kinds !== undefined && !isNames(kinds)) return "an entry's kinds are a list of names";
   if (GRANTED.has(name)) {
-    if (make !== undefined || from !== undefined || args !== undefined || secrets !== undefined || kinds === undefined) return `the faculty ${name} is the ground’s own, and its entry holds kinds alone`;
+    if (make !== undefined || from !== undefined || args !== undefined || secrets !== undefined || faculties !== undefined || kinds === undefined) return `the faculty ${name} is the ground’s own, and its entry holds kinds alone`;
     return { kinds };
   }
-  if (typeof make !== 'string') return "a faculty's entry names its maker in make";
-  if (from !== undefined && typeof from !== 'string') return "an entry's from is a faculty's name";
+  if (typeof make !== 'string') return "a faculty's entry names it in make";
+  if (from !== undefined && typeof from !== 'string') return "an entry's from is a body's name";
   if (args !== undefined && !isObject(args)) return "an entry's args are an object";
   if (secrets !== undefined && !isNames(secrets)) return "an entry's secrets are a list of names";
+  if (faculties !== undefined && !isNames(faculties)) return "an entry's faculties are a list of names";
   return {
     make,
     ...(from === undefined ? {} : { from }),
     ...(args === undefined ? {} : { args: args as Readonly<Record<string, Json>> }),
     ...(secrets === undefined ? {} : { secrets }),
+    ...(faculties === undefined ? {} : { faculties }),
     ...(kinds === undefined ? {} : { kinds }),
   };
 };
 
-// A body's args: everything its entry names but its maker and where it stands.
-const argsOf = ({ body: _body, from: _from, ...args }: BodyNamed): Readonly<Record<string, Json>> => args as Readonly<Record<string, Json>>;
+// A foundation body's args for one house: everything its part of the entry names but the faculty.
+const argsOf = ({ faculty: _faculty, ...args }: BodyNamed): Readonly<Record<string, Json>> => args as Readonly<Record<string, Json>>;
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+// The memory a primordial faculty receives: none, since the ground's memory is not open yet.
+const unopened: Memory = {
+  read: () => Promise.reject(new Error('a primordial faculty keeps nothing')),
+  list: () => Promise.reject(new Error('a primordial faculty keeps nothing')),
+  write: () => Promise.reject(new Error('a primordial faculty keeps nothing')),
+};
 
 interface Held {
   readonly entry: Entry;
   readonly opened?: Opened;
   readonly clock?: HouseClock;
   readonly carry?: HouseCarry;
+  /** The carry its door was hooked to, which closing unhooks it from. */
+  readonly hooked?: Hooked;
   readonly why?: string;
   /** The door's and the hand's calls on it not yet ended, which closing waits for. */
   readonly flight?: Set<Promise<unknown>>;
@@ -327,21 +394,34 @@ interface Held {
   readonly asleep?: string;
 }
 
-/** A faculty of the ladder as the ground holds it: standing, or down and why. */
+/** A body of the ladder as the ground holds it: standing, or down and why. */
 interface Stood {
   readonly entry: FacultyEntry;
-  readonly faculty?: Faculty;
+  readonly body?: Body;
   readonly why?: string;
 }
 
+// One primordial body raised on its entry, filling the contract it names, or the reason the ground cannot open.
+const primordial = async <T>(registry: Registry, role: Serves, entry: FacultyEntry): Promise<{ body: Body; object: T }> => {
+  const faculty = entry.make === undefined ? undefined : registry.faculties?.[entry.make];
+  if (faculty === undefined) throw new Error(`no faculty ${entry.make} in the ground’s registry for its ${role}`);
+  const made: Up = { name: role, args: entry.args ?? {}, secrets: {}, memory: unopened, faculties: {} };
+  await faculty.install?.(made);
+  const raised = await faculty.up(made);
+  if (raised.serves !== role || raised.object === undefined) {
+    await raised.down?.();
+    throw new Error(`the faculty ${entry.make} serves no ${role}`);
+  }
+  return { body: raised, object: raised.object as T };
+};
+
 export class Ground {
   readonly #memory: Memory;
-  readonly #carry: Hooked;
   readonly #registry: Registry;
   readonly #options: GroundOptions;
-  readonly #clock: Clock;
   readonly #crypto: Crypto;
   readonly #tools: Tools;
+  readonly #primordial: readonly Body[];
   readonly #wait: number | undefined;
   readonly #keys: SeedKeys;
   readonly #rows: Rows;
@@ -354,13 +434,12 @@ export class Ground {
   /** The changes to each name, one at a time: two of one name never pass each other. */
   readonly #changing = new Map<string, Promise<unknown>>();
 
-  private constructor(options: GroundOptions, keys: SeedKeys, rows: Rows, place: string, drawer: Drawer) {
-    this.#memory = options.memory;
-    this.#carry = options.carry;
-    this.#registry = options.registry;
-    this.#clock = options.clock ?? new WebClock();
-    this.#crypto = options.crypto ?? new NobleCrypto();
-    this.#tools = options.tools ?? new StrictTools();
+  private constructor(options: GroundOptions, registry: Registry, parts: { memory: Memory; crypto: Crypto; tools: Tools; primordial: readonly Body[] }, keys: SeedKeys, rows: Rows, place: string, drawer: Drawer) {
+    this.#memory = parts.memory;
+    this.#registry = registry;
+    this.#crypto = parts.crypto;
+    this.#tools = parts.tools;
+    this.#primordial = parts.primordial;
     this.#wait = options.wait;
     this.#options = options;
     this.#keys = keys;
@@ -376,37 +455,52 @@ export class Ground {
   }
 
   /**
-   * A ground opened on its host's unlock, memory and registry: the key
-   * opens the drawer, or writes one in a memory that holds nothing, then
-   * the ladder stands and every house of the drawer opens.
+   * A ground opened on its host's registry and entries: the primordial
+   * bodies go up, the key opens the drawer or writes one in a memory that
+   * holds nothing, then the ladder stands and every house of the drawer
+   * opens.
    */
   static async open(options: GroundOptions): Promise<Ground> {
-    const crypto = options.crypto ?? new NobleCrypto();
-    const tools = options.tools ?? new StrictTools();
-    const keys = new SeedKeys(await options.unlock.key(), crypto);
-    const rows = await Rows.open(options.memory, keys, crypto, tools);
-    const place = await rows.place(DRAWER);
-    let drawer = await rows.get<Drawer>(place).catch(() => null);
-    if (drawer === null) {
-      // A memory that holds places holds another ground's drawer, which this key does not open.
-      if ((await options.memory.list()).length > 0) throw new Error('this memory holds no drawer this key opens');
-      drawer = emptyDrawer();
-      if (!(await rows.transact((draft) => draft.set(place, drawer)))) throw new Error('the ground’s memory refused its first write');
+    const registry = joinedRegistry(libraryRegistry, options.registry);
+    const raised: Body[] = [];
+    try {
+      const unlock = await primordial<Unlock>(registry, 'unlock', options.primordial.unlock);
+      raised.push(unlock.body);
+      const memory = await primordial<Memory>(registry, 'memory', options.primordial.memory);
+      raised.push(memory.body);
+      const crypto = await primordial<Crypto>(registry, 'crypto', options.primordial.crypto);
+      raised.push(crypto.body);
+      const tools = await primordial<Tools>(registry, 'tools', options.primordial.tools);
+      raised.push(tools.body);
+      const keys = new SeedKeys(await unlock.object.key(), crypto.object);
+      const rows = await Rows.open(memory.object, keys, crypto.object, tools.object);
+      const place = await rows.place(DRAWER);
+      let drawer = await rows.get<Drawer>(place).catch(() => null);
+      if (drawer === null) {
+        // A memory that holds places holds another ground's drawer, which this key does not open.
+        if ((await memory.object.list()).length > 0) throw new Error('this memory holds no drawer this key opens');
+        drawer = emptyDrawer();
+        if (!(await rows.transact((draft) => draft.set(place, drawer)))) throw new Error('the ground’s memory refused its first write');
+      }
+      const ground = new Ground(options, registry, { memory: memory.object, crypto: crypto.object, tools: tools.object, primordial: raised }, keys, rows, place, { ...emptyDrawer(), ...drawer });
+      await ground.#boot();
+      return ground;
+    } catch (error) {
+      for (const one of raised.reverse()) await one.down?.();
+      throw error;
     }
-    const ground = new Ground(options, keys, rows, place, drawer);
-    await ground.#boot();
-    return ground;
   }
 
-  // The ladder, then the houses. The ground's hook and ready are its terrain's.
+  // The ladder, then the houses.
   async #boot(): Promise<void> {
     await this.#ladder();
     for (const [name, entry] of Object.entries(this.#drawer.houses)) {
       const ward = this.#drawer.wards[name];
-      if (this.#options.lazy === true && ward !== undefined) {
+      const carry = this.#carry();
+      if (this.#options.lazy === true && ward !== undefined && typeof carry !== 'string') {
         // Its door is hooked unopened: the first box opens it, then goes in.
-        this.#houses.set(name, { entry, asleep: ward });
-        await this.#carry.listen({ ward, door: (box) => this.#door(name, box) });
+        this.#houses.set(name, { entry, asleep: ward, hooked: carry });
+        await carry.listen({ ward, door: (box) => this.#door(name, box) });
         continue;
       }
       this.#houses.set(name, await this.#open(name, entry));
@@ -419,7 +513,7 @@ export class Ground {
   async #change(change: (drawer: Drawer) => void): Promise<void> {
     let changed: Drawer | undefined;
     const landed = await this.#rows.transact(async (draft) => {
-      const drawer = (await draft.get<Drawer>(this.#place)) ?? emptyDrawer();
+      const drawer = { ...emptyDrawer(), ...(await draft.get<Drawer>(this.#place)) };
       change(drawer);
       draft.set(this.#place, drawer);
       changed = drawer;
@@ -445,11 +539,21 @@ export class Ground {
     return `${this.#tools.hex(digest.subarray(0, 8))}/`;
   }
 
+  // Every faculty entry the ladder stands: the terrain's defaults, and the drawer's in their place.
+  #entries(): Readonly<Record<string, FacultyEntry>> {
+    return { ...this.#options.entries, ...this.#drawer.faculties };
+  }
+
   // ---- the ladder ----
 
-  // Every faculty of the drawer stood in the ladder's order: each after the one its `from` names.
+  // What a body waits for: the one whose registry it stands on, and each it calls.
+  static #below(entry: FacultyEntry): readonly string[] {
+    return [...(entry.from === undefined ? [] : [entry.from]), ...(entry.faculties ?? [])];
+  }
+
+  // Every body not standing raised in the ladder's order: each after the ones it waits for.
   async #ladder(): Promise<void> {
-    const entries = this.#drawer.faculties;
+    const entries = this.#entries();
     const order: string[] = [];
     const cycles = new Map<string, string>();
     const seen = new Map<string, 'visiting' | 'done'>();
@@ -461,63 +565,142 @@ export class Ground {
         return;
       }
       seen.set(name, 'visiting');
-      const from = entries[name]?.from;
-      if (from !== undefined && Object.hasOwn(entries, from) && !GRANTED.has(from)) visit(from, [...path, name]);
+      for (const below of Ground.#below(entries[name])) if (Object.hasOwn(entries, below) && !GRANTED.has(below)) visit(below, [...path, name]);
       seen.set(name, 'done');
       order.push(name);
     };
     for (const name of Object.keys(entries).sort()) if (!GRANTED.has(name)) visit(name, []);
     for (const name of order) {
-      if (this.#stood.get(name)?.faculty !== undefined) continue;
+      if (this.#stood.get(name)?.body !== undefined) continue;
       const cycle = cycles.get(name);
       this.#stood.set(name, cycle === undefined ? await this.#stand(name, entries[name]) : { entry: entries[name], why: cycle });
     }
   }
 
-  // One faculty made on its registry, with its args, its secrets and its sealed memory, or down and why.
+  // A body standing under a name, or why there is none.
+  #standing(name: string): Body | string {
+    if (OWN.has(name)) return `the faculty ${name} is the ground’s own`;
+    const stood = this.#stood.get(name);
+    if (stood === undefined) return `no faculty ${name} stands here`;
+    return stood.body ?? `the faculty ${name} is down: ${stood.why}`;
+  }
+
+  // One body raised on its entry: installed where the entry is new, then up, or down and why.
   async #stand(name: string, entry: FacultyEntry): Promise<Stood> {
     const down = (why: string): Stood => ({ entry, why });
     let registry = this.#registry;
     if (entry.from !== undefined) {
-      if (OWN.has(entry.from)) return down(`the faculty ${entry.from} carries no registry`);
-      const below = this.#stood.get(entry.from);
-      if (below === undefined) return down(`no faculty ${entry.from} stands here`);
-      if (below.faculty === undefined) return down(`its registry ${entry.from} is down: ${below.why}`);
-      if (below.faculty.registry === undefined) return down(`the faculty ${entry.from} carries no registry`);
-      registry = below.faculty.registry;
+      const below = this.#standing(entry.from);
+      if (typeof below === 'string') return down(`its registry: ${below}`);
+      if (below.registry === undefined) return down(`the faculty ${entry.from} carries no registry`);
+      registry = below.registry;
     }
-    const maker = entry.make === undefined ? undefined : registry.faculties?.[entry.make];
-    if (maker === undefined) return down(`no maker ${entry.make} in ${entry.from ?? 'the ground’s registry'}`);
+    const faculty = entry.make === undefined ? undefined : registry.faculties?.[entry.make];
+    if (faculty === undefined) return down(`no faculty ${entry.make} in ${entry.from ?? 'the ground’s registry'}`);
     const secrets: Record<string, string> = {};
     for (const secret of entry.secrets ?? []) {
       const value = this.#drawer.secrets[secret];
       if (value === undefined) return down(`no secret ${secret} is kept`);
       secrets[secret] = value;
     }
+    const faculties: Record<string, object> = {};
+    for (const callee of entry.faculties ?? []) {
+      const called = this.#standing(callee);
+      if (typeof called === 'string') return down(called);
+      if (called.object === undefined) return down(`the faculty ${callee} offers no object to call`);
+      faculties[callee] = called.object;
+    }
+    let raised: Body | undefined;
     try {
       const memory = new SealedMemory(new ViewMemory(this.#memory, await this.#prefix('faculty', name)), await this.#keys.derive(`faculty:${name}`, 32), this.#crypto, this.#tools);
-      const faculty = await maker({ name, args: entry.args ?? {}, secrets, memory });
-      if ((faculty.blueprint === undefined) !== (faculty.object === undefined)) {
-        await faculty.stop?.();
-        return down('a faculty offers a blueprint and an object together, or neither');
+      const made: Up = { name, args: entry.args ?? {}, secrets, memory, faculties };
+      const installed = this.#tools.canonical(entry);
+      if (this.#drawer.installed[name] !== installed) {
+        await faculty.install?.(made);
+        await this.#change((drawer) => void (drawer.installed[name] = installed));
       }
-      if (faculty.blueprint !== undefined) {
-        try {
-          offered(faculty.blueprint, `the faculty ${name}`);
-        } catch (error) {
-          await faculty.stop?.();
-          throw error;
-        }
+      raised = await faculty.up(made);
+      const why = this.#refused(name, raised);
+      if (why !== undefined) {
+        await raised.down?.();
+        return down(why);
       }
-      return { entry, faculty };
+      return { entry, body: raised };
     } catch (error) {
+      // A body raised and then refused lets go of what its `up` opened.
+      await raised?.down?.();
       return down(`it did not stand: ${message(error)}`);
     }
   }
 
-  // After a faculty stands: each one down may stand now, and each house its absence kept closed opens.
+  // What a raised body may not be: an offer half made, a contract filled wrong, or a second clock.
+  #refused(name: string, raised: Body): string | undefined {
+    if ((raised.blueprint === undefined) !== (raised.object === undefined) && raised.serves === undefined) return 'a body offers a blueprint and an object together, or neither';
+    if (raised.blueprint !== undefined) offered(raised.blueprint, `the faculty ${name}`);
+    if (raised.serves === undefined) return undefined;
+    if (raised.blueprint !== undefined) return 'a body serves the house or offers beings, never both';
+    if (raised.serves === 'unlock' || raised.serves === 'crypto' || raised.serves === 'tools') return `the ${raised.serves} is primordial, and the drawer names none`;
+    if (FOR_HOUSES.has(raised.serves) && typeof raised.house !== 'function') return `a body serving ${raised.serves} serves each house through house()`;
+    if (raised.serves === 'memory' && raised.object !== undefined) return 'the ground’s memory is primordial, and the drawer names none';
+    if (EVERY_HOUSE.has(raised.serves) && raised.object === undefined) return `a body serving the ${raised.serves} holds it as its object`;
+    if (raised.serves === 'carry' && (raised.schemes === undefined || raised.schemes.length === 0)) return 'a carry names the schemes it speaks';
+    if (raised.serves === 'clock') {
+      const serving = [...this.#stood].find(([one, stood]) => one !== name && stood.body?.serves === 'clock');
+      if (serving !== undefined) return `the clock is served by ${serving[0]}`;
+    }
+    return undefined;
+  }
+
+  // Who uses a body: the houses that name it or receive it, and the bodies that stand on it or call it.
+  #users(name: string): { readonly houses: readonly string[]; readonly faculties: readonly string[] } {
+    const serves = this.#stood.get(name)?.body?.serves;
+    const houses = Object.entries(this.#drawer.houses)
+      .filter(([, entry]) => (serves !== undefined && EVERY_HOUSE.has(serves)) || (entry.faculties ?? []).includes(name) || entry.classes.faculty === name || entry.memory?.faculty === name)
+      .map(([house]) => house);
+    const faculties = Object.entries(this.#entries())
+      .filter(([, entry]) => Ground.#below(entry).includes(name))
+      .map(([faculty]) => faculty);
+    return { houses, faculties };
+  }
+
+  // A body and every body above it, the callers after their callees, and every house any of them reaches.
+  #above(name: string): { readonly faculties: readonly string[]; readonly houses: readonly string[] } {
+    const faculties: string[] = [];
+    const houses = new Set<string>();
+    const visit = (one: string) => {
+      if (faculties.includes(one)) return;
+      faculties.push(one);
+      const users = this.#users(one);
+      for (const house of users.houses) houses.add(house);
+      for (const faculty of users.faculties) visit(faculty);
+    };
+    visit(name);
+    return { faculties, houses: [...houses] };
+  }
+
+  // A body taken down with everything above it, `between` run while all are down, then the ladder raised and the houses opened again.
+  async #cycle(name: string, between: () => Promise<void>): Promise<{ readonly why?: string }> {
+    const { faculties, houses } = this.#above(name);
+    for (const house of houses) {
+      const held = this.#houses.get(house);
+      if (held === undefined) continue;
+      this.#houses.set(house, { entry: held.entry, why: `the faculty ${name} is going down` });
+      await this.#close(held);
+    }
+    for (const faculty of [...faculties].reverse()) {
+      const stood = this.#stood.get(faculty);
+      this.#stood.delete(faculty);
+      await stood?.body?.down?.();
+    }
+    await between();
+    await this.#mended();
+    const why = this.#stood.get(name)?.why;
+    return why === undefined ? {} : { why };
+  }
+
+  // After the ladder moves: each body down may stand now, and each house its absence kept closed opens.
   async #mended(): Promise<void> {
-    for (const [name, stood] of [...this.#stood]) if (stood.faculty === undefined) this.#stood.delete(name);
+    for (const [name, stood] of [...this.#stood]) if (stood.body === undefined) this.#stood.delete(name);
     await this.#ladder();
     for (const [name, held] of [...this.#houses]) {
       if (held.opened !== undefined || held.asleep !== undefined) continue;
@@ -528,30 +711,24 @@ export class Ground {
     }
   }
 
-  // Who stands on a faculty: the houses that name it, and the faculties made on its registry.
-  #users(name: string): string[] {
-    const houses = Object.entries(this.#drawer.houses)
-      .filter(([, entry]) => (entry.faculties ?? []).includes(name) || entry.classes.from === name || entry.memory?.from === name)
-      .map(([house]) => `the house ${house}`);
-    const faculties = Object.entries(this.#drawer.faculties)
-      .filter(([, entry]) => entry.from === name)
-      .map(([faculty]) => `the faculty ${faculty}`);
-    return [...houses, ...faculties];
-  }
-
-  /**
-   * A faculty stood on its entry, recorded in the drawer. The same name and
-   * entry answer it as it stands; another entry under a name the drawer
-   * holds is refused.
-   */
-  async stand(name: string, given: FacultyEntry): Promise<{ readonly why?: string }> {
+  #facultyEntry(name: string, given: FacultyEntry): FacultyEntry {
     if (!NAME.test(name)) throw new TypeError(`a faculty is named with ${NAMED}`);
     const entry = facultyEntryOf(name, given);
     if (typeof entry === 'string') throw new TypeError(entry);
+    return entry;
+  }
+
+  /**
+   * A body raised on its entry, recorded in the drawer. The same name and
+   * entry answer it as it stands; another entry under a name the drawer or
+   * the terrain holds is an update, and refused here.
+   */
+  async stand(name: string, given: FacultyEntry): Promise<{ readonly why?: string }> {
+    const entry = this.#facultyEntry(name, given);
     return this.#byName(`faculty:${name}`, async () => {
-      const held = this.#drawer.faculties[name];
-      if (held !== undefined && this.#tools.canonical(held) !== this.#tools.canonical(entry)) throw new Error(`the faculty ${name} stands with another entry`);
-      if (held === undefined) await this.#change((drawer) => void (drawer.faculties[name] = entry));
+      const held = this.#entries()[name];
+      if (held !== undefined && this.#tools.canonical(held) !== this.#tools.canonical(entry)) throw new Error(`the faculty ${name} stands with another entry; update it`);
+      if (this.#drawer.faculties[name] === undefined) await this.#change((drawer) => void (drawer.faculties[name] = entry));
       if (GRANTED.has(name)) return {};
       await this.#mended();
       const why = this.#stood.get(name)?.why;
@@ -559,34 +736,76 @@ export class Ground {
     });
   }
 
-  /** A faculty stopped and its entry dropped, where no house and no faculty stands on it. */
+  /**
+   * A new entry landed over a faculty's in one write: its body and every
+   * body above it go down, it installs where the entry moved, and all go up
+   * again, with each house they reach.
+   */
+  async restand(name: string, given: FacultyEntry): Promise<{ readonly why?: string }> {
+    const entry = this.#facultyEntry(name, given);
+    return this.#byName(`faculty:${name}`, async () => {
+      const held = this.#entries()[name];
+      if (held === undefined) throw new Error(`no faculty ${name} stands here to update`);
+      if (this.#tools.canonical(held) === this.#tools.canonical(entry)) {
+        const why = this.#stood.get(name)?.why;
+        return why === undefined ? {} : { why };
+      }
+      if (GRANTED.has(name)) {
+        await this.#change((drawer) => void (drawer.faculties[name] = entry));
+        return {};
+      }
+      return this.#cycle(name, () => this.#change((drawer) => void (drawer.faculties[name] = entry)));
+    });
+  }
+
+  /** A body taken down and up again on its entry, with every body above it and each house they reach. */
+  restart(name: string): Promise<{ readonly why?: string }> {
+    return this.#byName(`faculty:${name}`, async () => {
+      if (this.#entries()[name] === undefined || GRANTED.has(name)) throw new Error(`no faculty ${name} stands here to restart`);
+      return this.#cycle(name, () => Promise.resolve());
+    });
+  }
+
+  /** A body taken down and its entry dropped, where no house and no body uses it. */
   unstand(name: string): Promise<void> {
     return this.#byName(`faculty:${name}`, async () => {
-      if (this.#drawer.faculties[name] === undefined) return;
-      const users = GRANTED.has(name) ? [] : this.#users(name);
-      if (users.length > 0) throw new Error(`the faculty ${name} is in use by ${users.join(', ')}`);
+      if (this.#drawer.faculties[name] === undefined) {
+        if (this.#options.entries?.[name] !== undefined) throw new Error(`the faculty ${name} is the terrain’s; update it`);
+        return;
+      }
+      if (!GRANTED.has(name)) {
+        const { houses, faculties } = this.#users(name);
+        const users = [...houses.map((house) => `the house ${house}`), ...faculties.map((faculty) => `the faculty ${faculty}`)];
+        if (users.length > 0) throw new Error(`the faculty ${name} is in use by ${users.join(', ')}`);
+      }
       const stood = this.#stood.get(name);
       this.#stood.delete(name);
-      await stood?.faculty?.stop?.();
-      await this.#change((drawer) => void delete drawer.faculties[name]);
+      await stood?.body?.down?.();
+      await this.#change((drawer) => {
+        delete drawer.faculties[name];
+        delete drawer.installed[name];
+      });
+      // A terrain's entry under the same name stands again in its place.
+      if (this.#options.entries?.[name] !== undefined) await this.#mended();
     });
   }
 
   // ---- houses ----
 
-  // The registry a body's entry names: the ground's own, or that of a faculty that stands.
-  #registryOf(named: BodyNamed): Registry {
-    if (named.from === undefined) return this.#registry;
-    const below = this.#stood.get(named.from);
-    if (below?.faculty === undefined) throw new Error(`the faculty ${named.from} is ${below === undefined ? 'not here' : `down: ${below.why}`}`);
-    if (below.faculty.registry === undefined) throw new Error(`the faculty ${named.from} carries no registry`);
-    return below.faculty.registry;
+  // The ground's carries joined by scheme, or why there is none.
+  #carry(): (Hooked & Carry) | string {
+    const bySchemes: Record<string, Carry> = {};
+    for (const stood of this.#stood.values()) {
+      if (stood.body?.serves !== 'carry') continue;
+      for (const scheme of stood.body.schemes ?? []) bySchemes[scheme] = stood.body.object as Carry;
+    }
+    if (Object.keys(bySchemes).length === 0) return 'no body serves the carry';
+    return new JoinedCarry(bySchemes);
   }
 
-  // A body made by its maker, or the reason there is none.
-  static #made<T>(maker: ((made: BodyMade) => T | Promise<T>) | undefined, kind: string, named: BodyNamed, house: string): Promise<T> {
-    if (maker === undefined) return Promise.reject(new Error(`no ${kind} body ${named.body} in ${named.from ?? 'the ground’s registry'}`));
-    return Promise.resolve(maker({ house, args: argsOf(named) }));
+  #clock(): Clock | string {
+    for (const stood of this.#stood.values()) if (stood.body?.serves === 'clock') return stood.body.object as Clock;
+    return 'no body serves the clock';
   }
 
   // What a house is offered: the faculties its entry names, each with the kinds its own entry grants.
@@ -599,20 +818,34 @@ export class Ground {
         offers.push({ ...own, kinds: this.#drawer.faculties[name]?.kinds ?? [] });
         continue;
       }
-      const stood = this.#stood.get(name);
-      if (stood === undefined) return `no faculty ${name} stands here`;
-      if (stood.faculty === undefined) return `the faculty ${name} is down: ${stood.why}`;
-      const { blueprint, object, window } = stood.faculty;
+      const stood = this.#standing(name);
+      if (typeof stood === 'string') return stood;
+      const { blueprint, object, window } = stood;
       if (blueprint === undefined || object === undefined) return `the faculty ${name} offers beings nothing`;
-      offers.push({ blueprint, object, ...(window === undefined ? {} : { window }), ...(stood.entry.kinds === undefined ? {} : { kinds: stood.entry.kinds }) });
+      const kinds = this.#entries()[name]?.kinds;
+      offers.push({
+        blueprint,
+        object,
+        ...(window === undefined ? {} : { window }),
+        ...(kinds === undefined ? {} : { kinds }),
+        ...(stood.opened === undefined ? {} : { opened: stood.opened.bind(stood) }),
+      });
     }
     return offers;
   }
 
-  // The memory a house keeps its places in: the body its entry names, or its view of the ground's.
+  // What a foundation body serves one house, or why it serves it nothing.
+  async #served<T>(named: BodyNamed, serves: 'memory' | 'classes', house: string): Promise<T> {
+    const stood = this.#standing(named.faculty);
+    if (typeof stood === 'string') throw new Error(stood);
+    if (stood.serves !== serves || stood.house === undefined) throw new Error(`the faculty ${named.faculty} serves no ${serves}`);
+    return (await stood.house({ house, args: argsOf(named) })) as T;
+  }
+
+  // The memory a house keeps its places in: what the body its entry names serves it, or its view of the ground's.
   async #houseMemory(name: string, entry: Entry): Promise<Memory> {
     if (entry.memory === undefined) return new ViewMemory(this.#memory, await this.#prefix('house', name));
-    return Ground.#made(this.#registryOf(entry.memory).memory?.[entry.memory.body], 'memory', entry.memory, name);
+    return this.#served<Memory>(entry.memory, 'memory', name);
   }
 
   // One house opened on the bodies its entry names, or closed and why.
@@ -622,19 +855,23 @@ export class Ground {
       if (seed === undefined) return { entry, why: 'the drawer keeps no seed for it' };
       const offers = this.#offers(entry);
       if (typeof offers === 'string') return { entry, why: offers };
+      const hooked = this.#carry();
+      if (typeof hooked === 'string') return { entry, why: hooked };
+      const ticking = this.#clock();
+      if (typeof ticking === 'string') return { entry, why: ticking };
       const memory = await this.#houseMemory(name, entry);
-      const classes = await Ground.#made(this.#registryOf(entry.classes).classes?.[entry.classes.body], 'classes', entry.classes, name);
-      const clock = new HouseClock(this.#clock, name);
-      const carry = new HouseCarry(this.#carry);
+      const classes = await this.#served<Classes>(entry.classes, 'classes', name);
+      const clock = new HouseClock(ticking, name);
+      const carry = new HouseCarry(hooked);
       const wait = entry.wait === undefined ? this.#wait : this.#wait === undefined ? entry.wait : Math.min(entry.wait, this.#wait);
       const opened = await openHouse(
         { keys: new SeedKeys(seed, this.#crypto), memory, classes, carry, clock, crypto: this.#crypto, tools: this.#tools },
         offers,
         wait === undefined ? {} : { wait },
       );
-      await this.#carry.listen({ ward: opened.ward, door: (box) => this.#door(name, box) });
+      await hooked.listen({ ward: opened.ward, door: (box) => this.#door(name, box) });
       if (this.#drawer.wards[name] !== opened.ward) await this.#change((drawer) => void (drawer.wards[name] = opened.ward));
-      return { entry, opened, clock, carry, flight: new Set() };
+      return { entry, opened, clock, carry, hooked, flight: new Set() };
     } catch (error) {
       return { entry, why: message(error) };
     }
@@ -647,6 +884,7 @@ export class Ground {
     return this.#byName(`house:${name}`, async () => {
       const now = this.#houses.get(name);
       if (now?.asleep === undefined) return now;
+      now.hooked?.unlisten({ ward: now.asleep });
       const opened = await this.#open(name, now.entry);
       this.#houses.set(name, opened);
       return opened;
@@ -675,7 +913,7 @@ export class Ground {
   // Its door unhooked, its sends stopped and its waits run out, then every call in flight on it ended.
   async #close(held: Held): Promise<void> {
     const ward = held.opened?.ward ?? held.asleep;
-    if (ward !== undefined) this.#carry.unlisten({ ward });
+    if (ward !== undefined) held.hooked?.unlisten({ ward });
     held.carry?.close();
     held.clock?.close();
     await Promise.allSettled([...(held.flight ?? [])]);
@@ -691,22 +929,32 @@ export class Ground {
     }));
   }
 
-  /**
-   * A house added to the drawer and opened. Its seed is drawn on first use.
-   * The same name with the same entry answers the house as it stands;
-   * another entry under a name the drawer holds is refused.
-   */
-  async add(name: string, given: Entry): Promise<Standing> {
+  #houseEntry(name: string, given: Entry): Entry {
     if (!NAME.test(name)) throw new TypeError(`a house is named with ${NAMED}`);
     const entry = entryOf(given);
     if (typeof entry === 'string') throw new TypeError(entry);
+    return entry;
+  }
+
+  #standingOf(name: string): Standing {
+    return this.list().find((standing) => standing.name === name)!;
+  }
+
+  /**
+   * A house added to the drawer and opened. Its seed is drawn on first use.
+   * The same name with the same entry answers the house as it stands;
+   * another entry under a name the drawer holds is an update, and refused
+   * here.
+   */
+  async add(name: string, given: Entry): Promise<Standing> {
+    const entry = this.#houseEntry(name, given);
     return this.#byName(`house:${name}`, async () => {
       const held = this.#houses.get(name);
       if (held !== undefined) {
-        if (this.#tools.canonical(held.entry) !== this.#tools.canonical(entry)) throw new Error(`the house ${name} stands with another entry`);
+        if (this.#tools.canonical(held.entry) !== this.#tools.canonical(entry)) throw new Error(`the house ${name} stands with another entry; update it`);
         // A house that did not open is tried again, as its entry stands.
         if (held.opened === undefined && held.asleep === undefined) this.#houses.set(name, await this.#open(name, entry));
-        return this.list().find((standing) => standing.name === name)!;
+        return this.#standingOf(name);
       }
       const fresh = this.#drawer.seeds[name] === undefined ? this.#tools.hex(this.#crypto.random(32)) : undefined;
       await this.#change((drawer) => {
@@ -714,7 +962,30 @@ export class Ground {
         if (fresh !== undefined && drawer.seeds[name] === undefined) drawer.seeds[name] = fresh;
       });
       this.#houses.set(name, await this.#open(name, entry));
-      return this.list().find((standing) => standing.name === name)!;
+      return this.#standingOf(name);
+    });
+  }
+
+  /**
+   * A new entry landed over a house's in one write, and the house opened
+   * again on it, once every call in flight on it has ended. Its seed and
+   * its places stay, so it answers as the same ward.
+   */
+  async update(name: string, given: Entry): Promise<Standing> {
+    const entry = this.#houseEntry(name, given);
+    return this.#byName(`house:${name}`, async () => {
+      const held = this.#houses.get(name);
+      if (held === undefined) throw new Error(`no house ${name} is here to update`);
+      // The same entry answers the house as it stands, and one that did not open is tried again.
+      if (this.#tools.canonical(held.entry) === this.#tools.canonical(entry)) {
+        if (held.opened === undefined && held.asleep === undefined) this.#houses.set(name, await this.#open(name, entry));
+        return this.#standingOf(name);
+      }
+      this.#houses.set(name, { entry: held.entry, why: 'it is being updated' });
+      await this.#close(held);
+      await this.#change((drawer) => void (drawer.houses[name] = entry));
+      this.#houses.set(name, await this.#open(name, entry));
+      return this.#standingOf(name);
     });
   }
 
@@ -764,22 +1035,21 @@ export class Ground {
     return this.ask({ house, ...(id === undefined ? {} : { id }), ...(method === undefined ? {} : { method }), ...(args === undefined ? {} : { args }), ...(after === undefined ? {} : { after }), ...(cells === undefined ? {} : { cells }) });
   }
 
-  // A faculty the hand may call: the ground's own, or one of the ladder that stands with an object.
+  // A faculty the hand may call: the ground's own, or a body of the ladder that offers an object.
   #callable(name: string): { readonly blueprint: unknown; readonly object: object } | string {
     const own = this.#own.get(name);
     if (own !== undefined) return own;
-    const stood = this.#stood.get(name);
-    if (stood === undefined) return `no faculty ${name}`;
-    if (stood.faculty === undefined) return `the faculty ${name} is down: ${stood.why}`;
-    const { blueprint, object } = stood.faculty;
+    const stood = this.#standing(name);
+    if (typeof stood === 'string') return stood;
+    const { blueprint, object } = stood;
     return blueprint === undefined || object === undefined ? `${name} offers no methods` : { blueprint, object };
   }
 
   /**
-   * What the ground's hand shows its owner: every faculty with its methods,
-   * or why it is down, each method's description, args, result and hints,
-   * and every house. A face reads it and needs no code of its own for any
-   * of them.
+   * What the ground's hand shows its owner: every body with its methods, what
+   * it serves, or why it is down, each method's description, args, result
+   * and hints, and every house. A face reads it and needs no code of its own
+   * for any of them.
    */
   describe(): { readonly faculties: Readonly<Record<string, Json>>; readonly houses: readonly Standing[] } {
     const shown = (value: unknown): Json => {
@@ -794,8 +1064,9 @@ export class Ground {
     const faculties: Record<string, Json> = {};
     for (const [name, own] of this.#own) faculties[name] = shown(own.blueprint);
     for (const [name, stood] of this.#stood) {
-      if (stood.faculty === undefined) faculties[name] = { why: stood.why ?? 'down' };
-      else faculties[name] = stood.faculty.blueprint === undefined ? { methods: {} } : shown(stood.faculty.blueprint);
+      if (stood.body === undefined) faculties[name] = { why: stood.why ?? 'down' };
+      else if (stood.body.serves !== undefined) faculties[name] = { serves: stood.body.serves, methods: {} };
+      else faculties[name] = stood.body.blueprint === undefined ? { methods: {} } : shown(stood.body.blueprint);
     }
     return { faculties, houses: this.list() };
   }
@@ -828,9 +1099,9 @@ export class Ground {
   }
 
   /**
-   * The one handler the ground's listener chains: each standing faculty's
-   * handler in the ladder's order, read as each request arrives, so a
-   * faculty stood while the ground runs is served at once.
+   * The one handler the ground's listener chains: each standing body's
+   * handler in the ladder's order, read as each request arrives, so a body
+   * raised while the ground runs is served at once.
    */
   readonly handler: Handler = {
     fetch: async (request) => {
@@ -849,18 +1120,36 @@ export class Ground {
     },
   };
 
+  // Each standing body's handler, which opens every house naming the body before it takes a request, so its tokens answer on a ground woken per event.
   #handlers(): readonly Handler[] {
-    return [...this.#stood.values()].flatMap((stood) => (stood.faculty?.handler === undefined ? [] : [stood.faculty.handler]));
+    return [...this.#stood].flatMap(([name, stood]) => {
+      const handler = stood.body?.handler;
+      if (handler === undefined) return [];
+      const naming = () => Promise.all(Object.entries(this.#drawer.houses).flatMap(([house, entry]) => ((entry.faculties ?? []).includes(name) ? [this.#woken(house)] : [])));
+      return [
+        {
+          fetch: async (request: Request) => {
+            await naming();
+            return handler.fetch(request);
+          },
+          upgrade: (request: Request) => {
+            void naming();
+            return handler.upgrade?.(request) ?? null;
+          },
+        },
+      ];
+    });
   }
 
-  /** Every house closed through its bodies, then every faculty stopped, in the reverse of the ladder. */
+  /** Every house closed through its views, then every body taken down in the reverse of the ladder, the primordial last. */
   async close(): Promise<void> {
     const held = [...this.#houses.values()].reverse();
     this.#houses.clear();
     for (const one of held) await this.#close(one);
     const stood = [...this.#stood.values()].reverse();
     this.#stood.clear();
-    for (const one of stood) await one.faculty?.stop?.();
+    for (const one of stood) await one.body?.down?.();
+    for (const one of [...this.#primordial].reverse()) await one.down?.();
   }
 
   // ---- the ground's own faculties ----
@@ -874,33 +1163,37 @@ export class Ground {
     }
   }
 
+  static #ward(name: string, standing: Standing): { ward: string } {
+    if (standing.ward === undefined) throw new Error(`the house ${name} did not open: ${standing.why}`);
+    return { ward: standing.ward };
+  }
+
   #housesFaculty(): object {
     return {
-      add: ({ name, ...entry }: { name: string } & Entry) =>
-        Ground.#answer(async () => {
-          const standing = await this.add(name, entry);
-          if (standing.ward === undefined) throw new Error(`the house ${name} did not open: ${standing.why}`);
-          return { ward: standing.ward };
-        }),
+      add: ({ name, ...entry }: { name: string } & Entry) => Ground.#answer(async () => Ground.#ward(name, await this.add(name, entry))),
+      update: ({ name, ...entry }: { name: string } & Entry) => Ground.#answer(async () => Ground.#ward(name, await this.update(name, entry))),
       remove: ({ name }: { name: string }) => Ground.#answer(async () => (await this.remove(name), null)),
-      list: () => Ground.#answer(async () => this.list().map(({ name, ward, why }) => ({ name, ...(ward === undefined ? {} : { ward }), ...(why === undefined ? {} : { why }) }))),
+      list: () => Ground.#answer(async () => this.list().map(({ name, entry, ward, why }) => ({ name, entry: entry as unknown as Json, ...(ward === undefined ? {} : { ward }), ...(why === undefined ? {} : { why }) }))),
     };
   }
 
   #facultiesFaculty(): object {
+    const stood = (name: string, { why }: { readonly why?: string }): null => {
+      if (why !== undefined) throw new Error(`the faculty ${name} did not stand: ${why}`);
+      return null;
+    };
     return {
-      add: ({ name, ...entry }: { name: string } & FacultyEntry) =>
-        Ground.#answer(async () => {
-          const { why } = await this.stand(name, entry);
-          if (why !== undefined) throw new Error(`the faculty ${name} did not stand: ${why}`);
-          return null;
-        }),
+      add: ({ name, ...entry }: { name: string } & FacultyEntry) => Ground.#answer(async () => stood(name, await this.stand(name, entry))),
+      update: ({ name, ...entry }: { name: string } & FacultyEntry) => Ground.#answer(async () => stood(name, await this.restand(name, entry))),
+      restart: ({ name }: { name: string }) => Ground.#answer(async () => stood(name, await this.restart(name))),
       remove: ({ name }: { name: string }) => Ground.#answer(async () => (await this.unstand(name), null)),
       list: () =>
         Ground.#answer(async () =>
-          Object.keys(this.#drawer.faculties).map((name) => {
-            const why = this.#stood.get(name)?.why;
-            return { name, ...(why === undefined ? {} : { why }) };
+          Object.entries(this.#entries()).map(([name, entry]) => {
+            const held = this.#stood.get(name);
+            const serves = held?.body?.serves;
+            const why = held?.why;
+            return { name, entry: entry as unknown as Json, ...(serves === undefined ? {} : { serves }), ...(why === undefined ? {} : { why }) };
           }),
         ),
     };
@@ -940,11 +1233,9 @@ export class Ground {
         }),
       in: ({ name, seed, places, ...given }: { name: string; seed: string; places: Record<string, Record<string, string>> } & Entry) =>
         Ground.#answer(async () => {
-          if (!NAME.test(name)) throw new TypeError(`a house is named with ${NAMED}`);
           if (!/^[0-9a-f]{64}$/.test(seed)) throw new TypeError('a seed is sixty-four lowercase hex digits');
           if (this.#houses.has(name)) throw new Error(`the house ${name} stands here already`);
-          const entry = entryOf(given);
-          if (typeof entry === 'string') throw new TypeError(entry);
+          const entry = this.#houseEntry(name, given);
           const store = await this.#houseMemory(name, entry);
           // A house moves into a memory of its own, never over another's places, and onto no other seed.
           if ((await store.list()).length > 0) throw new Error(`the memory for ${name} holds places already`);
@@ -964,9 +1255,7 @@ export class Ground {
           if (Object.keys(writes).length > 0 && (await store.write({ writes, expect: Object.fromEntries(Object.keys(writes).map((place) => [place, null])) })) === null) {
             throw new Error(`the memory for ${name} refused the places`);
           }
-          const standing = await this.add(name, entry);
-          if (standing.ward === undefined) throw new Error(`the house ${name} did not open: ${standing.why}`);
-          return { ward: standing.ward };
+          return Ground.#ward(name, await this.add(name, entry));
         }),
     };
   }

@@ -27,7 +27,7 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
     host: 'pi',
     names: ['garage.local'],
     modules: { pi },
-    registry: { faculties: { bridge: ({ memory }) => bridge({ command: 'python3', args: [relay], cwd: pin, memory }) } },
+    registry: { faculties: { bridge: { up: ({ memory }) => bridge({ command: 'python3', args: [relay], cwd: pin, memory }) } } },
   });
   t.after(() => garage.down());
   // The relay, granted to the twin's class alone.
