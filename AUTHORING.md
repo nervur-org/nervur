@@ -893,10 +893,10 @@ at her call, or where an ask arrives.
 
 - A being reaching anything her position, her needs and `this.house` do
   not give.
-- A ground's own references handed to a being, or offered to her as a
+- A foundation reference handed to a being, or offered as a custom
   faculty.
 - A handle or an invitation in her cells.
-- Her cells read by anyone but the owner's hand.
+- Her cells read by anyone but the hand.
 - A standing she mints herself. Standings arrive from the house.
 - A far standing asked in the ask that took it. She asks it from her next
   ask.
@@ -908,7 +908,7 @@ at her call, or where an ask arrives.
 - A method landing in a state its `to` does not name.
 - A `readOnly` ask that writes.
 - A need and an offer that disagree on `idempotent`.
-- A schema keyword outside the subset `s` writes.
+- A schema keyword outside the subset. The subset is what `s` writes.
 - Two offers covering one need for one kind, and a kind two sources
   claim.
 - An effect sent before its ask landed, or sent again while a call for
@@ -927,7 +927,8 @@ at her call, or where an ask arrives.
 - An entry named `dock`, for a house or a faculty. The dock is the
   library's.
 - A secret or a move asked by anyone but the hand.
-- A grant naming a faculty or a secret the ground does not hold.
+- A grant naming a being the dock does not hold. A faculty and a secret
+  stand there as beings.
 - A secret's cells read through the hand.
 - An entry naming, making or granting `ground` or `shell`. Both are the
   dock's alone.
