@@ -79,9 +79,15 @@ test('It refuses an address whose face does not import, or shows not exactly one
 
 test('The bench imports an address as a NodeGround does: a NodeGround stands and refuses the same addresses from the same install', { timeout: 20_000 }, async (t) => {
   const folder = await mkdtemp(join(tmpdir(), 'image-'));
-  t.after(() => rm(folder, { recursive: true, force: true }));
-  const ground = await NodeGround.open({ folder, env: { NERVUR_STATE: join(folder, 'state') } });
-  t.after(() => ground.close());
+  const ground = await NodeGround.open({ folder, env: { NERVUR_STATE: join(folder, 'state') } }).catch(async (error: unknown) => {
+    await rm(folder, { recursive: true, force: true });
+    throw error;
+  });
+  // The ground closes before its folder goes, since the hooks run in the order they were named.
+  t.after(async () => {
+    await ground.close();
+    await rm(folder, { recursive: true, force: true });
+  });
   const hand: Hand = (request) => ground.ground.hand(request);
   const { added, said, terrain } = await proven(hand);
   assert.deepEqual(added, { result: {} });
