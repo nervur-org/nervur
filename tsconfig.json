@@ -2,10 +2,13 @@
   // The package, its sources and its suites, checked by `check` wherever
   // the package stands alone. `deep/` needs tools only this repository's
   // root carries, a browser and a bundler, so `deep/tsconfig.json` checks
-  // it when `deep` runs.
+  // it when `deep` runs. The paths name the package's own source, so a
+  // fixture standing as a package of its own still reads `nervur` where
+  // the package stands alone, with no workspace to resolve it.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "customConditions": ["nervur-source"]
+    "customConditions": ["nervur-source"],
+    "paths": { "nervur": ["./src/index.ts"], "nervur/*": ["./src/*/index.ts"] }
   },
   "include": ["src", "test"]
 }

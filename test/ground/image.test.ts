@@ -18,12 +18,19 @@ const PARROT = '@acme/parrot/faculties/parrot';
 const modules = fileURLToPath(new URL('../../node_modules', import.meta.url));
 const made = !existsSync(modules);
 
-// The fixture installed beside nervur, as an image installs a library, and taken away after.
+// The fixture installed beside nervur, as an image installs a library, and taken away after. Where the
+// package stands alone, nothing installs nervur by its name, so it is linked beside the fixture too.
+const self = join(modules, 'nervur');
+const linked = !existsSync(self);
 before(async () => {
   await mkdir(join(modules, '@acme'), { recursive: true });
   await symlink(fileURLToPath(new URL('../fixtures/image', import.meta.url)), join(modules, '@acme', 'parrot'), 'dir');
+  if (linked) await symlink(fileURLToPath(new URL('../..', import.meta.url)), self, 'dir');
 });
-after(() => rm(made ? modules : join(modules, '@acme'), { recursive: true, force: true }));
+after(async () => {
+  if (linked && !made) await rm(self, { force: true });
+  await rm(made ? modules : join(modules, '@acme'), { recursive: true, force: true });
+});
 
 type Hand = (request: { method: string; args?: NonNullable<Parameters<BenchGround['hand']>[0]['args']> }) => Promise<unknown>;
 
