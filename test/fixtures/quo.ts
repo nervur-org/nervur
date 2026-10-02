@@ -1,15 +1,12 @@
-// Where `quo/` stands: the nearest folder above the package holding
-// `quo/SPEC.md`. Here that is the repository root; in the public
-// repository's gate it is the folder `nervur` and `quo` are checked out in.
+// Where Quo's verifier and vectors stand: in `quo/` beside the kit, Quo's
+// own repository at the commit the kit's manifest pins, with the verifier
+// and the vectors at its root. The check fetches it there first, once, and
+// every test reads it offline.
 import { existsSync } from 'node:fs';
 
-const find = (): URL => {
-  for (let at = new URL('../../', import.meta.url); at.pathname !== '/'; at = new URL('../', at)) {
-    const quo = new URL('quo/', at);
-    if (existsSync(new URL('SPEC.md', quo))) return quo;
-  }
-  throw new Error('no folder above the package holds quo/SPEC.md');
-};
+const quo = new URL('../../../quo/', import.meta.url);
+if (!existsSync(new URL('SPEC.md', quo)) || !existsSync(new URL('verifier/cli.js', quo))) throw new Error('Quo stands nowhere beside the kit: node quo.mjs fetches it at its pin');
 
-/** The `quo/` folder, ending in a slash. */
-export const quo = find();
+/** The folders of Quo's verifier and of its vectors, each ending in a slash. */
+export const verifier = new URL('verifier/', quo);
+export const vectors = new URL('vectors/', quo);

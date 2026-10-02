@@ -3,13 +3,18 @@
 // HKDF and AES-GCM from Web Crypto.
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
-import type { Crypto } from '../foundation.ts';
+import { s } from '../being/schema.ts';
+import { Faculty } from '../faculty.ts';
+import { Crypto } from '../foundation.ts';
 
 const subtle = globalThis.crypto.subtle;
 const ascii = new TextEncoder();
 const view = (bytes: Uint8Array): Uint8Array<ArrayBuffer> => new Uint8Array(bytes);
 
-export class NobleCrypto implements Crypto {
+export class NobleCrypto extends Faculty implements Crypto {
+  static override readonly blueprint = Crypto;
+  static override readonly takes = { args: s.object({}) };
+
   random(length: number): Uint8Array {
     const out = new Uint8Array(length);
     for (let at = 0; at < length; at += 65_536) globalThis.crypto.getRandomValues(out.subarray(at, Math.min(length, at + 65_536)));

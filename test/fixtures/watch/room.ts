@@ -6,12 +6,12 @@ export const Message = s.object({ from: s.string(), text: s.string() });
 
 /** What a reader watches: the room's messages, and nothing else. */
 export const Messages = need('messages', {
-  messages: { hints: { readOnly: true }, result: s.array(Message) },
+  messages: { readOnly: true, result: s.array(Message) },
 });
 
 /** What a member calls: the messages, and a post, which is an effect. */
 export const Chat = need('chat', {
-  messages: { hints: { readOnly: true }, result: s.array(Message) },
+  messages: { readOnly: true, result: s.array(Message) },
   post: { args: s.object({ text: s.string() }) },
 });
 
@@ -24,7 +24,7 @@ export class Room extends Being.of({
   asks: {
     post: { for: 'member', args: s.object({ text: s.string() }) },
     retitle: { for: 'member', args: s.object({ topic: s.string() }) },
-    messages: { for: ['member', 'handle'], hints: { readOnly: true }, result: s.array(Message) },
+    messages: { for: ['member', 'handle'], readOnly: true, result: s.array(Message) },
     door: { for: 'member', result: s.object({ handle: s.handle() }) },
   },
 }) {

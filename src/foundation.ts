@@ -110,6 +110,19 @@ export interface Classes {
   public(): string | undefined;
 }
 
+/**
+ * Where a house's classes load from, as a runner loads them in a thread of
+ * its own: each module by its URL, and the kinds of the steward and the
+ * public being where the first module's `steward` and `public` are not
+ * them. Every class of `Being.of` a module exports, by any name or in its
+ * `beings`, is one of the house's classes.
+ */
+export interface ClassesSource {
+  readonly modules: readonly string[];
+  readonly steward?: string;
+  readonly public?: string;
+}
+
 /** Boxes to far wards, and the addresses the house writes into an invitation. */
 export interface Carry {
   /**
@@ -144,3 +157,30 @@ export interface Clock {
   wait(options: { id: string; ms: number }): Promise<boolean>;
   cancel(options: { id: string }): void;
 }
+
+/**
+ * A contract of the foundation, as a faculty names it for its blueprint:
+ * the part of a house or of the ground its body fills. The ground reads
+ * it and asks nothing else.
+ */
+export interface Contract {
+  readonly contract: 'unlock' | 'memory' | 'crypto' | 'tools' | 'hand' | 'carry' | 'clock' | 'classes' | 'installer' | 'rung';
+}
+
+const contract = (name: Contract['contract']): Contract => Object.freeze({ contract: name });
+
+// Each contract's value beside its interface, so a faculty writes `static blueprint = Memory`.
+export const Crypto = contract('crypto');
+export const Tools = contract('tools');
+export const Memory = contract('memory');
+export const Classes = contract('classes');
+export const Carry = contract('carry');
+export const Clock = contract('clock');
+/** A body that holds more faculties and serves nothing else: a module, a repository, a program's catalogue. */
+export const Rung = contract('rung');
+
+/** Whether a blueprint is a contract of the foundation. */
+export const contractOf = (blueprint: unknown): Contract['contract'] | undefined =>
+  typeof blueprint === 'object' && blueprint !== null && typeof (blueprint as Partial<Contract>).contract === 'string' ? (blueprint as Contract).contract : undefined;
+
+export { contract as foundationContract };

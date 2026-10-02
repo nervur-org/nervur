@@ -25,6 +25,7 @@ const houses = async (t: Parameters<typeof groundOne>[0]) => {
 
 test('A faculty hands her a paper in her ask’s args, and she takes it', async (t) => {
   const { mailbox, carols, hers } = await houses(t);
+  await mailbox.watched;
   const answer = await mailbox.arrive(JSON.stringify({ invitation: await paper(carols, 'carol', 'for-mail') }));
   assert.deepEqual(answer, { result: null });
   assert.equal(await being(hers, 'alice', 'greetMail'), 'carol greets for-mail');

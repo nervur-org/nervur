@@ -3,7 +3,7 @@ import { Being, need, s, type Args } from 'nervur/being';
 
 /** The face, as the steward arms it with a handle to her signup. */
 const Face = need('face', {
-  arm: { args: s.object({ signup: s.handle() }), hints: { idempotent: true } },
+  arm: { args: s.object({ signup: s.handle() }), idempotent: true },
 });
 
 /** A member declares the face, so its doors reach her. */
@@ -13,12 +13,13 @@ export class Desk extends Being.of({
   kind: 'com.example.desk',
   needs: { face: Face },
   asks: {
-    arm: { for: 'root', hints: { idempotent: true } },
+    arm: { for: 'root', idempotent: true },
     signup: { for: 'handle', args: s.object({ name: s.string() }), result: s.object({ door: s.handle() }) },
   },
 }) {
   async arm() {
-    await this.face.arm({ signup: this.handle('signup') });
+    const { error } = await this.face.arm({ signup: this.handle('signup') });
+    if (error) this.fail(error.message);
   }
 
   // Each person is one member, and the face holds one door on her.
@@ -35,7 +36,7 @@ export class Member extends Being.of({
   cells: { visits: 0 },
   roles: { person: (asker) => asker.steward.person === true },
   asks: {
-    hello: { for: 'person', hints: { readOnly: true }, description: 'Greets the person.', result: s.string() },
+    hello: { for: 'person', readOnly: true, description: 'Greets the person.', result: s.string() },
     visit: { for: 'person', description: 'Counts one visit.', result: s.integer() },
     leave: { for: 'person', description: 'Lets this door go.' },
   },

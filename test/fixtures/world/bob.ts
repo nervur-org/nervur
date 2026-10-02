@@ -6,7 +6,7 @@ import { MailBlueprint } from './mailbox.ts';
 
 /** What Bob asks Alice: to take a paper, which is safe to repeat. */
 const Taker = need('taker', {
-  accept: { args: s.object({ invitation: s.handle() }), hints: { idempotent: true } },
+  accept: { args: s.object({ invitation: s.handle() }), idempotent: true },
 });
 
 export class Bob extends Being.of({
@@ -15,9 +15,9 @@ export class Bob extends Being.of({
   cells: { alice: '' },
   asks: {
     born: {},
-    accept: { args: s.object({ invitation: s.handle() }), hints: { idempotent: true } },
+    accept: { args: s.object({ invitation: s.handle() }), idempotent: true },
     received: { for: 'handle', args: s.object({ invitation: s.invitation() }) },
-    standingsList: { hints: { readOnly: true, idempotent: true }, result: s.array(s.string()) },
+    standingsList: { readOnly: true, result: s.array(s.string()) },
   },
 }) {
   standingsList() {
@@ -28,7 +28,8 @@ export class Bob extends Being.of({
   }
 
   async born() {
-    await this.mail.watch({ inbox: this.handle('received') });
+    const { error } = await this.mail.watch({ inbox: this.handle('received') });
+    if (error) this.fail(error.message);
   }
 
   accept({ invitation }: Args<Bob, 'accept'>) {
@@ -37,6 +38,7 @@ export class Bob extends Being.of({
 
   // The paper stays paper in his hands, and Alice is the one who takes it.
   async received({ invitation }: Args<Bob, 'received'>) {
-    await this.held(this.cells.alice, Taker).accept({ invitation });
+    const { error } = await this.held(this.cells.alice, Taker).accept({ invitation });
+    if (error) this.fail(error.message);
   }
 }

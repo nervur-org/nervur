@@ -15,21 +15,21 @@ secret. The part of a ground that answers it is its unlock. Everything
 else the ground keeps is sealed under that key.
 
 **It unpacks in layers, each a faculty.** Every faculty has one
-lifecycle. A registry holds faculties by name, each an object `{ takes?,
-up, install? }`. Standing one raises it by its `up` into a body, the
-living instance houses and other bodies use. `install` does the slow
-work once for each entry, and a body's `down` lets go of what its `up`
-opened.
+lifecycle. A registry holds faculties by name, each a class extending
+`Faculty`. Standing one makes an instance of it, the body, which houses
+use and other bodies call by name. `install` does the slow work once for
+each entry, `up` opens what the body holds, and `down` lets go of it.
+Each hook answers `{ ok, why? }`, and a throw is read as not ok.
 
 | Layer | Its faculties | What they are |
 | --- | --- | --- |
 | primordial | the memory, the unlock, crypto, tools, the clock | the host's, read from the environment alone |
-| the ground's work | `ground` | the library's, offered to the dock alone |
-| the dock | a house of the library's beings | the drawer, and the hand's one road |
+| the ground's work | `ground` | the library's: its work offered to the dock, and its houses to a house that grants it |
+| the dock | a house of the library's beings, and yours where you name them | every entry, seed, secret and setting, and the hand's one road |
 | the ladder | the terrain's defaults and your entries | carries, code, and every custom faculty |
 | the hand | a socket, a key, a channel | the owner's reach, up last and down first |
 
-**It keeps its drawer as cells of the dock's beings.** The dock is a
+**It keeps its state as cells of the dock's beings.** The dock is a
 house every ground stands, and its beings are the library's. A twin
 stands for each faculty entry, a being for each house, and one for each
 secret. Their cells hold every entry, what each faculty installed, each
@@ -40,8 +40,9 @@ ask. No row of the ground's stands beside them.
 and the faculties it uses, and a faculty's registry, its callees and its
 secrets, are relations between those beings. The dock's steward
 introduces each, and her notes name the grant. An entry that names a
-faculty or a secret the dock does not hold is refused, and nothing
-lands.
+faculty the dock does not hold is refused, and nothing lands. A secret
+it names that the dock does not hold is borne with no value, waiting to
+be set.
 
 **Its houses keep their places in the same memory.** The dock, each
 house and each faculty sees a view of the ground's memory under a prefix
@@ -52,9 +53,14 @@ no dock in is refused.
 
 **It stands its bodies on a ladder.** The ground's own registry is its
 terrain's. A body may carry a registry of its own, and the faculties an
-entry raises `from` it stand after it. A body stands after each body its
-entry names in `faculties`, whose objects its `up` receives. A body that
-fails to stand stays down and says why, and the ground boots beside it.
+entry raises `from` it stand after it. A body calls each body its entry
+names in `faculties` through `this.made.call`, and stands after each of
+them. An entry with no `from` may name a faculty installed beside
+`nervur` by its address, a package, `faculties`, then one folder. The
+ground imports it and stands the one faculty that folder's index
+exports. A body that fails to stand stays down and says why, and the
+ground boots beside it. A house naming a custom body that is down opens
+all the same, and each call to that body answers an error naming why.
 
 **Its terrain names default entries, and yours win.** Each ground stands
 its carries and its bodies of code from entries of its own. Its one
@@ -62,6 +68,7 @@ clock is primordial, which the dock and every house receive.
 An entry you land under the same name stands in its place.
 
 ```text
+layout    { make: '@nervur-org/proof/faculties/layout' }
 recipe    { from: 'folder', make: 'module', args: { at: 'recipe.ts' } }
 payments  { from: 'recipe', make: 'payments', secrets: ['stripe-key'], kinds: ['com.acme.order'] }
 ```
@@ -95,14 +102,16 @@ reaches one house and one class inside it.
 and kept in a being's cells. A faculty's entry names the secrets its
 `up` receives, and no other code reads one. The hand lists their names
 and the entries that name each, and never a value. A secret's cells are
-shown to no one, and a changed secret reaches a body when it goes up
-again.
+shown to no one. Setting or removing a secret raises again each body
+whose entry names it, with the bodies and houses above it. So a key set
+brings its faculty up with no restart.
 
 **It holds each entry to what its faculty takes.** A faculty declares
-`takes`: a schema its args meet, and the secrets its entry must name.
-The hand refuses an entry that fails it, or that names a secret not
-kept, and says what failed. `facultiesCatalog` shows every faculty the
-ground can raise, and what each takes.
+`takes`: a schema its args meet, and the secrets it takes. The hand
+refuses an entry whose args fail, and says what failed. A secret is
+never refused: a body that reads one not kept stays down, and its why
+names the secret it waits for. `facultiesCatalog` shows every faculty
+the ground can raise, and what each takes.
 
 **It hooks every door and runs one listener.** Each house's door goes to
 the ground's carry, which also delivers between the ground's own houses
@@ -112,12 +121,20 @@ the ground runs is served at once.
 
 **The dock's steward reaches the ground through two faculties.** The
 `ground` faculty raises and lowers bodies, opens and closes houses,
-shows the catalogue and moves a house's places. It is offered to the
-dock's beings alone. The `shell` runs a command on the ground's machine,
-where the terrain has one. The dock is offered it as any house is
-offered a body. Its steward stands on the shell's twin, and the twin's
-entry grants it to the dock's shell being alone. No entry names, makes
-or grants either.
+shows the catalogue and moves a house's places. Its work is offered to
+the dock's beings alone. The `shell` runs a command on the ground's
+machine, where the terrain has one. The dock is offered it as any house
+is offered a body. Its steward stands on the shell's twin, and the
+twin's entry grants it to the dock's shell being alone. No faculty
+entry names or makes either, and no entry grants the shell.
+
+**A house that manages houses is granted the `ground`.** Its entry names
+`ground` in its faculties, as `faculties: ['ground']`. Its beings are
+then offered `GroundHouses`, the need `nervur/being` exports. It adds,
+updates, removes and lists every other house of its own ground, and
+invites onto a house's steward with `housesInvite`. Those are a pilot's
+houses asks, and never a faculty's, a secret's or a move. No house asks
+anything of itself through it, so none grants itself more.
 
 **A boot writes only what moved.** Each twin raises its body by a read,
 and her cells are written only where what came of it differs. So a wake
@@ -132,9 +149,11 @@ faculty with its methods or why it is down, and every house.
 | The dock's asks | What they do | Who asks them |
 | --- | --- | --- |
 | `housesAdd`, `housesUpdate`, `housesRemove`, `housesList` | the houses | `root`, and a pilot |
+| `housesInvite` | a new occupant of a house's steward, answered as an invitation | `root`, and a pilot |
 | `facultiesAdd`, `facultiesUpdate`, `facultiesRestart`, `facultiesRemove`, `facultiesList` | the faculties | `root`, and a pilot |
 | `facultiesCatalog` | every faculty the ground can raise, and what it takes | `root`, and a pilot |
 | `waitSet`, `waitShow` | the ground's bound on every ask | `root`, and a pilot |
+| `classesSet`, `classesShow` | your own dock classes, and why they did not load | `root` alone |
 | `secretsSet`, `secretsRemove`, `secretsList` | the secrets | `root` alone |
 | `movesOut`, `movesIn` | a house moved between grounds | `root` alone |
 | `callFaculty` | a faculty's method, called by name | `root` alone |
@@ -150,9 +169,22 @@ answered, and runs nothing twice.
 invitation to the dock's steward, and the owner hands it to one being.
 That being then holds a standing on the dock, and asks the houses and
 faculties asks through it. Her class reaches them typed with
-`this.held(id, DockPilot)`, the need `nervur` exports. Secrets, moves,
+`this.held(id, DockPilot)`, the need `nervur/being` exports. Secrets, moves,
 the shell and faculties' methods stay the hand's alone. A secret passes
 through `secretsSet`, which answers nothing, so no answer holds one.
+
+**It takes species of yours into its dock.** `classesSet` names a body
+of the ladder that serves classes, as `{ faculty: 'code', at:
+'species/dock' }`. Once the ladder stands, the dock opens again on the
+library's classes joined to yours. A steward of yours extends
+`dockSteward({ asks, needs, cells })` from `nervur`, and adds without
+overriding. Your beings take kinds of their own. A body whose entry's
+`kinds` name one of them is offered to them. Your code reaches your own
+beings alone, never a secret, a seed or an ask that is `root`'s alone.
+Classes that fail to load leave the dock on the library's, and
+`classesShow` says why. `Bench.check(Steward, { position: 'dock', module
+})` proves your steward alone. It names your classes, runs your asks and
+examples through the hand, and finds any secret they carry.
 
 **It moves a house by its seed and its memory.** `movesOut` takes a
 house out as its seed and every place of its memory, and another ground
@@ -178,7 +210,7 @@ each ground hands its houses.
 for each house, and each module or program your entries name. Its
 `state/` holds the key, the ground's ledger and the hand's socket. A
 house's folder has an `index` that exports its `steward`, and `public`
-and `beings` where it has them, as [Writing for nervur](AUTHORING.md)
+and `beings` where it has them, as [Writing a species](AUTHORING.md)
 shows. The ground's folder is an ES module package, so its
 `package.json` says `"type": "module"`. It listens on TCP and, where a
 port is set, on the web. [The command](COMMAND.md) lists its settings
@@ -187,21 +219,19 @@ and runs its hand.
 **Its registry holds its terrain's faculties.** `folder` serves each
 house its classes from a folder inside the code folder its args name.
 Its body carries a registry of two more, rooted there. `module` imports
-a module as a registry, whose `faculties` export holds `{ up, install?
-}` by name. `bridge` starts a program, in any language, and hands it the
+a module as a registry, whose `faculties` export holds faculty classes
+by name. `bridge` starts a program, in any language, and hands it the
 secrets its entry names as its environment. An entry stands either with
-`from: 'folder'`. `tcp` and `web` are its carries, `listener` its one
-listener, and `shell` its shell. Its clock is the library's, and
-primordial.
+`from: 'folder'`. `tcp` and `web` are its carries, and `shell` its
+shell. The web serves the ground's one listener, which every body
+receives. Its clock is the library's, and primordial.
 
-**Its code gives the default entries.** `folder`, `listener`, `tcp`,
-`web` and `shell` stand from entries the library fixes. TCP
-listens on the loopback at 9110, so nothing beyond the machine reaches
-a new ground. A server names its bind through the hand. The web names
-`listener` in its `faculties` and listens on no port. An entry of the
-same name you land stands in their place, so a port changes through the
-hand. Name
-`listener` there too, since the web serves the listener it calls.
+**Its code gives the default entries.** `folder`, `tcp`, `web` and
+`shell` stand from entries the library fixes. TCP listens on the
+loopback at 9110, so nothing beyond the machine reaches a new ground. A
+server names its bind through the hand. The web listens on no port. An
+entry of the same name you land stands in their place, so a port
+changes through the hand.
 
 **A port another process holds keeps that carry down with why.** The
 ground boots beside it until the hand moves the port. A `tcp` entry
@@ -312,4 +342,4 @@ secret store.
 gives them names as DNS does, and carries every box between them on one
 clock the test moves. It cuts, slows, drops and repeats boxes, and turns
 a ground off and on. So one test proves the same classes at every
-distance. [Writing for nervur](AUTHORING.md) tests the shop on it.
+distance. [Writing a species](AUTHORING.md) tests a world on it.

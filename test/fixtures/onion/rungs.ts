@@ -2,68 +2,83 @@
 // is the first, stood by the folder's faculty `module`. Its `b-reg`
 // carries the second, whose `c-reg` carries the third, whose `leaf` offers
 // beings a greeting signed by the body of `b-reg`, which it calls through
-// its entry. Each rung declares what it takes, args and a secret, and
-// notes its `up` in `ups`, so a test reads the ladder's order. `side`
+// its entry. Each rung declares what it takes, args and a secret, reads
+// its secret at its `up`, and notes the `up` in `ups` once the secret is
+// read, so a test reads the ladder's order. `side`
 // serves each house that names it a ledger of its own, in the folder its
 // args name.
 import { join } from 'node:path';
-import type { Faculty, Registry } from 'nervur';
+import { Faculty, Memory, OK, Rung, type ForHouse, type Registry, type Status } from 'nervur';
 import { need, s } from 'nervur/being';
 import { LedgerMemory } from 'nervur/node';
+import { Leaf } from './leaf.ts';
 
 /** The name of each rung, in the order the ladder raised it. */
 export const ups: string[] = [];
 
 export const Signer = need('org.example.onion.signer', {
-  sign: { args: s.object({ text: s.string() }), result: s.string(), hints: { idempotent: true } },
+  sign: { args: s.object({ text: s.string() }), result: s.string(), idempotent: true },
 });
 
-export const Leaf = need('org.example.onion.leaf', {
-  greet: { args: s.object({ name: s.string() }), result: s.string(), hints: { idempotent: true } },
-});
+export { Leaf };
 
-type Signing = { sign(args: { text: string }): Promise<{ result: string }> };
+class LeafFaculty extends Faculty {
+  static override readonly blueprint = Leaf;
+  static override readonly takes = { args: s.object({ greeting: s.string() }), secrets: { 'leaf-key': 'the seal it keeps' } };
+  #seal = '';
+  override up(): Status {
+    this.#seal = this.made.secrets['leaf-key'];
+    ups.push(this.made.name);
+    return OK;
+  }
+  override health(): Status {
+    return { ok: this.#seal.length > 0 };
+  }
+  async greet({ name: who }: { name: string }) {
+    const signed = await this.made.call({ faculty: 'b', method: 'sign', args: { text: `${String(this.made.args.greeting)}, ${who}` } });
+    return signed;
+  }
+}
 
-const leaf: Faculty = {
-  takes: { args: s.object({ greeting: s.string() }), secrets: { 'leaf-key': 'the seal it keeps' } },
-  up: ({ name, args, faculties }) => {
-    ups.push(name);
-    const signer = faculties.b as Signing;
-    return {
-      blueprint: Leaf,
-      object: { greet: async ({ name: who }: { name: string }) => ({ result: (await signer.sign({ text: `${String(args.greeting)}, ${who}` })).result }) },
-    };
-  },
-};
+const third: Registry = { faculties: { leaf: LeafFaculty } };
 
-const third: Registry = { faculties: { leaf } };
+class CReg extends Faculty {
+  static override readonly blueprint = Rung;
+  static override readonly takes = { args: s.object({ depth: s.integer() }), secrets: { 'c-key': 'the key of the third rung' } };
+  #key = '';
+  override readonly registry = third;
+  override up(): Status {
+    this.#key = this.made.secrets['c-key'];
+    ups.push(this.made.name);
+    return OK;
+  }
+  override health(): Status {
+    return { ok: this.#key.length > 0 };
+  }
+}
 
-const cReg: Faculty = {
-  takes: { args: s.object({ depth: s.integer() }), secrets: { 'c-key': 'the key of the third rung' } },
-  up: ({ name }) => {
-    ups.push(name);
-    return { registry: third };
-  },
-};
-
-const second: Registry = { faculties: { 'c-reg': cReg } };
+const second: Registry = { faculties: { 'c-reg': CReg } };
 
 // The second rung signs: its body carries a registry and offers a blueprint, and a signature says only how long its key is.
-const bReg: Faculty = {
-  takes: { args: s.object({ depth: s.integer() }), secrets: { 'b-key': 'the key the rung signs with' } },
-  up: ({ name, secrets }) => {
-    ups.push(name);
-    return {
-      registry: second,
-      blueprint: Signer,
-      object: { sign: async ({ text }: { text: string }) => ({ result: `${text} (signed with ${secrets['b-key'].length})` }) },
-    };
-  },
-};
+class BReg extends Faculty {
+  static override readonly blueprint = Signer;
+  static override readonly takes = { args: s.object({ depth: s.integer() }), secrets: { 'b-key': 'the key the rung signs with' } };
+  override readonly registry = second;
+  override up(): Status {
+    ups.push(this.made.name);
+    return OK;
+  }
+  async sign({ text }: { text: string }) {
+    return { result: `${text} (signed with ${this.made.secrets['b-key'].length})` };
+  }
+}
 
-const side: Faculty = {
-  takes: { args: s.object({ path: s.string() }) },
-  up: ({ args }) => ({ serves: 'memory', house: ({ house }) => new LedgerMemory(join(String(args.path), `${house}.ledger`)) }),
-};
+class Side extends Faculty {
+  static override readonly blueprint = Memory;
+  static override readonly takes = { args: s.object({ path: s.string() }) };
+  override house({ house }: ForHouse): LedgerMemory {
+    return new LedgerMemory(join(String(this.made.args.path), `${house}.ledger`));
+  }
+}
 
-export const faculties: Registry['faculties'] = { 'b-reg': bReg, side };
+export const faculties: Registry['faculties'] = { 'b-reg': BReg, side: Side };

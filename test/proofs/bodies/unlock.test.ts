@@ -52,7 +52,7 @@ test('FileUnlock refuses a key file others may read, and a key that is not sixty
   await assert.rejects(new FileUnlock(bad).key(), /sixty-four lowercase hex digits/);
 });
 
-test('SecretUnlock draws nothing: an edge whose secret is missing or malformed opens no drawer', () => {
+test('SecretUnlock draws nothing: an edge whose secret is missing or malformed opens no dock', () => {
   assert.throws(() => new SecretUnlock(undefined), /sixty-four lowercase hex digits/);
   assert.throws(() => new SecretUnlock('not a key'), /sixty-four lowercase hex digits/);
 });

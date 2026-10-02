@@ -5,7 +5,7 @@ site, an API, or a server of tools for an AI agent. It adds nothing new
 to the library. A face is a faculty with a handler on the ground's
 listener, and the person behind it is one occupant of one being. This
 guide writes one face that serves an API and tools together.
-[Writing for nervur](AUTHORING.md) teaches beings, and [Writing a
+[Writing a species](AUTHORING.md) teaches beings, and [Writing a
 faculty](FACULTIES.md) teaches faculties.
 
 ## Doors and tokens
@@ -41,7 +41,7 @@ import { Being, need, s, type Args } from 'nervur/being';
 
 /** The face, as the steward arms it with a handle to her signup. */
 const Face = need('face', {
-  arm: { args: s.object({ signup: s.handle() }), hints: { idempotent: true } },
+  arm: { args: s.object({ signup: s.handle() }), idempotent: true },
 });
 
 /** A member declares the face, so its doors reach her. */
@@ -51,12 +51,13 @@ export class Desk extends Being.of({
   kind: 'com.example.desk',
   needs: { face: Face },
   asks: {
-    arm: { for: 'root', hints: { idempotent: true } },
+    arm: { for: 'root', idempotent: true },
     signup: { for: 'handle', args: s.object({ name: s.string() }), result: s.object({ door: s.handle() }) },
   },
 }) {
   async arm() {
-    await this.face.arm({ signup: this.handle('signup') });
+    const { error } = await this.face.arm({ signup: this.handle('signup') });
+    if (error) this.fail(error.message);
   }
 
   // Each person is one member, and the face holds one door on her.
@@ -73,7 +74,7 @@ export class Member extends Being.of({
   cells: { visits: 0 },
   roles: { person: (asker) => asker.steward.person === true },
   asks: {
-    hello: { for: 'person', hints: { readOnly: true }, description: 'Greets the person.', result: s.string() },
+    hello: { for: 'person', readOnly: true, description: 'Greets the person.', result: s.string() },
     visit: { for: 'person', description: 'Counts one visit.', result: s.integer() },
     leave: { for: 'person', description: 'Lets this door go.' },
   },
@@ -106,16 +107,16 @@ tries again acts once.
 
 ```ts
 // api.ts
-import type { Body, FacultyContext, Handler } from 'nervur';
+import { Faculty, type FacultyContext, type Handler, type OpenedContext } from 'nervur';
 import { need, s, type Json } from 'nervur/being';
 
 type Answer = Awaited<ReturnType<FacultyContext['call']>>;
-type Entry = { method: string; description?: string; args?: Json; hints?: Json };
+type Entry = { method: string; description?: string; args?: Json; readOnly?: boolean; idempotent?: boolean; hints?: Record<string, Json> };
 type Calls = Pick<FacultyContext, 'call' | 'describe'>;
 
 /** What the steward arms the face with. */
 export const FaceBlueprint = need('face', {
-  arm: { args: s.object({ signup: s.handle() }), hints: { idempotent: true } },
+  arm: { args: s.object({ signup: s.handle() }), idempotent: true },
 });
 
 /**
@@ -124,7 +125,8 @@ export const FaceBlueprint = need('face', {
  * may ask, `POST /api/<ask>` asks it, and `POST /mcp` speaks the same
  * asks to an agent as tools.
  */
-export class Api {
+export class Api extends Faculty {
+  static override readonly blueprint = FaceBlueprint;
   #context: Calls | undefined;
   #signup = '';
 
@@ -135,7 +137,7 @@ export class Api {
   }
 
   // Told its house opened: every door's token answers from the first request, after any restart.
-  opened(context: Calls): void {
+  override opened(context: OpenedContext): void {
     this.#context = context;
   }
 
@@ -153,10 +155,11 @@ export class Api {
     const described = await this.#held().describe({ token });
     if (!('describe' in described)) return { error: described.error };
     const asks = (described.describe as { asks: Entry[] }).asks;
-    return { tools: asks.map(({ method, description, args, hints }) => ({ name: method, description: description ?? '', inputSchema: args ?? { type: 'object' }, annotations: hints ?? {} })) };
+    const annotations = ({ readOnly, idempotent, hints }: Entry): Json => ({ readOnly: readOnly === true, idempotent: idempotent === true, ...hints });
+    return { tools: asks.map((entry) => ({ name: entry.method, description: entry.description ?? '', inputSchema: entry.args ?? { type: 'object' }, annotations: annotations(entry) })) };
   }
 
-  readonly handler: Handler = {
+  override readonly handler: Handler = {
     fetch: async (request) => {
       const path = new URL(request.url).pathname;
       if (request.method === 'POST' && path === '/signup') {
@@ -183,32 +186,28 @@ export class Api {
     },
   };
 }
-
-/** The face as a body. */
-export const apiOffer = (api: Api): Body => ({ blueprint: FaceBlueprint, object: api, handler: api.handler, opened: (context) => api.opened(context) });
 ```
 
 **The describe maps onto tools by renaming.** An ask is a tool, its
 method the tool's name, its args schema the tool's input schema, and its
-hints the tool's annotations. A moved describe is a changed list of
-tools.
+`readOnly`, `idempotent` and hints the tool's annotations. A moved
+describe is a changed list of tools.
 
 ## The registry
 
-The ground raises the face from a registry by its `up`, as it raises any
-faculty. A NodeGround stands the module below with the faculty
+The face is a class extending `Faculty`, and a registry holds it by
+name. The ground makes it from its class, as it makes any faculty. A
+NodeGround stands the module below with the faculty
 `module`, and the face from it by an entry that names `from`. The
 house's entry names `face` among its faculties, and the steward's `arm`
 hands the face its signup.
 
 ```ts
 // recipe.ts
-import { Api, apiOffer } from './api.ts';
+import { Api } from './api.ts';
 
-// A registry: the ground raises the face by its `up` when an entry names it.
-export const faculties = {
-  face: { up: () => apiOffer(new Api()) },
-};
+// A registry: the ground makes the face from its class when an entry names it.
+export const faculties = { face: Api };
 ```
 
 ```bash
@@ -228,8 +227,9 @@ ground's hand, as an owner does.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import * as desk from './desk.ts';
 import { faculties } from './recipe.ts';
+
+const desk = new URL('./desk.ts', import.meta.url);
 
 test('A person signs up at the face, and reaches their member as an API and as tools', async (t) => {
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'desk', modules: { desk }, registry: { faculties } });

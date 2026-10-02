@@ -13,8 +13,12 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Json } from '../being/being.ts';
 import { s } from '../being/schema.ts';
-import { WebCarry, type Handler } from '../bodies/web-carry.ts';
-import { Ground, type FacultyEntry, type HandAsk, type Registry, type Unlock } from '../ground/ground.ts';
+import { WebCarry } from '../bodies/web-carry.ts';
+import type { Registry } from '../faculty.ts';
+import { Carry, Classes, Memory, Rung } from '../foundation.ts';
+import { forwarding, handOf } from '../ground/forwarding.ts';
+import { Ground, Hand, Unlock, type FacultyEntry, type HandAsk } from '../ground/ground.ts';
+import { engineStart } from '../ground/runner.ts';
 import { bridge } from './bridge.ts';
 import { FolderClasses } from './folder-classes.ts';
 import { handAt, serveHand } from './hand.ts';
@@ -31,7 +35,7 @@ export interface NodeGroundOptions {
   /** The folder of its state; `NERVUR_STATE`, or `<folder>/state`, where none is named. */
   readonly state?: string;
   /**
-   * What opens its drawer and its hand, and nothing else: `NERVUR_STATE`,
+   * What opens its dock and its hand, and nothing else: `NERVUR_STATE`,
    * `NERVUR_UNLOCK` and `NERVUR_HAND`. The process's own where none are
    * named. Every other setting is an entry the dock holds.
    */
@@ -39,6 +43,9 @@ export interface NodeGroundOptions {
   /** Its unlock, where the host opens the ground from its own code; `NERVUR_UNLOCK`'s, or the key file in its state, where omitted. */
   readonly unlock?: Unlock;
 }
+
+// The image's install: an address resolved from where `nervur` is installed, beside every library installed with it.
+const installed = (address: string): Promise<unknown> => import(address);
 
 // A path its entry names, held inside the ground's folder.
 const inside = (folder: string, named: Json | undefined, what: string): string => {
@@ -69,20 +76,14 @@ const SHELLED = ['PATH', 'HOME', 'USER', 'LANG', 'TERM', 'SHELL', 'TMPDIR'];
  */
 const folderRegistry = (root: string): Registry => ({
   faculties: {
-    module: {
-      takes: { args: s.object({ at: s.string() }) },
-      up: async ({ args }) => {
-        const module = (await import(pathToFileURL(inside(root, args.at, 'a module')).href)) as Registry;
-        return { registry: module.faculties === undefined ? {} : { faculties: module.faculties } };
-      },
-    },
-    bridge: {
-      takes: { args: s.object({ command: s.string(), args: s.optional(WORDS), cwd: s.optional(s.string()) }) },
-      up: ({ args, secrets, memory }) => {
-        const cwd = args.cwd === undefined ? root : inside(root, args.cwd, 'a program’s folder');
-        return bridge({ command: args.command as string, args: strings(args.args), env: secrets, cwd, memory });
-      },
-    },
+    module: forwarding({ blueprint: Rung, takes: { args: s.object({ at: s.string() }) } }, async ({ args }) => {
+      const module = (await import(pathToFileURL(inside(root, args.at, 'a module')).href)) as Registry;
+      return { registry: module.faculties === undefined ? {} : { faculties: module.faculties } };
+    }),
+    bridge: forwarding({ takes: { args: s.object({ command: s.string(), args: s.optional(WORDS), cwd: s.optional(s.string()) }) } }, ({ args, secrets, memory }) => {
+      const cwd = args.cwd === undefined ? root : inside(root, args.cwd, 'a program’s folder');
+      return bridge({ command: args.command as string, args: strings(args.args), env: secrets, cwd, memory });
+    }),
   },
 });
 
@@ -96,98 +97,73 @@ const folderRegistry = (root: string): Registry => ({
  */
 const nodeRegistry = (given: Unlock | undefined): Registry => ({
   faculties: {
-    'file-unlock': { takes: { args: s.object({ path: s.string() }) }, up: ({ args }) => ({ serves: 'unlock', object: new FileUnlock(args.path as string) }) },
-    'keychain-unlock': { takes: { args: s.object({ account: s.string() }) }, up: ({ args }) => ({ serves: 'unlock', object: new KeychainUnlock({ account: args.account as string }) }) },
-    ...(given === undefined ? {} : { 'given-unlock': { takes: NONE, up: () => ({ serves: 'unlock', object: given }) } }),
-    ledger: {
-      takes: { args: s.object({ path: s.string(), witness: s.optional(s.string()) }) },
-      // One instance for its folder: the lock is taken before the ledger opens, and let go when its body goes down.
-      up: async ({ args }) => {
-        const path = args.path as string;
-        await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-        const lock = await takeLock(dirname(path));
-        const witness = text(args.witness);
-        return { serves: 'memory', object: new LedgerMemory(path, witness === undefined ? {} : { witness }), down: () => lock.release() };
-      },
-    },
-    'socket-hand': {
-      takes: { args: s.object({ path: s.string() }) },
-      up: async ({ args, faculties }) => {
-        const ground = faculties.ground as { hand(request: HandAsk): Promise<unknown> };
-        const served = await serveHand((request) => ground.hand(request), args.path as string);
-        return { serves: 'hand', down: () => served.close() };
-      },
-    },
-    folder: {
-      takes: { args: s.object({ root: s.string() }) },
-      up: ({ args }) => {
-        const root = args.root as string;
-        return { serves: 'classes', house: ({ args: named }) => FolderClasses.open(inside(root, named.at, 'a folder of code')), registry: folderRegistry(root) };
-      },
-    },
-    tcp: {
-      takes: { args: s.object(CARRY) },
-      up: async ({ args }) => {
-        const addresses = strings(args.addresses);
-        const carry = new TcpCarry({
-          port: (args.port as number | undefined) ?? null,
-          host: text(args.bind) ?? LOOPBACK,
-          allowPrivate: args.allowPrivate === true,
-          ...(addresses.length === 0 ? {} : { addresses }),
-        });
-        // It binds here, so a port another holds keeps this body down with why, and the ground boots beside it.
-        await carry.open();
-        return { serves: 'carry', schemes: ['tcp'], object: carry, down: () => carry.close() };
-      },
-    },
-    web: {
-      takes: { args: s.object({ ...CARRY, origins: s.optional(WORDS) }) },
-      up: async ({ args, faculties }) => {
-        const bind = text(args.bind) ?? LOOPBACK;
-        const named = strings(args.addresses);
-        const listens = args.port as number | undefined;
-        let http: Served | undefined;
-        const carry = new WebCarry({
-          allowPrivate: args.allowPrivate === true,
-          origins: strings(args.origins),
-          addresses: named.length > 0 ? named : () => (http === undefined ? [] : [`http://${bind === '0.0.0.0' ? '127.0.0.1' : bind}:${http.port}/quo`]),
-        });
-        // The ground's one listener, as the body its entry calls offers it: this carry's handler and every face's, chained.
-        const listener = faculties.listener as Handler | undefined;
-        if (listens !== undefined) {
-          if (listener === undefined) throw new Error('a web carry listens on a port where its entry names the listener in its faculties');
-          http = await serveHttp({ port: listens, host: bind }, [listener]);
-        }
-        const served = http;
-        return {
-          serves: 'carry',
-          schemes: ['https', 'http', 'wss', 'ws'],
-          object: carry,
-          handler: carry,
-          ...(served === undefined ? {} : { port: served.port }),
-          down: () => served?.close(),
-        };
-      },
-    },
-    shell: {
-      takes: { args: s.object({ root: s.string(), env: s.optional(WORDS) }) },
-      up: ({ args }) => shell({ root: args.root as string, env: args.env === undefined ? SHELLED : strings(args.env) }),
-    },
+    'file-unlock': forwarding({ blueprint: Unlock, takes: { args: s.object({ path: s.string() }) } }, ({ args }) => ({ object: new FileUnlock(args.path as string) })),
+    'keychain-unlock': forwarding({ blueprint: Unlock, takes: { args: s.object({ account: s.string() }) } }, ({ args }) => ({ object: new KeychainUnlock({ account: args.account as string }) })),
+    ...(given === undefined ? {} : { 'given-unlock': forwarding({ blueprint: Unlock, takes: NONE }, () => ({ object: given })) }),
+    // One instance for its folder: the lock is taken before the ledger opens, and let go when its body goes down.
+    ledger: forwarding({ blueprint: Memory, takes: { args: s.object({ path: s.string(), witness: s.optional(s.string()) }) } }, async ({ args }) => {
+      const path = args.path as string;
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+      const lock = await takeLock(dirname(path));
+      const witness = text(args.witness);
+      return { object: new LedgerMemory(path, witness === undefined ? {} : { witness }), down: () => lock.release() };
+    }),
+    'socket-hand': forwarding({ blueprint: Hand, takes: { args: s.object({ path: s.string() }) } }, async ({ args, call }) => {
+      const served = await serveHand((request: HandAsk) => handOf(call, request), args.path as string);
+      return { down: () => served.close() };
+    }),
+    folder: forwarding({ blueprint: Classes, takes: { args: s.object({ root: s.string() }) } }, ({ args }) => {
+      const root = args.root as string;
+      return { house: ({ args: named }) => FolderClasses.source(inside(root, named.at, 'a folder of code')), registry: folderRegistry(root) };
+    }),
+    tcp: forwarding({ blueprint: Carry, takes: { args: s.object(CARRY) } }, async ({ args }) => {
+      const addresses = strings(args.addresses);
+      const carry = new TcpCarry({
+        port: (args.port as number | undefined) ?? null,
+        host: text(args.bind) ?? LOOPBACK,
+        allowPrivate: args.allowPrivate === true,
+        ...(addresses.length === 0 ? {} : { addresses }),
+      });
+      // It binds here, so a port another holds keeps this body down with why, and the ground boots beside it.
+      await carry.open();
+      return { schemes: ['tcp'], object: carry, down: () => carry.close() };
+    }),
+    web: forwarding({ blueprint: Carry, takes: { args: s.object({ ...CARRY, origins: s.optional(WORDS) }) } }, async ({ args, listener }) => {
+      const bind = text(args.bind) ?? LOOPBACK;
+      const named = strings(args.addresses);
+      const listens = args.port as number | undefined;
+      let http: Served | undefined;
+      const carry = new WebCarry({
+        allowPrivate: args.allowPrivate === true,
+        origins: strings(args.origins),
+        addresses: named.length > 0 ? named : () => (http === undefined ? [] : [`http://${bind === '0.0.0.0' ? '127.0.0.1' : bind}:${http.port}/quo`]),
+      });
+      // The ground's one listener: this carry's handler and every face's, chained.
+      if (listens !== undefined) http = await serveHttp({ port: listens, host: bind }, [listener]);
+      const served = http;
+      return {
+        schemes: ['https', 'http', 'wss', 'ws'],
+        object: carry,
+        handler: carry,
+        ...(served === undefined ? {} : { port: served.port }),
+        down: () => served?.close(),
+      };
+    }),
+    shell: forwarding({ takes: { args: s.object({ root: s.string(), env: s.optional(WORDS) }) } }, ({ args }) => shell({ root: args.root as string, env: args.env === undefined ? SHELLED : strings(args.env) })),
   },
 });
 
 /**
- * The terrain's default entries, fixed here: the clock, the folder of its
- * code, the listener, the TCP carry on the loopback at 9110, the web
- * carry dialling alone, and the shell. Nothing listens beyond the machine
+ * The terrain's default entries, fixed here: the folder of its code, the
+ * TCP carry on the loopback at 9110, the web carry dialling alone, and the
+ * shell. Nothing listens beyond the machine
  * until the owner names another bind. The owner moves any but the shell
  * through the dock, and the dock keeps it.
  */
 const entriesOf = (folder: string): Readonly<Record<string, FacultyEntry>> => ({
   folder: { make: 'folder', args: { root: folder } },
-  listener: { make: 'listener' },
   tcp: { make: 'tcp', args: { bind: LOOPBACK, port: 9110 } },
-  web: { make: 'web', args: { bind: LOOPBACK }, faculties: ['listener'] },
+  web: { make: 'web', args: { bind: LOOPBACK } },
   // Granted to the dock's being that holds the shell, and to no other class.
   shell: { make: 'shell', args: { root: folder, env: SHELLED }, kinds: ['org.nervur.dock.shell'] },
 });
@@ -233,6 +209,9 @@ export class NodeGround {
         hand: { make: 'socket-hand', args: { path: hand }, faculties: ['ground'] },
       },
       entries: entriesOf(folder),
+      // Each house runs in a worker thread of its own, its bodies held here.
+      runner: { start: engineStart },
+      image: installed,
     });
     return new NodeGround({ ground, hand });
   }

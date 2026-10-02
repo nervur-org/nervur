@@ -13,17 +13,17 @@ export class Shop extends Being.of({
       args: s.object({ id: s.string() }),
       result: s.object({ owner: s.invitation() }),
     },
-    orders: { for: 'pilot', hints: { readOnly: true }, result: s.array(s.string()) },
+    orders: { for: 'pilot', readOnly: true, result: s.array(s.string()) },
     hire: {
       for: 'pilot',
       description: 'Hands a courier’s invitation to an order, which takes it.',
-      hints: { idempotent: true },
+      idempotent: true,
       args: s.object({ order: s.string(), courier: s.invitation() }),
       result: s.string(),
     },
     enroll: {
       for: 'being',
-      hints: { idempotent: true },
+      idempotent: true,
       args: s.object({ signer: s.bytes() }),
       result: s.object({ invitation: s.invitation() }),
     },
@@ -41,7 +41,7 @@ export class Shop extends Being.of({
 
   // She carries the invitation unopened, and the order she names takes it.
   async hire({ order, courier }: Args<Shop, 'hire'>) {
-    return (await this.powers!.ask({ id: order, method: 'hire', args: { courier } })) as string;
+    return this.must(await this.powers!.ask({ id: order, method: 'hire', args: { courier } })) as string;
   }
 
   // One order a signer: asked twice, the same id is borne once.

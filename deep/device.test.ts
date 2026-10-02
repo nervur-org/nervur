@@ -73,7 +73,7 @@ void describe('Invitations between this machine and a real device', { timeout: 6
     const owner = await handAt<HandRequest>(socket);
     bob = { child, close: owner.close };
     bobs = (request) => owner.ask({ house: 'bob', ...request });
-    // Its port, every interface and its public address, set through the hand once; the drawer keeps them across a restart.
+    // Its port, every interface and its public address, set through the hand once; the dock keeps them across a restart.
     const tcp = await owner.ask({ method: 'facultiesUpdate', args: { name: 'tcp', make: 'tcp', args: { port: Number(port), bind: '0.0.0.0', addresses: [`tcp://${host}:${port}`] } } });
     assert.deepEqual(tcp, { result: {} }, 'the tcp body stands on its entry');
     const { houses } = JSON.parse(line) as { houses: { name: string }[] };

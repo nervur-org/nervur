@@ -17,8 +17,8 @@ export class Garage extends Being.of({
   cells: { openers: [] as string[], pulses: [] as number[], failed: [] as string[] },
   asks: {
     open: {},
-    pulsed: { args: s.reply(Relay.pulse) },
-    log: { hints: { readOnly: true }, result: s.object({ openers: s.array(s.string()), pulses: s.array(s.integer()), failed: s.array(s.string()) }) },
+    pulsed: { for: 'relay', args: s.reply(Relay.pulse) },
+    log: { readOnly: true, result: s.object({ openers: s.array(s.string()), pulses: s.array(s.integer()), failed: s.array(s.string()) }) },
   },
 }) {
   open() {
@@ -41,10 +41,10 @@ export class Remote extends Being.of({
   description: 'A garage remote on a phone: one tap, one opening.',
   cells: { garage: '', heard: 0, failed: [] as string[] },
   asks: {
-    accept: { args: s.object({ invitation: s.handle() }), hints: { idempotent: true } },
+    accept: { args: s.object({ invitation: s.handle() }), idempotent: true },
     tap: {},
-    opened: { args: s.reply(Door.open) },
-    heard: { hints: { readOnly: true }, result: s.integer() },
+    opened: { for: 'standing', args: s.reply(Door.open) },
+    heard: { readOnly: true, result: s.integer() },
   },
 }) {
   accept({ invitation }: Args<Remote, 'accept'>) {

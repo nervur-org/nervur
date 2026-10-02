@@ -18,21 +18,22 @@ export class Collector extends Being.of({
   asks: {
     born: {},
     // Bob's paper, handed by her owner.
-    accept: { args: s.object({ invitation: s.handle() }), hints: { idempotent: true } },
+    accept: { args: s.object({ invitation: s.handle() }), idempotent: true },
     // A faculty hands her a paper in her ask's args.
     take: { for: 'handle', args: s.object({ invitation: s.handle() }) },
     // She calls a faculty, and its result carries a paper. Taking it is safe to repeat.
-    fetch: { hints: { idempotent: true } },
+    fetch: { idempotent: true },
     // She asks Bob for a door, and his answer reaches her reply.
     askDoor: {},
-    gotDoor: { args: s.reply(Doors.door) },
-    greetMail: { hints: { readOnly: true, idempotent: true }, result: s.string() },
-    greetResult: { hints: { readOnly: true, idempotent: true }, result: s.string() },
-    greetReply: { hints: { readOnly: true, idempotent: true }, result: s.string() },
+    gotDoor: { for: 'standing', args: s.reply(Doors.door) },
+    greetMail: { readOnly: true, result: s.string() },
+    greetResult: { readOnly: true, result: s.string() },
+    greetReply: { readOnly: true, result: s.string() },
   },
 }) {
   async born() {
-    await this.mail.watch({ inbox: this.handle('take') });
+    const { error } = await this.mail.watch({ inbox: this.handle('take') });
+    if (error) this.fail(error.message);
   }
 
   accept({ invitation }: Args<Collector, 'accept'>) {
@@ -44,7 +45,9 @@ export class Collector extends Being.of({
   }
 
   async fetch() {
-    this.cells.fromResult = (await this.mail.latest({})).invitation;
+    const { result, error } = await this.mail.latest({});
+    if (error) this.fail(error.message);
+    this.cells.fromResult = result.invitation;
   }
 
   askDoor() {
@@ -57,14 +60,20 @@ export class Collector extends Being.of({
   }
 
   greetMail() {
-    return this.held(this.cells.fromMail, Hosted).greet({});
+    return this.#greet(this.cells.fromMail);
   }
 
   greetResult() {
-    return this.held(this.cells.fromResult, Hosted).greet({});
+    return this.#greet(this.cells.fromResult);
   }
 
   greetReply() {
-    return this.held(this.cells.fromReply, Hosted).greet({});
+    return this.#greet(this.cells.fromReply);
+  }
+
+  async #greet(standing: string) {
+    const { result, error } = await this.held(standing, Hosted).greet({});
+    if (error) this.fail(error.message);
+    return result;
   }
 }

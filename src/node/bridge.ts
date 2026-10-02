@@ -28,7 +28,7 @@ import type { Json } from '../being/being.ts';
 import { need } from '../being/need.ts';
 import { StrictTools } from '../bodies/strict-tools.ts';
 import type { Memory } from '../foundation.ts';
-import type { Body } from '../ground/ground.ts';
+import type { Opening } from '../ground/forwarding.ts';
 import type { Answer, FacultyContext } from '../house/house.ts';
 
 export interface BridgeOptions {
@@ -283,7 +283,7 @@ class Bridge {
  * window from its own `describe`, and an object whose every method is a
  * line to it. It answers once the program has described itself.
  */
-export const bridge = async (options: BridgeOptions): Promise<Body> => {
+export const bridge = async (options: BridgeOptions): Promise<Opening> => {
   const held = new Bridge(options);
   // A program that never described itself is offered to no one, so nothing starts it again.
   const { blueprint, window } = await held.start().catch(async (error: unknown) => {

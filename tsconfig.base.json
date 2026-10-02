@@ -3,6 +3,10 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    // A package of the repository's own is checked from the source it is
+    // built from, with no build first; an installed one, whose source did
+    // not ship, from the declarations that did.
+    "customConditions": ["nervur-source"],
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "erasableSyntaxOnly": true,

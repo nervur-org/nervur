@@ -46,7 +46,7 @@ Every other setting is an entry the ground's dock keeps, set through the
 hand and kept across a restart. The `tcp` entry listens on the loopback
 at 9110 until you name another bind, and the `web` entry listens on no
 port until one is named. The web serves the ground's one listener,
-which its entry names in `faculties`.
+which every body receives.
 
 | Arg | Of | What it sets |
 | --- | --- | --- |
@@ -57,7 +57,7 @@ which its entry names in `faculties`.
 | `allowPrivate` | `tcp`, `web` | `true` to let the ground dial a private or loopback address |
 
 ```bash
-npx nervur faculties update name=web make=web faculties='["listener"]' args='{"port":8080,"addresses":["https://shop.example/quo"]}'
+npx nervur faculties update name=web make=web args='{"port":8080,"addresses":["https://shop.example/quo"]}'
 npx nervur wait set wait=30000
 ```
 

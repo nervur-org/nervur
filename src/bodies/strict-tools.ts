@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // The default tools: UTF-8 read fatally, lowercase hex, RFC 8259 read with
 // every key kept apart, and one canonical spelling of a value.
-import type { Parsed, Tools } from '../foundation.ts';
+import { s } from '../being/schema.ts';
+import { Faculty } from '../faculty.ts';
+import { Tools, type Parsed } from '../foundation.ts';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
@@ -180,7 +182,10 @@ const canonical = (value: unknown): string => {
   throw new TypeError('the value is not JSON');
 };
 
-export class StrictTools implements Tools {
+export class StrictTools extends Faculty implements Tools {
+  static override readonly blueprint = Tools;
+  static override readonly takes = { args: s.object({}) };
+
   utf8(text: string): Uint8Array {
     return encoder.encode(text);
   }

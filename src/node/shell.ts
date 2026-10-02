@@ -7,7 +7,7 @@
 import { spawn } from 'node:child_process';
 import { isAbsolute, resolve } from 'node:path';
 import type { Json } from '../being/being.ts';
-import type { Body } from '../ground/ground.ts';
+import type { Opening } from '../ground/forwarding.ts';
 import { ShellNeed } from '../ground/dock.ts';
 
 export interface ShellOptions {
@@ -23,7 +23,7 @@ export interface ShellOptions {
 const OWN = /^NERVUR_/;
 
 /** The shell as a body: its blueprint, and the object its one method is called on. */
-export const shell = ({ root, env, from = process.env }: ShellOptions): Body => {
+export const shell = ({ root, env, from = process.env }: ShellOptions): Opening => {
   const passed: Record<string, string> = {};
   for (const name of env) {
     const value = from[name];

@@ -8,7 +8,7 @@ const of = (value: unknown): Blueprint => blueprintOf(value)!;
 
 const Mail = need('mail', {
   send: { args: s.object({ to: s.string(), body: s.string(), cc: s.optional(s.string()) }) },
-  status: { args: s.object({ id: s.string() }), result: s.string(), hints: { readOnly: true } },
+  status: { args: s.object({ id: s.string() }), result: s.string(), readOnly: true },
 });
 
 test('A need is a blueprint at its minimum', () => {
@@ -21,22 +21,22 @@ test('A need is a blueprint at its minimum', () => {
 
 test('Each method of a need is awaited or an effect', () => {
   const { send, status } = of(Mail).methods;
-  assert.deepEqual(send.hints, { readOnly: false, idempotent: false, destructive: false });
-  assert.deepEqual(status.hints, { readOnly: true, idempotent: true, destructive: false }, 'readOnly implies idempotent');
+  assert.deepEqual([send.readOnly, send.idempotent, send.hints], [false, false, { destructive: false }]);
+  assert.deepEqual([status.readOnly, status.idempotent, status.hints], [true, true, { destructive: false }], 'readOnly implies idempotent');
 });
 
 test('An offer covers a need when four things hold', async (t) => {
   const offer = of(
     need('mail', {
       send: { args: s.object({ to: s.string(), body: s.string(), cc: s.optional(s.string()), bcc: s.optional(s.string()) }) },
-      status: { args: s.object({ id: s.string() }), result: s.string(), hints: { idempotent: true } },
+      status: { args: s.object({ id: s.string() }), result: s.string(), idempotent: true },
       purge: { hints: { destructive: true } },
     }),
   );
   await t.test('More methods are allowed', () => assert.deepEqual(covers(offer, of(Mail)), { covered: true }));
   await t.test('The blueprint name is the same', () => {
-    const clock = of(need('clock', { now: { hints: { readOnly: true } } }));
-    const counter = of(need('counter', { now: { hints: { readOnly: true } } }));
+    const clock = of(need('clock', { now: { readOnly: true } }));
+    const counter = of(need('counter', { now: { readOnly: true } }));
     assert.deepEqual(covers(clock, counter), { covered: false, why: 'the offer is clock, and the need is counter' });
   });
   await t.test('Every method the need names is offered', () => {
@@ -48,13 +48,13 @@ test('An offer covers a need when four things hold', async (t) => {
     assert.deepEqual(covers(offer, wants), { covered: false, why: 'mail.send requires body, which the need does not send' });
   });
   await t.test('It refuses a need and an offer that disagree on idempotent: each method is idempotent in both, or in neither', () => {
-    const wants = of(need('mail', { send: { args: s.object({ to: s.string(), body: s.string() }), hints: { idempotent: true } } }));
+    const wants = of(need('mail', { send: { args: s.object({ to: s.string(), body: s.string() }), idempotent: true } }));
     assert.deepEqual(covers(offer, wants), { covered: false, why: 'mail.send is idempotent in one and not the other' });
   });
 });
 
 test('Types are checked on each call, never at the match', () => {
-  const offer = of(need('fx', { rate: { args: s.object({ pair: s.number() }), hints: { readOnly: true } } }));
-  const wants = of(need('fx', { rate: { args: s.object({ pair: s.string() }), hints: { readOnly: true } } }));
+  const offer = of(need('fx', { rate: { args: s.object({ pair: s.number() }), readOnly: true } }));
+  const wants = of(need('fx', { rate: { args: s.object({ pair: s.string() }), readOnly: true } }));
   assert.deepEqual(covers(offer, wants), { covered: true });
 });

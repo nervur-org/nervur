@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
 import { FakeFaculty } from '../fixtures/fake-faculty.ts';
 import { Mail } from '../fixtures/world/mailer.ts';
-import * as office from '../fixtures/world/office.ts';
+
+const office = new URL('../fixtures/world/office.ts', import.meta.url);
 
 const world = async () => {
   const network = new FakeNetwork();

@@ -25,12 +25,6 @@ jobs:
         with:
           path: nervur
 
-      - name: quo, beside it
-        uses: actions/checkout@v5
-        with:
-          repository: razvangherghina/quo
-          path: quo
-
       - uses: actions/setup-node@v5
         with:
           node-version: '24'

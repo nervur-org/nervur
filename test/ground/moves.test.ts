@@ -4,9 +4,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import * as shop from '../fixtures/world/shop.ts';
 
-const modules = { shop };
+const modules = { shop: new URL('../fixtures/world/shop.ts', import.meta.url) };
 const entry = { classes: { faculty: 'module', name: 'shop' } };
 
 test('A house moved to another ground keeps its ward, and no far standing notices', async (t) => {
@@ -63,10 +62,10 @@ test('A move answers its seed to the hand, remembered by its call id in the dock
   // Removed, a house leaves its seed and its rows behind, and nothing moves in over them.
   await ground.remove('taken');
   assert.deepEqual(await moveInto('taken'), { error: { message: 'the memory for taken holds places already' } });
-  // A house whose places are on a memory body of their own leaves its seed in the drawer all the same.
+  // A house whose places are on a memory body of their own leaves its seed in the dock's cells all the same.
   await ground.add('seeded', { memory: { faculty: 'fake' }, classes: { faculty: 'module', name: 'shop' } });
   await ground.remove('seeded');
   const seededInto = await ground.hand({ method: 'movesIn', args: { name: 'seeded', ...entry, ...(out.result as object) } });
-  assert.deepEqual(seededInto, { error: { message: 'the drawer keeps another seed for seeded' } });
+  assert.deepEqual(seededInto, { error: { message: 'the dock’s cells keep another seed for seeded' } });
   assert.ok('result' in (await moveInto('again')), 'an empty memory takes it');
 });

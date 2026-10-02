@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // An unlock in the process: the ground's key drawn from the bench's seed, so
-// a ground opened again on the same machine opens the same drawer.
+// a ground opened again on the same machine opens the same dock.
 import type { Unlock } from '../index.ts';
 import { seedOf } from './seeded.ts';
 

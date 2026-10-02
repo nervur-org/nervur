@@ -41,7 +41,7 @@ void test('An edge answers a watch held across an eviction', { timeout: 60_000 }
     rmSync(state, { recursive: true, force: true });
   });
 
-  // The station names where it is reached through its hand, as an owner names her Worker's route: the held line first. The drawer keeps it.
+  // The station names where it is reached through its hand, as an owner names her Worker's route: the held line first. The dock keeps it.
   await built(out, 'station', 'station.capnp');
   const port = await freePort();
   edge = await started(out, port);

@@ -26,7 +26,6 @@ export interface Asker {
 /** What a role and her state read of her. */
 export interface Me<C> {
   readonly id: string;
-  readonly position: Position;
   readonly cells: Readonly<C>;
 }
 
@@ -52,6 +51,8 @@ export interface Entry extends MethodSpec {
   readonly for?: Names;
   readonly to?: Names;
   readonly examples?: readonly Example[];
+  /** Her word that a stranger may repeat this ask, though it is not idempotent. */
+  readonly replayable?: boolean;
 }
 
 /** What a class declares. */
@@ -75,31 +76,40 @@ export interface Relation {
 }
 
 type Resolved<S> = S extends { readonly result: infer R } ? Inbound<Infer<R>> : null;
+
+/**
+ * What an awaited call answers her, as data: its result, or its error.
+ * Silence reads as an error that says the call answered nothing.
+ */
+export type Reply<T = unknown> = { readonly result: T; readonly error?: undefined } | { readonly result?: undefined; readonly error: { readonly message: string } };
 type Sent<S> = S extends { readonly args: infer A } ? Outbound<Infer<A>> : Record<string, never>;
-type IsAwaited<S> = S extends { readonly hints: { readonly idempotent: true } } ? true : S extends { readonly hints: { readonly readOnly: true } } ? true : false;
+type IsAwaited<S> = S extends { readonly idempotent: true } ? true : S extends { readonly readOnly: true } ? true : false;
 
 /** How she calls one method: awaited, or an effect answered through `reply`. */
 // Args a method requires nothing of may be left out.
 type Given<S, O extends unknown[]> = {} extends Sent<S> ? [args?: Sent<S>, ...O] : [args: Sent<S>, ...O];
 
-type IsReadOnly<S> = S extends { readonly hints: { readonly readOnly: true } } ? true : false;
+type IsReadOnly<S> = S extends { readonly readOnly: true } ? true : false;
 
 // A readOnly ask is watched when she passes the result she holds as `after`,
 // awaited, or as an effect whose answer asks her `reply`.
 export type Call<S, R extends string> =
   IsReadOnly<S> extends true
-    ? ((...given: Given<S, [options: { after: Resolved<S>; reply: R }]>) => void) & ((...given: Given<S, [options?: { after?: Resolved<S> }]>) => Promise<Resolved<S>>)
+    ? ((...given: Given<S, [options: { after: Resolved<S>; reply: R }]>) => void) & ((...given: Given<S, [options?: { after?: Resolved<S> }]>) => Promise<Reply<Resolved<S>>>)
     : IsAwaited<S> extends true
-      ? (...given: Given<S, []>) => Promise<Resolved<S>>
+      ? (...given: Given<S, []>) => Promise<Reply<Resolved<S>>>
       : (...given: Given<S, [options?: { reply?: R }]>) => void;
 
 /** The frozen face of a need: its methods and nothing else. */
 export type Face<X, R extends string = string> = { readonly [K in Exclude<keyof X, typeof BLUEPRINT>]: Call<X[K], R> };
 
 /** A standing asked with no need matched, such as her steward. */
-export type Untyped = Readonly<Record<string, (args?: Passed, options?: { reply?: string }) => Promise<unknown> | void>>;
+export type Untyped = Readonly<Record<string, (args?: Passed, options?: { reply?: string }) => Promise<Reply> | void>>;
 
-/** One ask as a far being's describe shows it: its schemas, its hints and its wait. */
+/** What a standing or a far public being shows her now. */
+export type Shown = Reply<{ readonly state: string; readonly asks: readonly Described[] }>;
+
+/** One ask as a far being's describe shows it: its schemas, its flags, its hint and its wait. */
 export interface Described {
   readonly method: string;
   readonly description?: string;
@@ -107,7 +117,9 @@ export interface Described {
   readonly to?: readonly string[];
   readonly args?: Json;
   readonly result?: Json;
-  readonly hints?: { readonly readOnly?: boolean; readonly idempotent?: boolean; readonly destructive?: boolean };
+  readonly readOnly?: boolean;
+  readonly idempotent?: boolean;
+  readonly hints?: { readonly destructive?: boolean };
   readonly wait?: number;
 }
 
@@ -117,8 +129,8 @@ export interface Described {
  * which says whether it is awaited or an effect.
  */
 export interface Undeclared<R extends string = string> {
-  describe(): Promise<{ readonly state: string; readonly asks: readonly Described[] }>;
-  ask(method: string, args?: Passed, options?: { reply?: R; after?: unknown }): Promise<unknown> | undefined;
+  describe(): Promise<Shown>;
+  ask(method: string, args?: Passed, options?: { reply?: R; after?: unknown }): Promise<Reply> | undefined;
 }
 
 /** What a far public being is reached by: her ward, and her addresses in order. */
@@ -131,9 +143,10 @@ export interface Card {
  * A far public being asked as a stranger with no need declared. `describe`
  * reads what she shows a stranger now, and `ask` names a method from it.
  */
-export interface Strange {
-  describe(): Promise<{ readonly state: string; readonly asks: readonly Described[] }>;
-  ask(method: string, args?: Passed): Promise<unknown>;
+export interface Strange<R extends string = string> {
+  describe(): Promise<Shown>;
+  /** Awaited where the describe marks it idempotent, and an effect answering `reply` otherwise. */
+  ask(method: string, args?: Passed, options?: { reply?: R }): Promise<Reply> | undefined;
 }
 
 /** What `this.house` gives every being. */
@@ -168,9 +181,9 @@ export interface Powers {
   /** Every being, her kind, whether she is absent, and the replies her table refused. */
   list(): Promise<readonly { id: string; kind: string; absent: boolean; dead: readonly { ask: string; args: Json; at: number; why: string }[] }[]>;
   /** Her args may carry a handle she holds or an invitation she carries, as any call outward. */
-  ask(call: { id: string; method: string; args?: Passed }, options?: { reply?: string }): Promise<unknown> | void;
+  ask(call: { id: string; method: string; args?: Passed }, options?: { reply?: string }): Promise<Reply> | void;
   /** With no method, the empty ask: what the being shows her steward now. */
-  ask(call: { id: string }): Promise<{ readonly state: string; readonly asks: readonly Described[] }>;
+  ask(call: { id: string }): Promise<Shown>;
   introduce(options: { from: string; to: string; notes?: Notes }): void;
 }
 
@@ -193,7 +206,6 @@ export type Result<T, K extends string> = AskOf<T, K> extends { readonly result:
 /** What every being reaches. */
 export abstract class Being<C = Record<string, Json>, R extends string = string> {
   declare readonly id: string;
-  declare readonly position: Position;
   declare readonly asker: Asker;
   declare cells: C;
   declare readonly house: HouseReach<R>;
@@ -211,11 +223,12 @@ export abstract class Being<C = Record<string, Json>, R extends string = string>
   declare held: (<X extends Need>(id: string, need: X) => Face<X, R>) & ((id: string) => Undeclared<R>);
   /**
    * A far house's public being, reached by its ward and its addresses and
-   * asked as a stranger. Every ask is awaited, and signed with a key her
-   * house keeps for that ward alone. With no need, she reads its describe
-   * first, then asks by any ask it showed her.
+   * asked as a stranger, signed with a key her house keeps for that ward
+   * alone. She awaits an idempotent ask, and commits any other as an
+   * effect, whose answer reaches her `reply` as `house`. With no need, she
+   * reads its describe first, then asks by any ask it showed her.
    */
-  declare stranger: (<X extends Need>(card: Card, need: X) => Face<X, R>) & ((card: Card) => Strange);
+  declare stranger: (<X extends Need>(card: Card, need: X) => Face<X, R>) & ((card: Card) => Strange<R>);
   /**
    * A handle to one of her asks. Each invitation it leaves as is spent within
    * `expires` milliseconds of leaving, or never binds.
@@ -225,6 +238,10 @@ export abstract class Being<C = Record<string, Json>, R extends string = string>
   declare invite: (id: string, options?: { notes?: Notes; expires?: number }) => Handle;
   /** Throws an error the asker can act on. */
   declare fail: (message: string) => never;
+  /** Answers nothing: nothing of her ask lands, and her asker hears what an absent being gives. */
+  declare silence: () => never;
+  /** An awaited call's result, or its error failing her ask, as `fail` does. */
+  declare must: <T>(reply: Reply<T> | void) => T;
 
   /** A class, declared by one object. */
   static of<C extends Record<string, Json> = Record<string, never>, const N extends Record<string, Need> = Record<never, never>, const A extends Record<string, Entry> = Record<string, Entry>>(
@@ -244,7 +261,7 @@ export type BeingClass<C, N, A> = (abstract new () => Being<C, keyof A & string>
 };
 
 /** The members of `Being` a class may not name. */
-export const MEMBERS: ReadonlySet<string> = new Set(['id', 'position', 'asker', 'cells', 'house', 'standings', 'occupants', 'steward', 'powers', 'held', 'stranger', 'handle', 'invite', 'fail']);
+export const MEMBERS: ReadonlySet<string> = new Set(['id', 'asker', 'cells', 'house', 'standings', 'occupants', 'steward', 'powers', 'held', 'stranger', 'handle', 'invite', 'fail', 'silence', 'must']);
 
 /** The declaration a class carries, or nothing where it is no class of `Being.of`. */
 export const declarationOf = (value: unknown): Declaration | undefined => {

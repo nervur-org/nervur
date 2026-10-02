@@ -7,6 +7,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { EdgeGround } from 'nervur/edge';
+import { chain, PostBlueprint } from '../../fixtures/ground/chain.ts';
+import { serving } from '../../fixtures/serving.ts';
 import * as desk from '../../fixtures/world/desk.ts';
 import { Front, FrontBlueprint } from '../../fixtures/world/front.ts';
 import { Host } from '../../fixtures/world/host.ts';
@@ -65,7 +67,7 @@ test('An evicted edge opens the houses naming a face before the face takes a req
   let current = new Front();
   const Faced = EdgeGround.object({
     code: { desk },
-    registry: { faculties: { front: { up: () => ({ blueprint: FrontBlueprint, object: current, handler: current.handler, opened: (context: Parameters<Front['opened']>[0]) => current.opened(context) }) } } },
+    registry: { faculties: { front: serving(FrontBlueprint, () => current) } },
   });
   const first = handOf(new Faced(state, env));
   assert.deepEqual(await first({ method: 'facultiesAdd', args: { name: 'front', make: 'front' } }), { result: {} });
@@ -80,15 +82,30 @@ test('An evicted edge opens the houses naming a face before the face takes a req
   assert.deepEqual(await hello.json(), { result: 'hello, web' });
 });
 
-test('An edge refuses to boot without its secret, and answers what no handler takes with 404', async () => {
-  const state = { storage: new MapStorage(), acceptWebSocket: () => undefined };
+test('An EdgeGround imports only the faces its deploy bundles: an address bundled stands its one faculty, and one outside it stays down, named', async (t) => {
+  const storage = new MapStorage();
+  t.after(() => storage.stop());
+  const { registry } = chain();
+  const Bundled = EdgeGround.object({ images: { '@acme/chain/faculties/post': { Post: registry.faculties.post, PostBlueprint } } });
+  const hand = handOf(new Bundled({ storage, acceptWebSocket: () => undefined }, env));
+  assert.deepEqual(await hand({ method: 'facultiesAdd', args: { name: 'post', make: '@acme/chain/faculties/post' } }), { result: {} });
+  assert.deepEqual(await hand({ method: 'callFaculty', args: { faculty: 'post', method: 'sent' } }), { result: [] }, 'the bundled face’s one faculty stands');
+  assert.deepEqual(await hand({ method: 'facultiesAdd', args: { name: 'bell', make: '@acme/chain/faculties/bell' } }), {
+    result: { why: 'the address @acme/chain/faculties/bell did not import: the deploy bundles no face at that address' },
+  });
+});
+
+test('An edge refuses to boot without its secret, and answers what no handler takes with 404', async (t) => {
+  const storage = new MapStorage();
+  t.after(() => storage.stop());
+  const state = { storage, acceptWebSocket: () => undefined };
   await assert.rejects(new Ground(state, { NERVUR_HAND: KEY }).fetch(new Request('https://edge.example/')), /the faculty secret-unlock is refused for its unlock: its args\.secret is missing/, 'its unlock’s entry is held to what it takes');
   await assert.rejects(new Ground(state, { NERVUR_HAND: KEY, NERVUR_SECRET: 'short' }).fetch(new Request('https://edge.example/')), /the edge’s secret is sixty-four lowercase hex digits/);
   const response = await new Ground(state, env).fetch(new Request('https://edge.example/nowhere'));
   assert.equal(response.status, 404);
 });
 
-test('An edge reads its secret into its unlock alone, shows it nowhere, and takes every other setting from the drawer', async (t) => {
+test('An edge reads its secret into its unlock alone, shows it nowhere, and takes every other setting from the dock', async (t) => {
   const storage = new MapStorage();
   t.after(() => storage.stop());
   const state = { storage, acceptWebSocket: () => undefined };
@@ -100,11 +117,11 @@ test('An edge reads its secret into its unlock alone, shows it nowhere, and take
   assert.deepEqual(listed.result.find(({ name }) => name === 'web')?.entry, { make: 'web' }, 'the terrain’s web entry, whatever the environment says');
   assert.deepEqual(await hand({ method: 'waitShow' }), { result: { wait: 60_000, terrain: true } });
   assert.deepEqual(await hand({ method: 'facultiesAdd', args: { name: 'key', make: 'secret-unlock', args: { secret: 'ab'.repeat(32) } } }), {
-    error: { message: 'the faculty secret-unlock is the ground’s unlock, which is primordial, and the drawer names none' },
+    error: { message: 'the faculty secret-unlock is the ground’s unlock, which is primordial, and the dock’s entries name none' },
   });
   const addresses = ['https://edge.example/quo'];
   assert.deepEqual(await hand({ method: 'facultiesUpdate', args: { name: 'web', make: 'web', args: { addresses } } }), { result: {} });
   const again = handOf(new Ground(state, env));
   const kept = (await again({ method: 'facultiesList' })) as { result: { name: string; entry: object }[] };
-  assert.deepEqual(kept.result.find(({ name }) => name === 'web')?.entry, { make: 'web', args: { addresses } }, 'the drawer keeps its addresses across an eviction');
+  assert.deepEqual(kept.result.find(({ name }) => name === 'web')?.entry, { make: 'web', args: { addresses } }, 'the dock keeps its addresses across an eviction');
 });

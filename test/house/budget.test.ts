@@ -4,12 +4,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import { Endless, endless, Link } from '../fixtures/world/link.ts';
+import { house, world as fixture } from '../fixtures/house.ts';
+import { Endless, endless } from '../fixtures/world/link.ts';
 import { Steward } from '../fixtures/world/steward.ts';
 
 type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
 
-const modules = { chain: { steward: Steward, beings: [Link] } };
+const modules = { chain: house(Steward, [fixture('steward'), fixture('link')]) };
 const faculties = { endless: { blueprint: Endless, object: endless } };
 
 // What a link did, once every ask, effect and reply has run to its end.

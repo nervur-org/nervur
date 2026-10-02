@@ -4,9 +4,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import * as desk from '../fixtures/world/desk.ts';
-import * as home from '../fixtures/world/home.ts';
 import { Front, FrontBlueprint } from '../fixtures/world/front.ts';
+
+const desk = new URL('../fixtures/world/desk.ts', import.meta.url);
+const home = new URL('../fixtures/world/home.ts', import.meta.url);
 
 const open = async (t: { after(done: () => unknown): void }) => {
   const front = new Front();

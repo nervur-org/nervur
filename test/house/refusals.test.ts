@@ -4,19 +4,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ClassList, type FacultyContext } from 'nervur';
-import { need, s } from 'nervur/being';
+import { need, s, tableOf } from 'nervur/being';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import { Bell, Chimes, Knocker } from '../fixtures/world/chimes.ts';
-import { Counter } from '../fixtures/world/counter.ts';
-import { Gauge, Latch } from '../fixtures/world/gauge.ts';
-import { Broken, Lectern, Peeker, Prober, TwinOne, TwinTwo } from '../fixtures/world/prober.ts';
+import { house, world } from '../fixtures/house.ts';
+import { Bell, Knocker } from '../fixtures/world/chimes.ts';
+import { Latch } from '../fixtures/world/gauge.ts';
+import { FlagsAsHints, Lectern, Peeker } from '../fixtures/world/prober.ts';
 import { Steward } from '../fixtures/world/steward.ts';
+import { TwinOne, TwinTwo } from '../fixtures/world/twins.ts';
 
 type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
 
 // A house of probers and a counter, with a lectern as its public being, and one prober borne.
 const probed = async (t: { after(done: () => unknown): void }) => {
-  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', modules: { house: { steward: Steward, public: Lectern, beings: [Prober, Broken, Counter] } } });
+  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', modules: { house: house(Steward, [world('steward'), world('prober'), world('counter')], { public: Lectern }) } });
   t.after(() => ground.down());
   await ground.add('house');
   const ask = (id: string, method: string, args: Json = {}) => ground.ask({ house: 'house', id, method, args });
@@ -24,7 +25,7 @@ const probed = async (t: { after(done: () => unknown): void }) => {
   return { ground, ask };
 };
 
-const modules = { house: { steward: Steward, beings: [Chimes] } };
+const modules = { house: house(Steward, [world('steward'), world('chimes')]) };
 
 test('A token answers only the faculty it was handed to', async (t) => {
   let token = '';
@@ -69,43 +70,37 @@ test('A faculty whose blueprint names a keyword outside the subset stops the boo
   );
 });
 
-test('Her class is checked before her first ask: a class that fails leaves her absent, and the refusal says why', async (t) => {
+test('Her species is checked before her first ask: a species that fails leaves her absent, and the refusal says why', async (t) => {
   const { ask } = await probed(t);
   const borne = await ask('steward', 'bear', { kind: 'org.example.broken', id: 'b' });
   assert.ok('error' in borne && /org\.example\.broken is refused: its ask ghost has no method/.test(borne.error.message), JSON.stringify(borne));
 });
 
-test('It refuses a being reaching anything her position, her needs and this.house do not give: a normal being reaches no powers', async (t) => {
+test('It refuses a being reaching anything her edges and this.house do not give: a normal being reaches no powers', async (t) => {
   const { ask } = await probed(t);
   const reached = await ask('p', 'reach');
   assert.ok('result' in reached, JSON.stringify(reached));
   const { members, house } = reached.result as { members: string[]; house: string[] };
-  assert.deepEqual(members, ['id', 'position', 'asker', 'cells', 'house', 'standings', 'occupants', 'steward', 'held', 'stranger', 'handle', 'invite', 'fail']);
+  assert.deepEqual(members, ['id', 'asker', 'cells', 'house', 'standings', 'occupants', 'steward', 'held', 'stranger', 'handle', 'invite', 'fail']);
   assert.deepEqual(house, ['alarm', 'cancelAlarm', 'now', 'random'], 'the house gives the time, random bytes and alarms, and nothing of its foundation');
-});
-
-test('It refuses a foundation reference handed to a being, or offered as a custom faculty', async (t) => {
-  const network = new FakeNetwork();
-  const spare = await BenchGround.open({ network, host: 'spare' });
-  t.after(() => spare.down());
-  // One memory handed to the house as its body, and offered to its beings as a faculty.
-  const leaked = spare.machine.memoryOf('leaked');
-  const ground = await BenchGround.open({
-    network,
-    host: 'home',
-    modules: { house: { steward: Steward, beings: [Prober] } },
-    registry: { faculties: { leaked: { up: () => ({ serves: 'memory', house: () => leaked }) } } },
-    faculties: { leak: { blueprint: need('leak', { read: { args: s.object({ place: s.string() }) } }), object: leaked } },
-  });
-  t.after(() => ground.down());
-  await ground.hand({ method: 'facultiesAdd', args: { name: 'leaked', make: 'leaked' } });
-  const standing = await ground.add('house', { memory: { faculty: 'leaked' }, classes: { faculty: 'module', name: 'house' }, faculties: ['leak'] });
-  assert.match(standing.why ?? '', /the offer leak is a reference of the house's foundation/);
 });
 
 test('It refuses a handle or an invitation in her cells', async (t) => {
   const { ask } = await probed(t);
   assert.deepEqual(await ask('p', 'keep', { ask: 'ping' }), { error: { message: 'a handle, an invitation or a value that is not JSON stands in her cells' } });
+});
+
+test('It refuses cells past one mebibyte: the ask fails, nothing lands, and the house stands', async (t) => {
+  const { ask } = await probed(t);
+  assert.deepEqual(await ask('p', 'hoard', { size: 1_048_576 }), { error: { message: 'her cells pass one mebibyte' } });
+  assert.deepEqual(await ask('p', 'hoard', { size: 1_000 }), { result: null }, 'a being within the bound writes, so the house stands');
+});
+
+test('A being answers silence by her own choice: nothing of her ask lands, and her asker hears what an absent being gives', async (t) => {
+  const { ground, ask } = await probed(t);
+  assert.deepEqual(await ask('p', 'hush'), { error: { message: 'the house answered nothing' } });
+  assert.deepEqual(await ground.ask({ house: 'house', id: 'p', cells: true }), { result: { kept: null } }, 'what she wrote before her silence never landed');
+  assert.deepEqual(await ask('nobody', 'hush'), { error: { message: 'no being nobody is here' } }, 'the hand alone, which is her owner, is told a being is absent');
 });
 
 test('It refuses a standing she mints herself: standings arrive from the house', async (t) => {
@@ -124,7 +119,7 @@ test('It refuses an occupant id the house reserves, and one she already holds', 
 test('It refuses a method landing in a state its to does not name', async (t) => {
   const { ask } = await probed(t);
   await ask('steward', 'bear', { kind: 'org.example.counter', id: 'c' });
-  assert.deepEqual(await ask('c', 'wrong'), { error: { message: 'the ask failed' } });
+  assert.deepEqual(await ask('c', 'wrong'), { error: { message: 'she landed in closed, which its to does not name' } });
   const described = await ask('c', 'total');
   assert.deepEqual(described, { result: 0 });
   assert.deepEqual(await ask('c', 'close'), { result: null }, 'her state stood open, so an ask that names closed lands');
@@ -135,7 +130,7 @@ test('It refuses two offers covering one need for one kind, and a kind two sourc
   const ground = await BenchGround.open({
     network: new FakeNetwork(),
     host: 'home',
-    modules: { house: { steward: Steward, beings: [Gauge] } },
+    modules: { house: house(Steward, [world('steward'), world('gauge')]) },
     faculties: { one: { blueprint: Latch, object }, two: { blueprint: Latch, object } },
   });
   t.after(() => ground.down());
@@ -144,13 +139,13 @@ test('It refuses two offers covering one need for one kind, and a kind two sourc
   assert.throws(() => new ClassList({ steward: Steward, beings: [TwinOne, TwinTwo] }), /two classes claim the kind org\.example\.twin/);
 });
 
-test('It refuses an invite from a public being', async (t) => {
+test('A public being invites as any being does: under an occupant of hers, she mints', async (t) => {
   const { ask } = await probed(t);
-  assert.deepEqual(await ask('public', 'open'), { result: 'a public being cannot invite' });
+  assert.deepEqual(await ask('public', 'open'), { result: 'none' });
 });
 
 test('It refuses her cells read by anyone but the hand: her steward’s powers answer her describe', async (t) => {
-  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', modules: { house: { steward: Peeker, beings: [Counter] } } });
+  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', modules: { house: house(Peeker, [world('prober'), world('counter')]) } });
   t.after(() => ground.down());
   await ground.add('house');
   await ground.ask({ house: 'house', method: 'bear', args: { kind: 'org.example.counter', id: 'c' } });
@@ -160,9 +155,14 @@ test('It refuses her cells read by anyone but the hand: her steward’s powers a
 
 test('It refuses a faculty in a house’s code: what the house’s code exports never covers a need', async (t) => {
   // The module carries an object with the need's method, beside its classes; the ground grants no offer.
-  const house = { steward: Steward, beings: [Gauge], latch: { wait: () => ({ result: null }) } };
-  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', modules: { house } });
+  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', modules: { house: world('latched') } });
   t.after(() => ground.down());
   await ground.add('house');
   assert.deepEqual(await ground.ask({ house: 'house', method: 'bear', args: { kind: 'org.example.gauge', id: 'g' } }), { error: { message: 'no offer covers her need latch' } });
+});
+
+test('It refuses readOnly or idempotent named as a hint: a hint changes nothing in the house', () => {
+  assert.throws(() => tableOf(FlagsAsHints), {
+    message: 'org.example.hint is refused: its ask go.hints names readOnly, which is no hint; its ask go.hints names idempotent, which is no hint',
+  });
 });

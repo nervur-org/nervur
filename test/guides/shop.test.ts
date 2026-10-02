@@ -3,14 +3,15 @@
 // one, and its lobby enrols a stranger once, however often they ask.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { Classes } from 'nervur';
 import { Bench, BenchGround, FakeNetwork } from 'nervur/bench';
 import { FolderClasses } from 'nervur/node';
 import { Lobby } from '../fixtures/guides/classes/lobby.ts';
-import { Order } from '../fixtures/guides/classes/order.ts';
 import { Shop } from '../fixtures/guides/classes/shop.ts';
 import { Payments, paymentsOffer } from '../fixtures/guides/payments.ts';
 import { faculties } from '../fixtures/guides/recipe.ts';
-import { Depot } from '../fixtures/world/depot.ts';
+import { house, world as fixture } from '../fixtures/house.ts';
+import { serving } from '../fixtures/serving.ts';
 import { Steward } from '../fixtures/world/steward.ts';
 
 type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
@@ -22,12 +23,12 @@ const world = async () => {
     network,
     host: 'shop',
     names: ['shop.example'],
-    registry: { faculties: { ...faculties, folder: { up: () => ({ serves: 'classes', house: () => FolderClasses.open(new URL('../fixtures/guides/classes/', import.meta.url)) }) } } },
+    registry: { faculties: { ...faculties, folder: serving(Classes, undefined, { house: () => FolderClasses.source(new URL('../fixtures/guides/classes/', import.meta.url)) }) } },
   });
   await shop.hand({ method: 'facultiesAdd', args: { name: 'folder', make: 'folder' } });
   await shop.hand({ method: 'facultiesAdd', args: { name: 'payments', make: 'payments' } });
   await shop.add('shop', { classes: { faculty: 'folder' }, faculties: ['payments'] });
-  const courier = await BenchGround.open({ network, host: 'courier', names: ['courier.example'], modules: { courier: { steward: Steward, beings: [Depot] } } });
+  const courier = await BenchGround.open({ network, host: 'courier', names: ['courier.example'], modules: { courier: house(Steward, [fixture('steward'), fixture('depot')]) } });
   await courier.add('courier');
   const ask = (method: string, args: Json = {}) => shop.ask({ house: 'shop', method, args });
   const result = async (method: string, args: Json = {}) => {
@@ -46,7 +47,7 @@ test('The shopâ€™s steward opens an order by the hand, and hands back its ownerâ
 });
 
 test('A stranger signs up at the lobby, and asking twice holds one order', async () => {
-  const bench = await Bench.open({ classes: [Order], steward: Shop, public: Lobby, offers: [paymentsOffer(new Payments())] });
+  const bench = await Bench.open({ module: new URL('../fixtures/guides/classes/index.ts', import.meta.url), steward: Shop, public: Lobby, offers: [paymentsOffer(new Payments())] });
   const shop = await bench.place(Shop);
   const lobby = await bench.place(Lobby);
   const signup = async () => {

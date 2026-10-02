@@ -1,14 +1,14 @@
 // api.ts
-import type { Body, FacultyContext, Handler } from 'nervur';
+import { Faculty, type FacultyContext, type Handler, type OpenedContext } from 'nervur';
 import { need, s, type Json } from 'nervur/being';
 
 type Answer = Awaited<ReturnType<FacultyContext['call']>>;
-type Entry = { method: string; description?: string; args?: Json; hints?: Json };
+type Entry = { method: string; description?: string; args?: Json; readOnly?: boolean; idempotent?: boolean; hints?: Record<string, Json> };
 type Calls = Pick<FacultyContext, 'call' | 'describe'>;
 
 /** What the steward arms the face with. */
 export const FaceBlueprint = need('face', {
-  arm: { args: s.object({ signup: s.handle() }), hints: { idempotent: true } },
+  arm: { args: s.object({ signup: s.handle() }), idempotent: true },
 });
 
 /**
@@ -17,7 +17,8 @@ export const FaceBlueprint = need('face', {
  * may ask, `POST /api/<ask>` asks it, and `POST /mcp` speaks the same
  * asks to an agent as tools.
  */
-export class Api {
+export class Api extends Faculty {
+  static override readonly blueprint = FaceBlueprint;
   #context: Calls | undefined;
   #signup = '';
 
@@ -28,7 +29,7 @@ export class Api {
   }
 
   // Told its house opened: every door's token answers from the first request, after any restart.
-  opened(context: Calls): void {
+  override opened(context: OpenedContext): void {
     this.#context = context;
   }
 
@@ -46,10 +47,11 @@ export class Api {
     const described = await this.#held().describe({ token });
     if (!('describe' in described)) return { error: described.error };
     const asks = (described.describe as { asks: Entry[] }).asks;
-    return { tools: asks.map(({ method, description, args, hints }) => ({ name: method, description: description ?? '', inputSchema: args ?? { type: 'object' }, annotations: hints ?? {} })) };
+    const annotations = ({ readOnly, idempotent, hints }: Entry): Json => ({ readOnly: readOnly === true, idempotent: idempotent === true, ...hints });
+    return { tools: asks.map((entry) => ({ name: entry.method, description: entry.description ?? '', inputSchema: entry.args ?? { type: 'object' }, annotations: annotations(entry) })) };
   }
 
-  readonly handler: Handler = {
+  override readonly handler: Handler = {
     fetch: async (request) => {
       const path = new URL(request.url).pathname;
       if (request.method === 'POST' && path === '/signup') {
@@ -76,6 +78,3 @@ export class Api {
     },
   };
 }
-
-/** The face as a body. */
-export const apiOffer = (api: Api): Body => ({ blueprint: FaceBlueprint, object: api, handler: api.handler, opened: (context) => api.opened(context) });

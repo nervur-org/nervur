@@ -8,14 +8,15 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
 import { bridge } from 'nervur/node';
-import * as porch from '../fixtures/garage/porch.ts';
 import { folder, program } from '../fixtures/node/folder.ts';
+
+const porch = new URL('../fixtures/garage/porch.ts', import.meta.url);
 
 test('A faculty served in JavaScript calls a handle it was handed back through the house', { timeout: 30_000 }, async (t) => {
   const network = new FakeNetwork();
   const doorbell = await bridge({ command: process.execPath, args: program('doorbell.ts') });
   t.after(() => doorbell.down?.());
-  const ground = await BenchGround.open({ network, host: 'porch', names: ['porch.local'], modules: { porch }, faculties: { bell: doorbell } });
+  const ground = await BenchGround.open({ network, host: 'porch', names: ['porch.local'], modules: { porch }, faculties: { bell: { blueprint: doorbell.blueprint, object: doorbell.object! } } });
   t.after(() => ground.down());
   await ground.add('porch', 'porch', { faculties: ['bell'] });
   await ground.ask({ house: 'porch', method: 'bear', args: { kind: 'org.example.porch', id: 'porch' } });
@@ -30,7 +31,7 @@ test('A handle called from a second life of its program acts once, as the first 
   const network = new FakeNetwork();
   const bell = await bridge({ command: process.execPath, args: program('lasting-bell.ts'), cwd });
   t.after(() => bell.down?.());
-  const ground = await BenchGround.open({ network, host: 'porch', names: ['porch.local'], modules: { porch }, faculties: { bell } });
+  const ground = await BenchGround.open({ network, host: 'porch', names: ['porch.local'], modules: { porch }, faculties: { bell: { blueprint: bell.blueprint, object: bell.object! } } });
   t.after(() => ground.down());
   await ground.add('porch', 'porch', { faculties: ['bell'] });
   await ground.ask({ house: 'porch', method: 'bear', args: { kind: 'org.example.porch', id: 'porch' } });

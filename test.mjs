@@ -1,8 +1,11 @@
+#!/usr/bin/env node
 // SPDX-License-Identifier: Apache-2.0
-// The runner. `node test.mjs <files...>` runs Node's own test runner over the
-// files, under the condition `nervur-source`, so a suite that names the
-// package by an entry, as a stranger does, reads the source that entry is
-// built from. And with three rules the runner alone does not hold:
+// The runner, `nervur-test` to whoever installs the package. `node test.mjs <files...>` runs Node's own test runner over the
+// files, so a suite that names a package of its repository by an entry, as
+// a stranger does, reads the source that entry is built from: its export
+// under `nervur-source`, which `source.mjs` follows. A package installed
+// under node_modules is read as it shipped. And with three rules the
+// runner alone does not hold:
 //
 //   a test has the time its author gave it. `test(name, { timeout }, fn)`
 //   is the author's word; unsaid, a test gets DEFAULT and no more, so a test
@@ -12,7 +15,9 @@
 //   the first red stops everything. A failing test is read at once, and the
 //   minutes the rest would take are given back
 //
-//   the whole run is capped at CAP, so a freeze is named, not waited out
+//   the whole run is capped at CAP, a minute, so a freeze is named, not
+//   waited out; a run that reaches it has already gone wrong, and a deep
+//   suite that truly needs longer names its own
 //
 // The runner and every test file it starts are one process group, and a
 // stop kills the group, so nothing is left running after it.
@@ -32,12 +37,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const DEFAULT = Number(process.env.NERVUR_TEST_TIMEOUT ?? 5_000);
-const CAP = Number(process.env.NERVUR_TEST_CAP ?? 180_000);
+const CAP = Number(process.env.NERVUR_TEST_CAP ?? 60_000);
 const QUIET = Number(process.env.NERVUR_TEST_QUIET ?? 400);
 const DRAIN = Number(process.env.NERVUR_TEST_DRAIN ?? 4_000);
 // `NERVUR_TEST_COVER=1` reports the lines of `src` the run reached, which
-// Node takes as a flag and never from NODE_OPTIONS.
-const COVER = process.env.NERVUR_TEST_COVER === '1' ? ['--experimental-test-coverage', '--test-coverage-include=src/**'] : [];
+// Node takes as a flag and never from NODE_OPTIONS. `src` is the calling
+// package's, since the runner runs with that package as its folder. A
+// library's is each class's own modules, in its folder under its kind.
+//
+// A floor is a coverage the package promises. `NERVUR_TEST_COVER_LINES`,
+// `NERVUR_TEST_COVER_BRANCHES` and `NERVUR_TEST_COVER_FUNCTIONS` each set
+// one, in percent, and a run under it is red. A floor turns coverage on.
+const FLOORS = { LINES: 'lines', BRANCHES: 'branches', FUNCTIONS: 'functions' };
+const floors = Object.entries(FLOORS).flatMap(([name, flag]) => {
+  const floor = process.env[`NERVUR_TEST_COVER_${name}`];
+  return floor === undefined || floor === '' ? [] : [`--test-coverage-${flag}=${Number(floor)}`];
+});
+const COVER = process.env.NERVUR_TEST_COVER === '1' || floors.length > 0 ? ['--experimental-test-coverage', '--test-coverage-include=src/**', '--test-coverage-include=faculties/*/*.ts', '--test-coverage-include=species/*/*.ts', ...floors] : [];
 
 const files = process.argv.slice(2);
 if (files.length === 0) {
@@ -50,7 +66,7 @@ const tap = join(kept, 'run.tap');
 const swept = () => rmSync(kept, { recursive: true, force: true });
 const child = spawn(
   process.execPath,
-  ['--conditions=nervur-source', '--test', ...COVER, `--test-timeout=${DEFAULT}`, '--test-reporter=spec', '--test-reporter-destination=stdout', '--test-reporter=tap', `--test-reporter-destination=${tap}`, ...files],
+  [`--import=${new URL('source.mjs', import.meta.url).href}`, '--test', ...COVER, `--test-timeout=${DEFAULT}`, '--test-reporter=spec', '--test-reporter-destination=stdout', '--test-reporter=tap', `--test-reporter-destination=${tap}`, ...files],
   { stdio: ['ignore', 'pipe', 'inherit'], detached: true },
 );
 

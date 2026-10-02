@@ -6,7 +6,7 @@
 import { Being, need, s, type Args } from 'nervur/being';
 
 const Front = need('front', {
-  arm: { args: s.object({ signup: s.handle() }), hints: { idempotent: true } },
+  arm: { args: s.object({ signup: s.handle() }), idempotent: true },
 });
 
 /** A being the face reaches: she declares it, so its tokens reach her. */
@@ -16,15 +16,16 @@ export class Zoom extends Being.of({
   kind: 'org.example.zoom.steward',
   needs: { front: Front },
   asks: {
-    arm: { for: 'root', hints: { idempotent: true } },
+    arm: { for: 'root', idempotent: true },
     enroll: { for: 'handle', args: s.object({ name: s.string() }), result: s.object({ door: s.handle() }) },
-    doorOn: { for: 'being', hints: { idempotent: true }, args: s.object({ target: s.string() }), result: s.object({ invitation: s.invitation() }) },
+    doorOn: { for: 'being', idempotent: true, args: s.object({ target: s.string() }), result: s.object({ invitation: s.invitation() }) },
   },
 }) {
   // The face armed, and the shop a person zooms to borne.
   async arm() {
     this.powers!.bear({ kind: 'org.example.zoom.shop', id: 'shop' });
-    await this.front.arm({ signup: this.handle('enroll') });
+    const { error } = await this.front.arm({ signup: this.handle('enroll') });
+    if (error) this.fail(error.message);
   }
 
   enroll({ name }: Args<Zoom, 'enroll'>) {
@@ -48,7 +49,9 @@ export class Person extends Being.of({
 }) {
   // The steward's invitation, carried unopened: its form is decided where the answer goes.
   async zoom({ target }: Args<Person, 'zoom'>) {
-    const { invitation } = (await this.steward!.doorOn({ target: target ?? 'shop' })) as { invitation: unknown };
+    const answered = await this.steward!.doorOn({ target: target ?? 'shop' });
+    if (answered === undefined || answered.error) this.fail(answered?.error?.message ?? 'doorOn was no awaited call');
+    const { invitation } = answered.result as { invitation: unknown };
     return { door: invitation as never };
   }
 }
@@ -57,7 +60,7 @@ export class Shop extends Being.of({
   kind: 'org.example.zoom.shop',
   needs: { front: Reached },
   asks: {
-    hello: { hints: { readOnly: true }, result: s.string() },
+    hello: { readOnly: true, result: s.string() },
   },
 }) {
   hello() {

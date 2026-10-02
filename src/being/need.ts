@@ -2,10 +2,8 @@
 // A need: a blueprint at its minimum, the shape of what she calls.
 import { s, type Schema } from './schema.ts';
 
-/** The three hints an ask or a method may carry. */
+/** The one hint an ask or a method may carry: it changes nothing in the house. */
 export interface Hints {
-  readonly readOnly?: boolean;
-  readonly idempotent?: boolean;
   readonly destructive?: boolean;
 }
 
@@ -13,6 +11,10 @@ export interface Hints {
 export interface MethodSpec {
   readonly args?: Schema;
   readonly result?: Schema;
+  /** It writes nothing, and it implies `idempotent`. */
+  readonly readOnly?: boolean;
+  /** It is safe to repeat, so a caller awaits it. */
+  readonly idempotent?: boolean;
   readonly hints?: Hints;
   readonly description?: string;
   /** How long an awaited caller waits for it, in milliseconds, within the bound. */
@@ -23,6 +25,8 @@ export interface MethodSpec {
 export interface BlueprintMethod {
   readonly args: Schema;
   readonly result?: Schema;
+  readonly readOnly: boolean;
+  readonly idempotent: boolean;
   readonly hints: Required<Hints>;
   readonly description?: string;
   readonly wait: number;
@@ -46,21 +50,16 @@ export type Need<M extends Record<string, MethodSpec> = Record<string, MethodSpe
 };
 
 /** Whether a method is awaited: `readOnly` implies `idempotent`. */
-export const awaited = (hints: Hints | undefined): boolean => hints?.idempotent === true || hints?.readOnly === true;
-
-/** Hints settled, `readOnly` carrying `idempotent` with it. */
-export const settled = (hints: Hints | undefined): Required<Hints> => ({
-  readOnly: hints?.readOnly === true,
-  idempotent: awaited(hints),
-  destructive: hints?.destructive === true,
-});
+export const awaited = (spec: { readonly readOnly?: boolean; readonly idempotent?: boolean } | undefined): boolean => spec?.idempotent === true || spec?.readOnly === true;
 
 /** One method settled: the empty object where args are omitted. */
 export const method = (spec: MethodSpec): BlueprintMethod =>
   Object.freeze({
     args: spec.args ?? s.object({}),
     ...(spec.result === undefined ? {} : { result: spec.result }),
-    hints: Object.freeze(settled(spec.hints)),
+    readOnly: spec.readOnly === true,
+    idempotent: awaited(spec),
+    hints: Object.freeze({ destructive: spec.hints?.destructive === true }),
     ...(spec.description === undefined ? {} : { description: spec.description }),
     wait: typeof spec.wait === 'number' ? Math.min(spec.wait, WAIT_BOUND) : WAIT,
   });

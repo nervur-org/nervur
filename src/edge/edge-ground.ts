@@ -9,9 +9,11 @@
 import type { Json } from '../being/being.ts';
 import { ClassList } from '../bodies/class-list.ts';
 import { WebCarry, type Handler, type Held, type HeldSocket } from '../bodies/web-carry.ts';
-import type { BeingClass } from '../foundation.ts';
+import { Carry, Classes, Clock, Crypto, Memory, type BeingClass } from '../foundation.ts';
 import { s } from '../being/schema.ts';
-import { Ground, joinedRegistry, type Registry } from '../ground/ground.ts';
+import type { Registry } from '../faculty.ts';
+import { forwarding, handOf } from '../ground/forwarding.ts';
+import { Ground, Hand, joinedRegistry, Unlock } from '../ground/ground.ts';
 import { DurableClock } from './durable-clock.ts';
 import { DurableMemory } from './durable-memory.ts';
 import type { DurableStorage } from './durable.ts';
@@ -31,6 +33,8 @@ export interface EdgeGroundOptions {
   readonly registry?: Registry;
   /** Each house's code by the name its entry's `bundle` body gives in `at`. */
   readonly code?: Readonly<Record<string, Code>>;
+  /** Each face the deploy bundles by the address an entry names, as `import * as face from '<address>'` gives it. */
+  readonly images?: Readonly<Record<string, object>>;
   /** The platform's outbound sockets, `connect` from `cloudflare:sockets`; an edge without it dials the web alone. */
   readonly connect?: Connect;
 }
@@ -106,12 +110,12 @@ export const EdgeGround = Object.freeze({
   /**
    * The ground's Durable Object class, which the Worker's module exports
    * under the name its binding gives. The Worker's environment holds what
-   * opens its drawer and its hand, and nothing else: `NERVUR_SECRET`, the
+   * opens its dock and its hand, and nothing else: `NERVUR_SECRET`, the
    * ground's key, sixty-four hex digits, and `NERVUR_HAND`, the key of its
    * hand, both set as secrets. Every other setting is an entry in the
-   * drawer.
+   * dock.
    */
-  object({ registry, code = {}, connect }: EdgeGroundOptions = {}): new (state: DurableState, env: Readonly<Record<string, unknown>>) => EdgeObject {
+  object({ registry, code = {}, images = {}, connect }: EdgeGroundOptions = {}): new (state: DurableState, env: Readonly<Record<string, unknown>>) => EdgeObject {
     return class implements EdgeObject {
       readonly #state: DurableState;
       readonly #env: Readonly<Record<string, string | undefined>>;
@@ -135,62 +139,50 @@ export const EdgeGround = Object.freeze({
         const storage = this.#state.storage;
         const own: Registry = {
           faculties: {
-            'secret-unlock': { takes: { args: s.object({ secret: s.string() }) }, up: ({ args }) => ({ serves: 'unlock', object: new SecretUnlock(args.secret as string) }) },
+            'secret-unlock': forwarding({ blueprint: Unlock, takes: { args: s.object({ secret: s.string() }) } }, ({ args }) => ({ object: new SecretUnlock(args.secret as string) })),
             // The hand, for whoever holds the key its args give; to anyone else, as on an edge that gives none, nothing is here.
-            'key-hand': {
-              takes: { args: s.object({ key: s.optional(s.string()) }) },
-              up: ({ args, faculties }) => {
-                const key = typeof args.key === 'string' ? args.key : undefined;
-                const ground = faculties.ground as { hand(request: HandRequest): Promise<unknown> };
-                return {
-                  serves: 'hand',
-                  handler: {
-                    fetch: async (request: Request) => {
-                      if (new URL(request.url).pathname !== HAND) return null;
-                      const given = /^Bearer (.+)$/.exec(request.headers.get('authorization') ?? '')?.[1];
-                      if (key === undefined || given === undefined || request.method !== 'POST' || !(await same(given, key))) return null;
-                      let asked: HandRequest;
-                      try {
-                        asked = (await request.json()) as HandRequest;
-                      } catch {
-                        return Response.json({ error: { message: 'the hand takes one JSON object' } }, { status: 400 });
-                      }
-                      return Response.json(await ground.hand(asked));
-                    },
+            'key-hand': forwarding({ blueprint: Hand, takes: { args: s.object({ key: s.optional(s.string()) }) } }, ({ args, call }) => {
+              const key = typeof args.key === 'string' ? args.key : undefined;
+              return {
+                handler: {
+                  fetch: async (request: Request) => {
+                    if (new URL(request.url).pathname !== HAND) return null;
+                    const given = /^Bearer (.+)$/.exec(request.headers.get('authorization') ?? '')?.[1];
+                    if (key === undefined || given === undefined || request.method !== 'POST' || !(await same(given, key))) return null;
+                    let asked: HandRequest;
+                    try {
+                      asked = (await request.json()) as HandRequest;
+                    } catch {
+                      return Response.json({ error: { message: 'the hand takes one JSON object' } }, { status: 400 });
+                    }
+                    return Response.json(await handOf(call, asked));
                   },
-                };
-              },
-            },
-            durable: { takes: NONE, up: () => ({ serves: 'memory', object: new DurableMemory(storage, 'ground') }) },
-            native: { takes: NONE, up: () => ({ serves: 'crypto', object: new NativeCrypto() }) },
+                },
+              };
+            }),
+            durable: forwarding({ blueprint: Memory, takes: NONE }, () => ({ object: new DurableMemory(storage, 'ground') })),
+            native: forwarding({ blueprint: Crypto, takes: NONE }, () => ({ object: new NativeCrypto() })),
             // The ground's clock, which the object's alarm, through the ground's wake, ends each due wait of.
-            'durable-clock': { takes: NONE, up: () => ({ serves: 'clock', object: new DurableClock(storage) }) },
-            web: {
-              takes: { args: s.object({ allowPrivate: s.optional(s.boolean()), addresses: s.optional(WORDS), origins: s.optional(WORDS) }) },
-              up: ({ args }) => {
-                const web = new WebCarry({ allowPrivate: args.allowPrivate === true, origins: strings(args.origins), addresses: strings(args.addresses) });
-                return { serves: 'carry', schemes: ['https', 'http', 'wss', 'ws'], object: web, handler: web };
-              },
-            },
+            'durable-clock': forwarding({ blueprint: Clock, takes: NONE }, () => ({ object: new DurableClock(storage) })),
+            web: forwarding({ blueprint: Carry, takes: { args: s.object({ allowPrivate: s.optional(s.boolean()), addresses: s.optional(WORDS), origins: s.optional(WORDS) }) } }, ({ args }) => {
+              const web = new WebCarry({ allowPrivate: args.allowPrivate === true, origins: strings(args.origins), addresses: strings(args.addresses) });
+              return { schemes: ['https', 'http', 'wss', 'ws'], object: web, handler: web };
+            }),
             ...(connect === undefined
               ? {}
-              : { socket: { takes: { args: s.object({ allowPrivate: s.optional(s.boolean()) }) }, up: ({ args }) => ({ serves: 'carry', schemes: ['tcp'], object: new SocketCarry({ connect, allowPrivate: args.allowPrivate === true }) }) } }),
-            bundle: {
-              takes: NONE,
-              up: () => ({
-                serves: 'classes',
-                house: ({ args }) => {
-                  const bundled = typeof args.at === 'string' && Object.hasOwn(code, args.at) ? code[args.at] : undefined;
-                  if (bundled === undefined) throw new Error(`the deploy bundles no code named ${String(args.at)}`);
-                  return new ClassList(bundled);
-                },
-              }),
-            },
+              : { socket: forwarding({ blueprint: Carry, takes: { args: s.object({ allowPrivate: s.optional(s.boolean()) }) } }, ({ args }) => ({ schemes: ['tcp'], object: new SocketCarry({ connect, allowPrivate: args.allowPrivate === true }) })) }),
+            bundle: forwarding({ blueprint: Classes, takes: NONE }, () => ({
+              house: ({ args }) => {
+                const bundled = typeof args.at === 'string' && Object.hasOwn(code, args.at) ? code[args.at] : undefined;
+                if (bundled === undefined) throw new Error(`the deploy bundles no code named ${String(args.at)}`);
+                return new ClassList(bundled);
+              },
+            })),
           },
         };
         const ground = await Ground.open({
           registry: joinedRegistry(own, registry ?? {}),
-          // The unlock's args are the environment's, read once into its entry, which never lands in the drawer.
+          // The unlock's args are the environment's, read once into its entry, which never lands in the dock.
           primordial: {
             unlock: { make: 'secret-unlock', args: env.NERVUR_SECRET === undefined ? {} : { secret: env.NERVUR_SECRET } },
             memory: { make: 'durable' },
@@ -207,6 +199,11 @@ export const EdgeGround = Object.freeze({
           },
           wait: WAIT,
           lazy: true,
+          // The deploy bundles each face an entry names by its address, since a Worker imports nothing it was not handed.
+          image: (address) => {
+            if (!Object.hasOwn(images, address)) return Promise.reject(new Error('the deploy bundles no face at that address'));
+            return Promise.resolve(images[address]);
+          },
         });
         return { ground, handlers: [ground.handler] };
       }

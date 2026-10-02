@@ -28,7 +28,7 @@ export class Order extends Being.of({
   asks: {
     hire: {
       for: 'steward',
-      hints: { idempotent: true },
+      idempotent: true,
       args: s.object({ courier: s.handle() }),
       result: s.string(),
     },
@@ -40,7 +40,7 @@ export class Order extends Being.of({
       result: s.object({ total: s.number() }),
     },
     checkout: { in: 'open', for: 'owner', to: 'paying' },
-    charged: { in: 'paying', args: s.reply(Payments.charge), to: ['paying', 'open'] },
+    charged: { in: 'paying', for: 'pay', args: s.reply(Payments.charge), to: ['paying', 'open'] },
     settled: { in: 'paying', for: 'handle', to: 'paid' },
     ship: { in: 'paid', for: 'owner', to: 'shipped' },
   },

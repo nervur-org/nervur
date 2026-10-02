@@ -5,10 +5,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import { Gauge, Latch, latch } from '../fixtures/world/gauge.ts';
+import { house, world } from '../fixtures/house.ts';
+import { Latch, latch } from '../fixtures/world/gauge.ts';
 import { Steward } from '../fixtures/world/steward.ts';
 
-const modules = { house: { steward: Steward, beings: [Gauge] }, other: { steward: Steward } };
+const modules = { house: house(Steward, [world('steward'), world('gauge')]), other: house(Steward, [world('steward')]) };
 
 test('Two adds of one name at once open one house, and the second entry is refused', async (t) => {
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', modules });

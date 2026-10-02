@@ -7,6 +7,8 @@
 // passes, and calls the loop idle only once none has been in flight for a
 // run of turns. It counts in the process that imports the bench alone.
 
+import { engineStart, type Start, type Thread } from '../index.ts';
+
 // Turns with nothing in flight before the bench calls the loop idle: the
 // promise chains between two crypto calls resolve well within them.
 const QUIET = 20;
@@ -43,12 +45,105 @@ const turnOnce: (next: () => void) => void =
     ? (next) => (globalThis as unknown as { setImmediate: (next: () => void) => void }).setImmediate(next)
     : (next) => setTimeout(next, 0);
 
-/** Every ask, effect and reply the fakes started, run to where it waits on the clock or ends. */
-export const settle = async (): Promise<void> => {
+// The loop of this process idle: no crypto in flight for a run of turns.
+const quietHere = async (): Promise<void> => {
   let quiet = 0;
   for (let turn = 0; quiet < QUIET; turn++) {
     if (turn >= BOUND) throw new Error('the bench never went idle: crypto stayed in flight');
     await new Promise<void>((next) => turnOnce(next));
     quiet = inFlight === 0 ? quiet + 1 : 0;
+  }
+};
+
+/** A runner's thread as the bench watches it: the last message sent into it, and the last whose work it said ended. */
+interface Watched {
+  sent: number;
+  done: number;
+  readonly idle: (() => void)[];
+}
+
+const live = new Set<Watched>();
+
+const wake = (watched: Watched) => {
+  for (const idle of watched.idle.splice(0)) idle();
+};
+
+/** One engine thread, kept across the houses it runs: each message goes to the house it runs now. */
+interface Kept {
+  readonly thread: Thread;
+  heard: (message: unknown) => void;
+  ended: (why: string) => void;
+}
+
+// Threads whose house closed whole, which the next house opens on: a test's houses run one after another, on runners the engine has compiled hot.
+const spare: Kept[] = [];
+
+const keptThread = (): Kept => {
+  const found = spare.pop();
+  if (found !== undefined) return found;
+  const kept: Kept = { thread: engineStart(), heard: () => undefined, ended: () => undefined };
+  kept.thread.listen(
+    (message) => kept.heard(message),
+    (why) => kept.ended(why),
+  );
+  return kept;
+};
+
+/**
+ * A runner's thread on this engine, watched: every house the bench opens
+ * runs in one, so a species that loops or throws fails her test there,
+ * and the bench waits on the work each message began until it ends. A
+ * thread whose house closed whole runs the next house the bench opens.
+ */
+export const watchedStart: Start = () => {
+  const kept = keptThread();
+  const thread = kept.thread;
+  const watched: Watched = { sent: 0, done: 0, idle: [] };
+  let closed = false;
+  live.add(watched);
+  const gone = () => {
+    live.delete(watched);
+    wake(watched);
+  };
+  return {
+    post: (message) => {
+      const said = message as { t?: unknown; s?: unknown };
+      if (typeof said.s === 'number') watched.sent = said.s;
+      if (said.t === 'close') closed = true;
+      thread.post(message);
+    },
+    listen: (heard, ended) => {
+      kept.heard = (message) => {
+        const said = message as { t?: unknown; s?: unknown };
+        if (said.t === 'end' && typeof said.s === 'number') {
+          watched.done = Math.max(watched.done, said.s);
+          if (watched.done >= watched.sent) wake(watched);
+        }
+        heard(message);
+      };
+      kept.ended = (why) => {
+        gone();
+        ended(why);
+      };
+    },
+    end: () => {
+      gone();
+      kept.heard = () => undefined;
+      kept.ended = () => undefined;
+      thread.hold?.(false);
+      if (closed) spare.push(kept);
+      else thread.end();
+    },
+    ...(thread.hold === undefined ? {} : { hold: (held: boolean) => thread.hold!(held) }),
+  };
+};
+
+/** Every ask, effect and reply the fakes started, here and in each runner, run to where it waits on the clock or ends. */
+export const settle = async (): Promise<void> => {
+  for (;;) {
+    await quietHere();
+    const working = [...live].filter((watched) => watched.done < watched.sent);
+    if (working.length === 0) return;
+    await Promise.all(working.map((watched) => new Promise<void>((idle) => watched.idle.push(idle))));
   }
 };

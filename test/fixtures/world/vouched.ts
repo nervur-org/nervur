@@ -2,6 +2,7 @@
 // and a holder at home, who takes a shop's paper and reads which domains
 // vouch for the ward behind it.
 import { Being, need, s, type Args } from 'nervur/being';
+import { house, world } from '../house.ts';
 import { Steward } from './steward.ts';
 
 /** The site's faculty offers nothing to beings: it is a handler alone. */
@@ -21,11 +22,11 @@ export class Holder extends Being.of({
   kind: 'org.example.holder',
   cells: { shop: '' },
   asks: {
-    take: { for: 'root', hints: { idempotent: true }, args: s.object({ paper: s.handle() }) },
+    take: { for: 'root', idempotent: true, args: s.object({ paper: s.handle() }) },
     // What she shows the person: the domains that vouch for each far standing.
-    vouched: { for: 'root', hints: { readOnly: true }, result: s.array(s.array(s.string())) },
+    vouched: { for: 'root', readOnly: true, result: s.array(s.array(s.string())) },
     // One ask of the shop, so a ward that moved tells her where it is now.
-    look: { for: 'root', hints: { idempotent: true }, result: s.array(s.string()) },
+    look: { for: 'root', idempotent: true, result: s.array(s.string()) },
   },
 }) {
   take({ paper }: Args<Holder, 'take'>) {
@@ -40,9 +41,10 @@ export class Holder extends Being.of({
   }
 
   async look() {
-    const { asks } = await this.held(this.cells.shop).describe();
-    return asks.map(({ method }) => method);
+    const { result, error } = await this.held(this.cells.shop).describe();
+    if (error) this.fail(error.message);
+    return result.asks.map(({ method }) => method);
   }
 }
 
-export const home = { steward: Steward, beings: [Holder] };
+export const home = house(Steward, [world('steward'), world('vouched')]);

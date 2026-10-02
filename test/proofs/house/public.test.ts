@@ -86,11 +86,11 @@ test('Where memory refuses the public being’s write, the zero head answers not
   assert.deepEqual(read.object, { result: 1 }, 'the number went unspent, and asking again lands once');
 });
 
-test('It refuses an ask a stranger reaches that is not idempotent: it is not shown to them', async () => {
+test('A public being is sovereign: an ask her author marked replayable reaches a stranger, though it is not idempotent', async () => {
   const a = await open('a3', 'd'.repeat(64), true);
   const { read } = await stranger().ask(a.house, 'effect');
   assert.ok('object' in read);
-  assert.deepEqual(read.object, { error: { message: 'no such ask' } });
+  assert.deepEqual(read.object, { result: null });
 });
 
 test('A stranger is told what they may ask, and not her kind or her description', async () => {
@@ -104,6 +104,6 @@ test('A stranger is told what they may ask, and not her kind or her description'
   assert.equal(describe.description, undefined);
   assert.deepEqual(
     describe.asks.map((entry) => entry.method),
-    ['signup', 'visit'],
+    ['signup', 'effect', 'visit'],
   );
 });

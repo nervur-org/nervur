@@ -6,9 +6,9 @@ export class Lobby extends Being.of({
   description: 'Where a stranger signs up.',
   cells: { visits: 0 },
   asks: {
-    signup: { for: 'stranger', result: s.object({ invitation: s.invitation() }) },
-    effect: { for: 'stranger', hints: { idempotent: false } },
-    visit: { for: 'stranger', result: s.number() },
+    signup: { for: 'stranger', idempotent: true, result: s.object({ invitation: s.invitation() }) },
+    effect: { for: 'stranger', replayable: true },
+    visit: { for: 'stranger', replayable: true, result: s.number() },
   },
 }) {
   visit() {
@@ -17,8 +17,9 @@ export class Lobby extends Being.of({
   }
 
   async signup() {
-    const answer = (await this.steward!.enroll({ signer: this.asker.signer } as never)) as { invitation: unknown };
-    return { invitation: answer.invitation };
+    const answered = await this.steward!.enroll({ signer: this.asker.signer } as never);
+    if (answered === undefined || answered.error) this.fail(answered?.error?.message ?? 'enroll was no awaited call');
+    return { invitation: (answered.result as { invitation: unknown }).invitation };
   }
 
   effect() {}

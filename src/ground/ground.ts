@@ -4,7 +4,7 @@
 // a body. The primordial go up first on the host's entries: the memory,
 // the unlock, crypto and tools, then the library's `ground`, whose body is
 // the ground's work. The dock opens next on them alone, a house whose
-// beings are the drawer: a twin for each faculty entry, a being for each
+// beings' cells hold its state: a twin for each faculty entry, a being for each
 // house and one for each secret. Its steward stands the ladder and opens
 // every house through the `ground` faculty, so a broken ladder is always
 // mended. The hand goes up last and down first. The ground keeps nothing
@@ -12,7 +12,7 @@
 // the views it handed it, never asking it.
 import type { Json } from '../being/being.ts';
 import { blueprintOf, type Blueprint } from '../being/need.ts';
-import { s, type Schema } from '../being/schema.ts';
+import { s } from '../being/schema.ts';
 import { offered } from '../being/table.ts';
 import { JoinedCarry } from '../bodies/joined-carry.ts';
 import { NobleCrypto } from '../bodies/noble-crypto.ts';
@@ -20,9 +20,13 @@ import { SeedKeys } from '../bodies/seed-keys.ts';
 import { StrictTools } from '../bodies/strict-tools.ts';
 import { WebClock } from '../bodies/web-clock.ts';
 import type { Handler } from '../bodies/web-carry.ts';
-import type { Carry, Classes, Clock, Crypto, Memory, Tools } from '../foundation.ts';
-import { openHouse, type Answer, type FacultyContext, type Offer, type Opened, type OpenedContext } from '../house/house.ts';
-import { DOCK, dockClasses, GroundNeed, IDS, KINDS, ListenerNeed } from './dock.ts';
+import { ClassList } from '../bodies/class-list.ts';
+import { Faculty, type Call, type FacultyClass, type Made, type Registry, type Status } from '../faculty.ts';
+import { contractOf, foundationContract, type Carry, type Classes, type ClassesSource, type Clock, type Contract, type Crypto, type Memory, type Tools } from '../foundation.ts';
+import { openHouse, type Answer, type FacultyContext, type Offer, type Opened } from '../house/house.ts';
+import { GroundHouses } from '../being/dock-pilot.ts';
+import { DOCK, dockClasses, GROUND, GroundNeed, IDS, KINDS, ownerKinds } from './dock.ts';
+import { contain, type Contained, type Runner } from './runner.ts';
 import { HouseCarry, HouseClock, LadderCarry, SealedMemory, ViewMemory } from './views.ts';
 
 /** A door, as a carry hooks it. */
@@ -33,6 +37,10 @@ export interface Unlock {
   /** Sixty-four lowercase hex digits: drawn and kept where none is kept yet. */
   key(): Promise<string>;
 }
+export const Unlock = foundationContract('unlock');
+
+/** Where the owner reaches the ground: a body with a handler or a channel of its own, calling the ground's hand. */
+export const Hand = foundationContract('hand');
 
 /** A carry the ground hooks doors to, and unhooks them from. */
 export interface Hooked extends Carry {
@@ -41,86 +49,34 @@ export interface Hooked extends Carry {
 }
 
 /**
- * The contract a body fills: the primordial, the unlock, the memory,
- * crypto, tools, the ground's work and the hand, then what every house
- * receives.
+ * The contract a body fills, read from its blueprint: a contract of the
+ * foundation, the ground's own work, or `offer` where it offers beings a
+ * blueprint of its own.
  */
-export type Serves = 'unlock' | 'memory' | 'crypto' | 'tools' | 'ground' | 'hand' | 'carry' | 'clock' | 'classes';
-
-/** What a faculty's `up` and `install` receive: its name, its args, its secrets, its sealed memory, and the bodies it calls. */
-export interface Up {
-  readonly name: string;
-  readonly args: Readonly<Record<string, Json>>;
-  readonly secrets: Readonly<Record<string, string>>;
-  readonly memory: Memory;
-  /** The object of each body its entry names in `faculties`. */
-  readonly faculties: Readonly<Record<string, object>>;
-}
-
-/** What one house receives of a foundation body: the house's name, and the args its entry holds. */
-export interface ForHouse {
-  readonly house: string;
-  readonly args: Readonly<Record<string, Json>>;
-}
+type Serves = Contract['contract'] | 'ground' | 'offer';
 
 /**
- * A faculty stood: the living instance houses and bodies use. Each part
- * where it has one: an offer to beings, a handler for the listener, a
- * registry for the rungs above it, the contract it serves, and what it
- * lets go of when it goes down.
+ * A body offering `Installer`: the need kinds it meets, and `meet`, which
+ * meets one need of the faculty named, its spec as that faculty declares
+ * it. It answers what it met, as each binary's absolute path under its
+ * name, and the ground hands that answer to the faculty as `made.met`
+ * under the need's kind. Nothing answered is handed as null. A throw
+ * leaves that faculty down with why.
  */
-export interface Body {
-  readonly blueprint?: unknown;
-  readonly object?: object;
-  /** How long the body remembers a call id, in milliseconds. */
-  readonly window?: number;
-  readonly handler?: Handler;
-  readonly registry?: Registry;
-  readonly serves?: Serves;
-  /** The schemes of the addresses a carry body speaks. */
-  readonly schemes?: readonly string[];
-  /** The port its listener holds once it is up, which its twin keeps as a cell. */
-  readonly port?: number;
-  /** What one house receives of a body serving `memory` or `classes`. */
-  house?(options: ForHouse): unknown;
-  /** Told when a house it is offered to opens, with the context that calls its tokens there. */
-  opened?(context: OpenedContext): void | Promise<void>;
-  down?(): void | Promise<void>;
+export interface Installer {
+  readonly meets: readonly string[];
+  meet(need: { readonly kind: string; readonly spec: Json; readonly name: string }): Json | void | Promise<Json | void>;
 }
 
-/**
- * What a faculty takes: the args of its entry, held to a schema in the
- * house's subset, and each secret its entry must name, by name with what
- * it holds. An entry that fails it is refused at the hand and stays down
- * at the boot.
- */
-export interface Takes {
-  readonly args?: Schema;
-  readonly secrets?: Readonly<Record<string, string>>;
+/** One need of a faculty met: the installer that met it, and what it answered. Her twin keeps it. */
+export interface Met {
+  readonly by: string;
+  readonly met: Json;
 }
-
-/** Code a registry holds by name: what it takes, `up` raising it into a body, and `install` doing the slow work once for each entry. */
-export interface Faculty {
-  readonly takes?: Takes;
-  install?(made: Up): void | Promise<void>;
-  up(made: Up): Body | Promise<Body>;
-}
-
-/** Code that holds faculties by name. */
-export interface Registry {
-  readonly faculties?: Readonly<Record<string, Faculty>>;
-}
-
-const NONE = { args: s.object({}) } as const;
+export const Installer = foundationContract('installer');
 
 /** The faculties every terrain holds: the library's crypto, tools, and the clock of every web engine. */
-const libraryRegistry: Registry = {
-  faculties: {
-    noble: { takes: NONE, up: () => ({ serves: 'crypto', object: new NobleCrypto() }) },
-    strict: { takes: NONE, up: () => ({ serves: 'tools', object: new StrictTools() }) },
-    clock: { takes: NONE, up: () => ({ serves: 'clock', object: new WebClock() }) },
-  },
-};
+const libraryRegistry: Registry = { faculties: { noble: NobleCrypto, strict: StrictTools, clock: WebClock } };
 
 /**
  * Registries joined as one rung, the first first. A name one holds is
@@ -128,7 +84,7 @@ const libraryRegistry: Registry = {
  * ground joins its first rung with it.
  */
 export const joinedRegistry = (...registries: readonly Registry[]): Registry => {
-  const faculties: Record<string, Faculty> = {};
+  const faculties: Record<string, FacultyClass> = {};
   for (const registry of registries) {
     for (const [name, faculty] of Object.entries(registry.faculties ?? {})) {
       if (Object.hasOwn(faculties, name)) throw new TypeError(`the registry names a faculty ${name}, which the ground holds already`);
@@ -159,6 +115,8 @@ export interface FacultyEntry {
   readonly args?: Readonly<Record<string, Json>>;
   readonly secrets?: readonly string[];
   readonly faculties?: readonly string[];
+  /** The installers that meet what its faculty needs of the terrain, asked in this order. */
+  readonly installers?: readonly string[];
   readonly kinds?: readonly string[];
 }
 
@@ -224,20 +182,105 @@ export interface GroundOptions {
    * boot all the same.
    */
   readonly lazy?: boolean;
+  /**
+   * Each faculty stands its `fake` in its place, and one that needs its
+   * terrain and has no fake stays down with why: the bench's ground.
+   */
+  readonly fakes?: boolean;
+  /**
+   * Each house opens in a runner of its own, its bodies held here, and its
+   * classes loaded there from the modules its classes body names. A ground
+   * with none opens each house in place, as the edge does.
+   */
+  readonly runner?: Runner;
+  /**
+   * The terrain's import of a faculty's address from its own install: the
+   * module the address's face is. An entry with no `from` whose `make` is
+   * an address stands the one faculty that face shows.
+   */
+  readonly image?: (address: string) => Promise<unknown>;
 }
 
-// What a house's entry names for its memory and its code, and what every house receives.
-const FOR_HOUSES = new Set<Serves>(['memory', 'classes']);
-const EVERY_HOUSE = new Set<Serves>(['carry']);
+/**
+ * A faculty's address in the image: a package, the kind `faculties`, then
+ * one folder, as `@nervur-org/proof/faculties/layout`.
+ */
+const ADDRESS = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*\/faculties\/[a-z0-9][a-z0-9._-]*$/;
+
+// A class a face shows that extends Faculty, read by its shape, so a copy of the library the image holds beside this one reads alike.
+const isFaculty = (value: unknown): value is FacultyClass =>
+  typeof value === 'function' && 'blueprint' in value && typeof (value.prototype as { up?: unknown } | undefined)?.up === 'function' && typeof (value.prototype as { down?: unknown }).down === 'function';
+
+// A classes body's answer that names modules, which a runner loads, rather than classes loaded already.
+const isSource = (classes: Classes | ClassesSource): classes is ClassesSource => Array.isArray((classes as { modules?: unknown }).modules);
+
 const PRIMORDIAL = new Set<Serves>(['unlock', 'crypto', 'tools', 'clock', 'ground', 'hand']);
-/** The library's own faculties: the ground's work, which the host never names, and the ground's one listener. */
-const GROUND = 'ground';
-const LISTENER = 'listener';
+/** The names every faculty's hooks and parts hold, which no blueprint's method takes. */
+const HOOKS = new Set(['made', 'install', 'migrate', 'up', 'health', 'down', 'uninstall', 'opened', 'house', 'blueprint', 'window', 'handler', 'registry', 'schemes', 'port']);
+const NONE = { args: s.object({}) } as const;
+/** Why the hand mints no occupant itself: an invitation onto a house's steward is the dock's `housesInvite`, and none stands onto the dock. */
+const UNINVITED = 'the hand invites through the dock’s housesInvite alone';
+
+// The contract a blueprint names: a foundation's, the ground's work, an offer of its own, or none.
+const servesOf = (blueprint: unknown): Serves | undefined => {
+  if (blueprint === GroundNeed) return 'ground';
+  const contract = contractOf(blueprint);
+  if (contract !== undefined) return contract;
+  return typeof blueprint === 'object' && blueprint !== null ? 'offer' : undefined;
+};
+
+// The blueprint a body holds: its own where its `up` learnt it, or its class's.
+const blueprintHeld = (stood: { readonly Class?: FacultyClass; readonly body?: Faculty } | undefined): unknown => stood?.body?.blueprint ?? stood?.Class?.blueprint;
+
+// The blueprint an offer names, settled.
+const settled = (blueprint: unknown): Blueprint => blueprintOf(blueprint) ?? (blueprint as Blueprint);
+
+const failed = (text: string): Answer => ({ error: { message: text } });
+
+const isAnswer = (value: unknown): value is Answer => typeof value === 'object' && value !== null && ('result' in value || 'error' in value);
+
+/**
+ * What a hook came to: nothing where it holds, or why not. A status not
+ * ok gives its own why. A throw is read the same way, its message the why
+ * after what the hook was doing, and a secret waited for names itself.
+ */
+const statusOf = async (run: () => Status | void | Promise<Status | void>, doing: string): Promise<string | undefined> => {
+  try {
+    const status = await run();
+    if (typeof status !== 'object' || status === null || status.ok) return undefined;
+    return typeof status.why === 'string' && status.why !== '' ? status.why : `${doing}: it answered not ok`;
+  } catch (error) {
+    return error instanceof Waiting ? error.message : `${doing}: ${message(error)}`;
+  }
+};
+
+// A body let go, whatever its `down` does: nothing it throws falls further.
+const letGo = async (body: Faculty | undefined): Promise<void> => {
+  try {
+    await body?.down();
+  } catch {
+    // A body that cannot let go is gone all the same.
+  }
+};
+
+// The ground's own work, a faculty the library holds: the body is the work's methods.
+const groundWork = (work: () => object): FacultyClass =>
+  class GroundWork extends Faculty {
+    static override readonly blueprint = GroundNeed;
+    static override readonly takes = NONE;
+    constructor(made: Made) {
+      super(made);
+      Object.assign(this, work());
+    }
+  };
 
 // A foundation body's args for one house: everything its part of the entry names but the faculty.
 const argsOf = ({ faculty: _faculty, ...args }: BodyNamed): Readonly<Record<string, Json>> => args as Readonly<Record<string, Json>>;
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/** What a body's read of an absent secret throws: its message is the why the body stays down with. */
+class Waiting extends Error {}
 
 // The memory a primordial faculty receives: none, since the dock is not open yet.
 const unopened: Memory = {
@@ -245,6 +288,9 @@ const unopened: Memory = {
   list: () => Promise.reject(new Error('a primordial faculty keeps nothing')),
   write: () => Promise.reject(new Error('a primordial faculty keeps nothing')),
 };
+
+// What a primordial faculty derives: nothing, since the ground's key is not drawn yet.
+const underived = (): Promise<Uint8Array> => Promise.reject(new Error('a primordial faculty derives nothing'));
 
 interface Held {
   readonly entry: Entry;
@@ -274,29 +320,45 @@ interface Docked {
 /** A body of the ladder as the ground holds it: standing, or down and why. */
 interface Stood {
   readonly entry: FacultyEntry;
-  readonly body?: Body;
+  /** Its class, where one was found: an offer is known by its blueprint while its body is down. */
+  readonly Class?: FacultyClass;
+  readonly body?: Faculty;
   readonly why?: string;
 }
 
+/**
+ * What a primordial body's `call` reaches: a method of a primordial body
+ * its entry names, called as it is, since each is the host's own. The
+ * hand calls the ground's work so.
+ */
+const primordialCall =
+  (raised: ReadonlyMap<string, Faculty>, named: readonly string[]) =>
+  async ({ faculty, method, args }: Call): Promise<Answer> => {
+    const body = raised.get(faculty);
+    const run = (body as unknown as Record<string, unknown> | undefined)?.[method];
+    if (!named.includes(faculty) || typeof run !== 'function') return failed(`the ${faculty} has no method ${method} to call here`);
+    try {
+      return { result: ((await (run as (args: unknown) => unknown).call(body, args)) ?? null) as Json };
+    } catch (error) {
+      return failed(message(error));
+    }
+  };
+
 // One primordial body raised on its entry, filling the contract it names, or the reason the ground cannot open.
-const primordial = async (registry: Registry, role: Serves, entry: FacultyEntry, raised: ReadonlyMap<string, Body>): Promise<Body> => {
-  const faculty = entry.make === undefined ? undefined : registry.faculties?.[entry.make];
-  if (faculty === undefined) throw new Error(`no faculty ${entry.make} in the ground’s registry for its ${role}`);
+const primordial = async (registry: Registry, role: Serves, entry: FacultyEntry, raised: ReadonlyMap<string, Faculty>, listener: Handler): Promise<Faculty> => {
+  const Class = entry.make === undefined ? undefined : registry.faculties?.[entry.make];
+  if (Class === undefined) throw new Error(`no faculty ${entry.make} in the ground’s registry for its ${role}`);
   // The tools are not up yet, so the library's own check holds its args.
-  const why = faculty.takes?.args === undefined ? null : new StrictTools().check(faculty.takes.args, entry.args ?? {});
+  const why = Class.takes?.args === undefined ? null : new StrictTools().check(Class.takes.args, entry.args ?? {});
   if (why !== null) throw new TypeError(`the faculty ${entry.make} is refused for its ${role}: ${why.replace(/^the value/, 'its args')}`);
-  const faculties: Record<string, object> = {};
-  for (const callee of entry.faculties ?? []) {
-    const object = raised.get(callee)?.object;
-    if (object === undefined) throw new Error(`the ${role} calls ${callee}, which stands before it nowhere`);
-    faculties[callee] = object;
-  }
-  const made: Up = { name: role, args: entry.args ?? {}, secrets: {}, memory: unopened, faculties };
-  await faculty.install?.(made);
-  const body = await faculty.up(made);
-  if (body.serves !== role || (body.object === undefined && role !== 'hand')) {
-    await body.down?.();
-    throw new Error(`the faculty ${entry.make} serves no ${role}`);
+  for (const callee of entry.faculties ?? []) if (!raised.has(callee)) throw new Error(`the ${role} calls ${callee}, which stands before it nowhere`);
+  if (servesOf(Class.blueprint) !== role) throw new Error(`the faculty ${entry.make} serves no ${role}`);
+  const made: Made = { name: role, args: entry.args ?? {}, secrets: {}, memory: unopened, derive: underived, met: {}, faculties: entry.faculties ?? [], call: primordialCall(raised, entry.faculties ?? []), listener };
+  const body = new Class(made);
+  const down = (await statusOf(() => body.install(), 'it did not install')) ?? (await statusOf(() => body.up(), 'it did not stand'));
+  if (down !== undefined) {
+    await letGo(body);
+    throw new Error(`the faculty ${entry.make} did not stand for its ${role}: ${down}`);
   }
   return body;
 };
@@ -304,13 +366,17 @@ const primordial = async (registry: Registry, role: Serves, entry: FacultyEntry,
 export class Ground {
   readonly #options: GroundOptions;
   readonly #registry: Registry;
+  /** Each faculty the terrain imported by its address, which joins its registry as code, never as state. */
+  readonly #images = new Map<string, FacultyClass>();
   #memory!: Memory;
   #crypto!: Crypto;
   #tools!: Tools;
   #keys!: SeedKeys;
   /** The primordial bodies by role, in the order they went up. */
-  readonly #primordial = new Map<string, Body>();
+  readonly #primordial = new Map<string, Faculty>();
   #dock: Docked | undefined;
+  /** Whether the dock stands open on the owner's classes beside the library's. */
+  #extended = false;
   readonly #houses = new Map<string, Held>();
   readonly #stood = new Map<string, Stood>();
   /** Each asleep house opening, so two boxes at once open it once. */
@@ -318,17 +384,8 @@ export class Ground {
 
   private constructor(options: GroundOptions) {
     this.#options = options;
-    // The library's own faculties first: the ground's work and its listener, then the terrain's and the host's.
-    this.#registry = joinedRegistry(
-      {
-        faculties: {
-          [GROUND]: { takes: NONE, up: () => ({ serves: 'ground', blueprint: GroundNeed, object: this.#work() }) },
-          [LISTENER]: { takes: NONE, up: () => ({ blueprint: ListenerNeed, object: this.handler }) },
-        },
-      },
-      libraryRegistry,
-      options.registry,
-    );
+    // The library's own faculty first, the ground's work, then the terrain's and the host's.
+    this.#registry = joinedRegistry({ faculties: { [GROUND]: groundWork(() => this.#work()) } }, libraryRegistry, options.registry);
   }
 
   /**
@@ -357,36 +414,36 @@ export class Ground {
       ['tools', host.tools],
       ['clock', host.clock],
     ] as const) {
-      this.#primordial.set(role, await primordial(this.#registry, role, entry, this.#primordial));
+      this.#primordial.set(role, await primordial(this.#registry, role, entry, this.#primordial, this.handler));
     }
-    this.#memory = this.#primordial.get('memory')!.object as Memory;
-    this.#crypto = this.#primordial.get('crypto')!.object as Crypto;
-    this.#tools = this.#primordial.get('tools')!.object as Tools;
-    this.#keys = new SeedKeys(await (this.#primordial.get('unlock')!.object as Unlock).key(), this.#crypto);
-    this.#primordial.set('ground', await primordial(this.#registry, 'ground', { make: GROUND }, this.#primordial));
+    this.#memory = this.#primordial.get('memory') as unknown as Memory;
+    this.#crypto = this.#primordial.get('crypto') as unknown as Crypto;
+    this.#tools = this.#primordial.get('tools') as unknown as Tools;
+    this.#keys = new SeedKeys(await (this.#primordial.get('unlock') as unknown as Unlock).key(), this.#crypto);
+    this.#primordial.set('ground', await primordial(this.#registry, 'ground', { make: GROUND }, this.#primordial, this.handler));
     await this.#openDock();
     const booted = await this.#counted(this.#dock!, this.#dock!.opened.ask({ method: 'boot' }));
     if ('error' in booted) throw new Error(`the dock did not boot: ${booted.error.message}`);
     await this.#grantDock();
-    if (host.hand !== undefined) this.#primordial.set('hand', await primordial(this.#registry, 'hand', host.hand, this.#primordial));
+    if (host.hand !== undefined) this.#primordial.set('hand', await primordial(this.#registry, 'hand', host.hand, this.#primordial, this.handler));
   }
 
   // ---- the dock ----
 
   // The dock opened on the primordial bodies alone: its seed derived from the ground's key, its places in a view of the ground's memory, and the ladder's carry and clock as they come to stand.
-  async #openDock(granted: readonly Offer[] = []): Promise<void> {
+  async #openDock(granted: readonly Offer[] = [], classes: Classes = dockClasses()): Promise<void> {
     const memory = new ViewMemory(this.#memory, await this.#prefix(DOCK, DOCK));
     // A memory that holds places and no dock this key opens holds another ground's, which this key does not open.
-    if ((await memory.list()).length === 0 && (await this.#memory.list()).length > 0) throw new Error('this memory holds no drawer this key opens');
+    if ((await memory.list()).length === 0 && (await this.#memory.list()).length > 0) throw new Error('this memory holds no dock this key opens');
     const clock = new HouseClock(this.#clock(), DOCK);
     const carry = new HouseCarry(new LadderCarry(() => this.#carry()));
-    const work = this.#primordial.get('ground')!.object!;
+    const work = this.#primordial.get('ground')!;
     const offers: Offer[] = [{ blueprint: GroundNeed, object: work, kinds: [KINDS.steward, KINDS.faculty, KINDS.house] }, ...granted];
     const opened = await openHouse(
       {
         keys: new SeedKeys(this.#tools.hex(await this.#keys.derive('dock', 32)), this.#crypto),
         memory,
-        classes: dockClasses(),
+        classes,
         carry,
         clock,
         crypto: this.#crypto,
@@ -398,24 +455,73 @@ export class Ground {
   }
 
   /**
-   * The dock opened again on each body its steward stands on, offered as
-   * any body is offered to a house, with the kinds its twin's entry grants:
-   * the terrain's shell, where it stands. The being that holds the offer is
-   * borne then.
+   * The dock opened again once the ladder stands, on each body its steward
+   * stands on, offered as any body is offered to a house: the terrain's
+   * shell, where it stands. Where the owner names her dock classes, it
+   * opens on the library's joined to hers, and is offered each body whose
+   * entry's kinds name a kind of hers, for those kinds alone. Where hers do
+   * not load or do not open, it opens on the library's, and the steward's
+   * cells say why. The being that holds the shell's offer is borne then.
    */
   async #grantDock(): Promise<void> {
     const dock = this.#dock!;
     const read = await this.#counted(dock, dock.opened.ask({ method: 'grants' }));
     const names = 'result' in read ? (read.result as string[]) : [];
     const granted = this.#offers({ classes: { faculty: '' }, faculties: names.filter((name) => this.#stood.get(name)?.body !== undefined) });
-    if (typeof granted === 'string' || granted.length === 0) return;
+    const shell = typeof granted === 'string' ? [] : granted;
+    const shown = await this.#counted(dock, dock.opened.ask({ method: 'classesShow' }));
+    const named = 'result' in shown ? (shown.result as { classes?: BodyNamed }).classes : undefined;
+    if (shell.length === 0 && named === undefined && !this.#extended) return;
+    const owner = named === undefined ? undefined : await this.#ownerDock(named);
     await this.#counted(dock, dock.opened.ask({ method: 'housesList' }));
     await this.#closeDock();
-    await this.#openDock(granted);
+    let why = typeof owner === 'string' ? owner : undefined;
+    this.#extended = false;
+    if (owner !== undefined && typeof owner !== 'string') {
+      try {
+        await this.#openDock([...shell, ...owner.offers], owner.classes);
+        this.#extended = true;
+      } catch (error) {
+        why = `the ${DOCK} did not open on the owner’s classes: ${message(error)}`;
+      }
+    }
+    if (!this.#extended) await this.#openDock(shell);
     // The dock opened again hooks its door to the carries the ladder stands, as the first did.
     await this.#hookDock();
-    const born = await this.#counted(this.#dock!, this.#dock!.opened.ask({ method: 'granted' }));
-    if ('error' in born) throw new Error(`the dock did not take its grants: ${born.error.message}`);
+    if (shell.length > 0) {
+      const born = await this.#counted(this.#dock!, this.#dock!.opened.ask({ method: 'granted' }));
+      if ('error' in born) throw new Error(`the dock did not take its grants: ${born.error.message}`);
+    }
+    if (named !== undefined) await this.#counted(this.#dock!, this.#dock!.opened.ask({ method: 'classesLoaded', args: why === undefined ? {} : { why } }));
+  }
+
+  /**
+   * The owner's dock classes, loaded from the body her steward names, with
+   * the offers her kinds are granted: each body of the ladder whose entry's
+   * kinds name one of hers, offered to those kinds alone. Or why they are
+   * refused, which leaves the dock on the library's.
+   */
+  async #ownerDock(named: BodyNamed): Promise<{ classes: Classes; offers: Offer[] } | string> {
+    try {
+      const served = await this.#served<Classes | ClassesSource>(named, 'classes', DOCK);
+      const found = isSource(served) ? await ClassList.found(served) : served instanceof ClassList ? served.list() : undefined;
+      if (found === undefined) return `the faculty ${named.faculty} serves classes the ${DOCK} cannot list`;
+      const owner = found;
+      const classes = dockClasses(owner);
+      // Her kinds, and the steward's where the steward is hers, so a need she adds is met.
+      const kinds = ownerKinds(owner);
+      const offers: Offer[] = [];
+      for (const [name, stood] of this.#stood) {
+        const given = (stood.entry.kinds ?? []).filter((kind) => kinds.has(kind));
+        if (given.length === 0 || servesOf(blueprintHeld(stood)) !== 'offer') continue;
+        const offer = this.#offers({ classes: { faculty: '' }, faculties: [name] });
+        if (typeof offer === 'string') continue;
+        offers.push(...offer.map((one) => ({ ...one, kinds: given })));
+      }
+      return { classes, offers };
+    } catch (error) {
+      return `the owner’s ${DOCK} classes are refused: ${message(error)}`;
+    }
   }
 
   // The dock's door hooked to the carries standing now, and unhooked from those it held.
@@ -489,14 +595,15 @@ export class Ground {
         lazy: this.#options.lazy === true,
         ...(this.#options.wait === undefined ? {} : { wait: this.#options.wait }),
       })),
-      check: answered(({ entry }: { entry: FacultyEntry }) => {
-        const registry = entry.from === undefined ? this.#registry : this.#stood.get(entry.from)?.body?.registry;
-        const faculty = entry.make === undefined ? undefined : registry?.faculties?.[entry.make];
-        const why = faculty === undefined ? undefined : this.#untaken(faculty, entry);
+      check: answered(async ({ entry }: { entry: FacultyEntry }) => {
+        const faculty = await this.#found(entry);
+        const why = typeof faculty === 'string' ? undefined : this.#untaken(faculty, entry);
         return why === undefined ? {} : { why };
       }),
-      raise: answered(({ name, entry, installed }: { name: string; entry: FacultyEntry; installed?: string }) => this.#raise(name, entry, installed)),
+      raise: answered(({ name, entry, installed, version, met }: { name: string; entry: FacultyEntry; installed?: string; version?: string; met?: Record<string, Met> }) => this.#raise(name, entry, installed, version, met)),
       lower: answered(({ name, why }: { name: string; why?: string }) => this.#lower(name, why)),
+      uninstall: answered(({ name, entry }: { name: string; entry: FacultyEntry }) => this.#uninstall(name, entry)),
+      health: answered(({ name }: { name: string }) => this.#health(name)),
       open: answered(({ name, entry, seed, bound }: { name: string; entry: Entry; seed: string; bound?: number }) => this.#openHouse(name, entry, seed, bound)),
       close: answered(({ name, why }: { name: string; why?: string }) => this.#closeHouse(name, why)),
       sleep: answered(({ name, entry, ward }: { name: string; entry: Entry; ward: string }) => this.#sleep(name, entry, ward)),
@@ -504,6 +611,7 @@ export class Ground {
       call: answered((call: { faculty: string; method: string; args?: Json }) => this.#callFaculty(call)),
       placesOut: answered(({ name, entry }: { name: string; entry: Entry }) => this.#placesOut(name, entry)),
       placesIn: answered(({ name, entry, places }: { name: string; entry: Entry; places: Record<string, Record<string, string>> }) => this.#placesIn(name, entry, places)),
+      invite: answered(({ name, occupant, notes }: { name: string; occupant: string; notes: Record<string, Json> }) => this.#invite(name, occupant, notes)),
       /** The hand, as a primordial faculty serves it to the owner. It is no method of the blueprint, so no being reaches it. */
       hand: (request: HandAsk) => this.hand(request),
     };
@@ -512,103 +620,335 @@ export class Ground {
   // ---- the ladder ----
 
   // A body standing under a name, or why there is none.
-  #standing(name: string): Body | string {
+  #standing(name: string): Faculty | string {
     const stood = this.#stood.get(name);
     if (stood === undefined) return `no faculty ${name} stands here`;
     return stood.body ?? `the faculty ${name} is down: ${stood.why}`;
   }
 
-  // Why an entry fails what its faculty takes: its args against the schema, or a secret it must name and does not.
-  #untaken(faculty: Faculty, entry: FacultyEntry): string | undefined {
-    const { args, secrets = {} } = faculty.takes ?? {};
-    if (args !== undefined) {
-      const why = this.#tools.check(args, entry.args ?? {});
-      if (why !== null) return why.replace(/^the value/, 'its args');
-    }
-    for (const [secret, what] of Object.entries(secrets)) {
-      if (!(entry.secrets ?? []).includes(secret)) return `its entry names no secret ${secret}, which ${entry.make} takes: ${what}`;
-    }
-    return undefined;
+  // Why an entry's args fail the schema its faculty takes. A secret is never required, so it fails nothing here.
+  #untaken(faculty: FacultyClass, entry: FacultyEntry): string | undefined {
+    const args = faculty.takes?.args;
+    if (args === undefined) return undefined;
+    const why = this.#tools.check(args, entry.args ?? {});
+    return why === null ? undefined : why.replace(/^the value/, 'its args');
   }
 
-  // One body raised on its entry, where one stands under the name taken down first: installed where the entry moved, then up, or down and why.
-  async #raise(name: string, entry: FacultyEntry, installed: string | undefined): Promise<{ installed?: string; why?: string; serves?: string; port?: number }> {
+  /**
+   * The secrets a body receives: each its entry names that is kept. A read
+   * of one its faculty takes or its entry names, while it is absent, throws
+   * `Waiting`, which names the secret and what it holds, so the author
+   * writes nothing for it.
+   */
+  async #secrets(faculty: FacultyClass, entry: FacultyEntry): Promise<Readonly<Record<string, string>>> {
+    const named = entry.secrets ?? [];
+    const kept: Record<string, string> = {};
+    for (const secret of named) {
+      const value = await this.#secret(secret);
+      if (value !== undefined) kept[secret] = value;
+    }
+    const taken = faculty.takes?.secrets ?? {};
+    return new Proxy(kept, {
+      get: (held, key) => {
+        if (typeof key !== 'string' || Object.hasOwn(held, key)) return Reflect.get(held, key);
+        if (!Object.hasOwn(taken, key) && !named.includes(key)) return undefined;
+        const holds = Object.hasOwn(taken, key) ? `: ${taken[key]}` : '';
+        throw new Waiting(named.includes(key) ? `it waits for the secret ${key}, which is not kept${holds}` : `it waits for the secret ${key}, which its entry does not name${holds}`);
+      },
+    });
+  }
+
+  // The one faculty an address's face shows, imported from the terrain's install, or why there is none.
+  async #imaged(address: string): Promise<FacultyClass | string> {
+    const held = this.#images.get(address);
+    if (held !== undefined) return held;
+    const image = this.#options.image;
+    if (image === undefined) return `the terrain imports no faculty by its address ${address}`;
+    let face: unknown;
+    try {
+      face = await image(address);
+    } catch (error) {
+      return `the address ${address} did not import: ${message(error)}`;
+    }
+    const shown = [...new Set(Object.values(face as object))].filter(isFaculty);
+    if (shown.length !== 1) return `the face of ${address} shows ${shown.length} faculties, not one`;
+    this.#images.set(address, shown[0]);
+    return shown[0];
+  }
+
+  // The faculty an entry makes, from the image by its address, or from the registry its `from` names, or why there is none.
+  async #found(entry: FacultyEntry): Promise<FacultyClass | string> {
+    if (entry.from === undefined && entry.make !== undefined && ADDRESS.test(entry.make)) return this.#imaged(entry.make);
+    let registry = this.#registry;
+    if (entry.from !== undefined) {
+      const below = this.#standing(entry.from);
+      if (typeof below === 'string') return `its registry: ${below}`;
+      if (below.registry === undefined) return `the faculty ${entry.from} carries no registry`;
+      registry = below.registry;
+    }
+    const faculty = entry.make === undefined ? undefined : registry.faculties?.[entry.make];
+    return faculty ?? `no faculty ${entry.make} in ${entry.from ?? 'the ground’s registry'}`;
+  }
+
+  // The faculty that stands for an entry: its fake on a ground that stands fakes, or why one that needs its terrain stands nowhere there.
+  #standsFor(found: FacultyClass): FacultyClass | string {
+    if (this.#options.fakes !== true) return found;
+    if (found.fake !== undefined) return found.fake;
+    return Object.keys(found.needs ?? {}).length > 0 ? 'it needs its terrain, and has no fake to stand in its place' : found;
+  }
+
+  // The faculty's sealed memory: a view of the ground's, under a key derived for its name alone.
+  async #facultyMemory(name: string): Promise<Memory> {
+    return new SealedMemory(new ViewMemory(this.#memory, await this.#prefix('faculty', name)), await this.#keys.derive(`faculty:${name}`, 32), this.#crypto, this.#tools);
+  }
+
+  // The faculty's own keys: bytes derived from the ground's key under its name and its label. A name holds no colon, so no two entries meet.
+  #facultyDerive(name: string): Made['derive'] {
+    return (label, length) => {
+      if (typeof label !== 'string' || label === '') return Promise.reject(new TypeError('a faculty derives under a label'));
+      if (!Number.isInteger(length) || length < 32) return Promise.reject(new TypeError('a faculty derives thirty-two bytes at least'));
+      return this.#keys.derive(`faculty-key:${name}:${label}`, length);
+    };
+  }
+
+  // Each installer an entry names, standing and serving `installer`, in its order, or why one is not.
+  #installers(entry: FacultyEntry): (readonly [string, Installer])[] | string {
+    const installers: (readonly [string, Installer])[] = [];
+    for (const name of entry.installers ?? []) {
+      const body = this.#standing(name);
+      if (typeof body === 'string') return body;
+      if (servesOf(blueprintHeld(this.#stood.get(name))) !== 'installer') return `the faculty ${name} serves no installer`;
+      installers.push([name, body as unknown as Installer]);
+    }
+    return installers;
+  }
+
+  // Each need of a faculty handed to the first installer named that meets its kind: which met each and what it answered, or why one was not met.
+  async #meet(name: string, faculty: FacultyClass, installers: readonly (readonly [string, Installer])[]): Promise<{ readonly met: Record<string, Met> } | { readonly why: string }> {
+    const met: Record<string, Met> = {};
+    for (const [kind, spec] of Object.entries(faculty.needs ?? {})) {
+      const by = installers.find(([, installer]) => installer.meets.includes(kind));
+      if (by === undefined) return { why: `no installer its entry names meets its need ${kind}` };
+      let answer: Json | void;
+      try {
+        answer = await by[1].meet({ kind, spec, name });
+      } catch (error) {
+        return { why: `its need ${kind} was not met by ${by[0]}: ${message(error)}` };
+      }
+      met[kind] = { by: by[0], met: answer ?? null };
+    }
+    return { met };
+  }
+
+  /**
+   * One body raised on its entry, where one stands under the name taken
+   * down first. Where the entry moved, its needs are met and it installs.
+   * Where it did not, the body is handed what its twin kept of each
+   * meeting, and nothing is met again. Where its version moved from the
+   * one its twin kept, it migrates. Then it goes up, or stays down and
+   * says why.
+   */
+  async #raise(name: string, entry: FacultyEntry, installed: string | undefined, kept: string | undefined, keptMet: Readonly<Record<string, Met>> | undefined): Promise<{ installed?: string; why?: string; serves?: string; port?: number; version?: string; met?: Record<string, Met> }> {
     await this.#lower(name);
     const now = this.#tools.canonical(entry);
     let done = installed;
+    let version = kept;
+    let met: Record<string, Met> | undefined;
     const stood = await (async (): Promise<Stood> => {
-      const down = (why: string): Stood => ({ entry, why });
-      let registry = this.#registry;
-      if (entry.from !== undefined) {
-        const below = this.#standing(entry.from);
-        if (typeof below === 'string') return down(`its registry: ${below}`);
-        if (below.registry === undefined) return down(`the faculty ${entry.from} carries no registry`);
-        registry = below.registry;
-      }
-      const faculty = entry.make === undefined ? undefined : registry.faculties?.[entry.make];
-      if (faculty === undefined) return down(`no faculty ${entry.make} in ${entry.from ?? 'the ground’s registry'}`);
-      const refused = this.#untaken(faculty, entry);
+      const found = await this.#found(entry);
+      if (typeof found === 'string') return { entry, why: found };
+      // Its class is known from here, so a house is offered its blueprint while it is down.
+      const down = (why: string): Stood => ({ entry, Class: found, why });
+      const refused = this.#untaken(found, entry);
       if (refused !== undefined) return down(refused);
-      const secrets: Record<string, string> = {};
-      for (const secret of entry.secrets ?? []) {
-        const value = await this.#secret(secret);
-        if (value === undefined) return down(`no secret ${secret} is kept`);
-        secrets[secret] = value;
+      const Class = this.#standsFor(found);
+      if (typeof Class === 'string') return down(Class);
+      const shape = this.#shapeless(name, Class.blueprint);
+      if (shape !== undefined) return down(shape);
+      const installers = this.#installers(entry);
+      if (typeof installers === 'string') return down(installers);
+      const moved = installed !== now;
+      if (moved) {
+        const meeting = await this.#meet(name, Class, installers);
+        if ('why' in meeting) return down(meeting.why);
+        if (Object.keys(Class.needs ?? {}).length > 0) met = meeting.met;
       }
-      const faculties: Record<string, object> = {};
-      for (const callee of entry.faculties ?? []) {
-        const called = this.#standing(callee);
-        if (typeof called === 'string') return down(called);
-        if (called.object === undefined) return down(`the faculty ${callee} offers no object to call`);
-        faculties[callee] = called.object;
-      }
-      let raised: Body | undefined;
+      const handed = Object.fromEntries(Object.entries((moved ? met : keptMet) ?? {}).map(([kind, one]) => [kind, one.met]));
+      let body: Faculty;
       try {
-        const memory = new SealedMemory(new ViewMemory(this.#memory, await this.#prefix('faculty', name)), await this.#keys.derive(`faculty:${name}`, 32), this.#crypto, this.#tools);
-        const made: Up = { name, args: entry.args ?? {}, secrets, memory, faculties };
-        if (installed !== now) {
-          await faculty.install?.(made);
-          done = now;
-        }
-        raised = await faculty.up(made);
-        const why = this.#refused(name, raised);
-        if (why !== undefined) {
-          await raised.down?.();
-          return down(why);
-        }
-        return { entry, body: raised };
+        body = new Class(await this.#made(name, entry, await this.#secrets(Class, entry), handed));
       } catch (error) {
-        // A body raised and then refused lets go of what its `up` opened.
-        await raised?.down?.();
-        return down(`it did not stand: ${message(error)}`);
+        return down(`it was not made: ${message(error)}`);
       }
+      if (moved) {
+        const why = await statusOf(() => body.install(), 'it did not install');
+        if (why !== undefined) return down(why);
+        done = now;
+      }
+      if (Class.version !== undefined) {
+        if (kept !== undefined && kept !== Class.version) {
+          const why = await statusOf(() => body.migrate(kept), `it did not migrate from ${kept}`);
+          if (why !== undefined) return down(why);
+        }
+        version = Class.version;
+      }
+      const why = (await statusOf(() => body.up(), 'it did not stand')) ?? this.#refused(name, Class, body);
+      if (why !== undefined) {
+        // A body raised and then refused lets go of what its `up` opened.
+        await letGo(body);
+        return down(why);
+      }
+      return { entry, Class: found, body };
     })();
     this.#stood.set(name, stood);
     await this.#hookDock();
-    return { ...(done === undefined ? {} : { installed: done }), ...(stood.why === undefined ? {} : { why: stood.why }), ...(stood.body?.serves === undefined ? {} : { serves: stood.body.serves }), ...(stood.body?.port === undefined ? {} : { port: stood.body.port }) };
+    const serves = stood.body === undefined ? undefined : servesOf(blueprintHeld(stood));
+    return {
+      ...(done === undefined ? {} : { installed: done }),
+      ...(stood.why === undefined ? {} : { why: stood.why }),
+      ...(serves === undefined || serves === 'offer' ? {} : { serves }),
+      ...(stood.body?.port === undefined ? {} : { port: stood.body.port }),
+      ...(version === undefined ? {} : { version }),
+      ...(met === undefined ? {} : { met }),
+    };
   }
 
-  // A body taken down: it stands down with why where one is given, and is gone where none is.
+  // What install made let go of, once the body is down and its entry removed: an error names why, and the removal stands.
+  async #uninstall(name: string, entry: FacultyEntry): Promise<{ why?: string }> {
+    const found = await this.#found(entry);
+    const Class = typeof found === 'string' ? found : this.#standsFor(found);
+    if (typeof Class === 'string') return {};
+    const secrets: Record<string, string> = {};
+    for (const secret of entry.secrets ?? []) {
+      const value = await this.#secret(secret);
+      if (value !== undefined) secrets[secret] = value;
+    }
+    let body: Faculty;
+    try {
+      body = new Class(await this.#made(name, entry, secrets, {}));
+    } catch (error) {
+      return { why: `it did not uninstall: ${message(error)}` };
+    }
+    const why = await statusOf(() => body.uninstall(), 'it did not uninstall');
+    return why === undefined ? {} : { why };
+  }
+
+  // A body's health, asked now: down is not ok, and a body that answers no health serves while it stands.
+  async #health(name: string): Promise<Status> {
+    const body = this.#standing(name);
+    if (typeof body === 'string') return { ok: false, why: body };
+    const why = await statusOf(() => body.health(), 'its health');
+    return why === undefined ? { ok: true } : { ok: false, why };
+  }
+
+  // A body taken down: it stands down with why where one is given, and is gone where none is. Its class stays known while it is down.
   async #lower(name: string, why?: string): Promise<void> {
     const stood = this.#stood.get(name);
     if (why === undefined) this.#stood.delete(name);
-    else if (stood !== undefined) this.#stood.set(name, { entry: stood.entry, why });
-    await stood?.body?.down?.();
-    if (stood?.body?.serves === 'carry') await this.#hookDock();
+    else if (stood !== undefined) this.#stood.set(name, { entry: stood.entry, ...(stood.Class === undefined ? {} : { Class: stood.Class }), why });
+    await letGo(stood?.body);
+    if (stood?.body !== undefined && servesOf(blueprintHeld(stood)) === 'carry') await this.#hookDock();
   }
 
-  // What a raised body may not be: an offer half made, a contract filled wrong, or a primordial one.
-  #refused(name: string, raised: Body): string | undefined {
-    if ((raised.blueprint === undefined) !== (raised.object === undefined) && raised.serves === undefined) return 'a body offers a blueprint and an object together, or neither';
-    if (raised.blueprint !== undefined) offered(raised.blueprint, `the faculty ${name}`);
-    if (raised.serves === undefined) return undefined;
-    if (raised.blueprint !== undefined) return 'a body serves the house or offers beings, never both';
-    if (PRIMORDIAL.has(raised.serves)) return `the ${raised.serves} is primordial, and the drawer names none`;
-    if (FOR_HOUSES.has(raised.serves) && typeof raised.house !== 'function') return `a body serving ${raised.serves} serves each house through house()`;
-    if (raised.serves === 'memory' && raised.object !== undefined) return 'the ground’s memory is primordial, and the drawer names none';
-    if (EVERY_HOUSE.has(raised.serves) && raised.object === undefined) return `a body serving the ${raised.serves} holds it as its object`;
-    if (raised.serves === 'carry' && (raised.schemes === undefined || raised.schemes.length === 0)) return 'a carry names the schemes it speaks';
+  // What the ground hands a faculty it makes: its args, its secrets, its sealed memory, its keys, its calls, and the listener.
+  async #made(name: string, entry: FacultyEntry, secrets: Readonly<Record<string, string>>, met: Readonly<Record<string, Json>>): Promise<Made> {
+    const named = entry.faculties ?? [];
+    return {
+      name,
+      args: entry.args ?? {},
+      secrets,
+      memory: await this.#facultyMemory(name),
+      derive: this.#facultyDerive(name),
+      met: Object.freeze({ ...met }),
+      faculties: named,
+      call: ({ faculty, method, args = {}, id }) => (named.includes(faculty) ? this.#invoke(faculty, method, args, id, 'a faculty holds no token of a house') : Promise.resolve(failed(`its entry names no faculty ${faculty}`))),
+      listener: this.handler,
+    };
+  }
+
+  // What a blueprint may not be: a primordial contract, or an offer held to no subset. None where its body names its own at `up`.
+  #shapeless(name: string, blueprint: unknown): string | undefined {
+    const serves = servesOf(blueprint);
+    if (serves === undefined) return undefined;
+    if (PRIMORDIAL.has(serves)) return `the ${serves} is primordial, and the dock’s entries name none`;
+    if (serves !== 'offer') return undefined;
+    try {
+      offered(blueprint, `the faculty ${name}`);
+      const hook = Object.keys(settled(blueprint).methods).find((method) => HOOKS.has(method));
+      return hook === undefined ? undefined : `the faculty ${name} offers a method ${hook}, which is a hook of every faculty`;
+    } catch (error) {
+      return message(error);
+    }
+  }
+
+  // What a body up may not be: no blueprint, an offer missing a method its blueprint names, or a contract filled wrong.
+  #refused(name: string, Class: FacultyClass, body: Faculty): string | undefined {
+    const blueprint = blueprintHeld({ Class, body });
+    const serves = servesOf(blueprint);
+    if (serves === undefined) return 'a faculty offers a blueprint: a need of its own, or a contract of the foundation';
+    const shape = body.blueprint === undefined ? undefined : this.#shapeless(name, body.blueprint);
+    if (shape !== undefined) return shape;
+    const own = body as unknown as Record<string, unknown>;
+    if (serves === 'offer') {
+      const missing = Object.keys(settled(blueprint).methods).find((method) => typeof own[method] !== 'function');
+      return missing === undefined ? undefined : `the faculty ${name} has no method ${missing}`;
+    }
+    if ((serves === 'memory' || serves === 'classes') && typeof body.house !== 'function') return `a body serving ${serves} serves each house through house()`;
+    if (serves === 'carry' && (body.schemes === undefined || body.schemes.length === 0)) return 'a carry names the schemes it speaks';
+    if (serves === 'installer') {
+      const installer = body as unknown as Partial<Installer>;
+      if (!Array.isArray(installer.meets) || !installer.meets.every((kind) => typeof kind === 'string') || typeof installer.meet !== 'function') return 'an installer names the need kinds it meets, and meet()';
+    }
     return undefined;
+  }
+
+  /**
+   * A method of a body offering beings a blueprint, called and answered,
+   * never thrown: its args held to the method's schema, a call id of the
+   * caller's or a new one, and an answer held to its shape. A body down,
+   * a method it lacks and a throw each answer an error.
+   */
+  async #invoke(name: string, method: string, args: Json, id: string | undefined, tokenless: string): Promise<Answer> {
+    const body = this.#standing(name);
+    if (typeof body === 'string') return failed(body);
+    const blueprint = blueprintHeld(this.#stood.get(name));
+    if (servesOf(blueprint) !== 'offer') return failed(`${name} offers no methods`);
+    const spec = settled(blueprint).methods[method];
+    const run = (body as unknown as Record<string, unknown>)[method];
+    if (spec === undefined || typeof run !== 'function') return failed(`${name} has no method ${method}`);
+    const why = this.#tools.check(spec.args, args);
+    if (why !== null) return failed(why);
+    const context: FacultyContext = {
+      id: id ?? this.#tools.hex(this.#crypto.random(16)),
+      call: () => Promise.resolve(failed(tokenless)),
+      describe: () => Promise.resolve({ error: { message: tokenless } }),
+    };
+    try {
+      const answered = await (run as (args: Json, context: FacultyContext) => Promise<unknown>).call(body, args, context);
+      return isAnswer(answered) ? answered : failed(`${name} answered no answer`);
+    } catch (error) {
+      return failed(`${name} failed: ${message(error)}`);
+    }
+  }
+
+  /**
+   * What a house holds of a body offering beings: the blueprint's methods,
+   * each reaching the body standing under the name as it is called. A body
+   * down answers an error naming why, so the house opens beside it.
+   */
+  #seat(name: string, blueprint: unknown): object {
+    const methods = Object.keys(settled(blueprint).methods);
+    return Object.fromEntries(
+      methods.map((method) => [
+        method,
+        (args: Json, context: FacultyContext): Promise<unknown> => {
+          const stood = this.#stood.get(name);
+          const body = stood?.body as unknown as Record<string, (args: Json, context: FacultyContext) => Promise<unknown>> | undefined;
+          if (body === undefined) return Promise.resolve(failed(`the faculty ${name} is down: ${stood?.why ?? 'it stands nowhere'}`));
+          return body[method](args, context);
+        },
+      ]),
+    );
   }
 
   // ---- houses ----
@@ -617,8 +957,8 @@ export class Ground {
   #carry(): (Hooked & Carry) | string {
     const bySchemes: Record<string, Carry> = {};
     for (const stood of this.#stood.values()) {
-      if (stood.body?.serves !== 'carry') continue;
-      for (const scheme of stood.body.schemes ?? []) bySchemes[scheme] = stood.body.object as Carry;
+      if (stood.body === undefined || servesOf(blueprintHeld(stood)) !== 'carry') continue;
+      for (const scheme of stood.body.schemes ?? []) bySchemes[scheme] = stood.body as unknown as Carry;
     }
     if (Object.keys(bySchemes).length === 0) return 'no body serves the carry';
     return new JoinedCarry(bySchemes);
@@ -626,34 +966,77 @@ export class Ground {
 
   // The ground's one clock, a primordial body.
   #clock(): Clock {
-    return this.#primordial.get('clock')!.object as Clock;
+    return this.#primordial.get('clock') as unknown as Clock;
   }
 
-  // What a house is offered: the faculties its entry names, each with the kinds its own entry grants.
-  #offers(entry: Entry): Offer[] | string {
+  /**
+   * What a house is offered: the faculties its entry names, each with the
+   * kinds its own entry grants. A body down is offered all the same, by
+   * its class's blueprint, and answers errors until it stands. One whose
+   * class no registry gave is offered nothing.
+   */
+  #offers(entry: Entry, house?: string): Offer[] | string {
     const offers: Offer[] = [];
     for (const name of entry.faculties ?? []) {
-      const stood = this.#standing(name);
-      if (typeof stood === 'string') return stood;
-      const { blueprint, object, window } = stood;
-      if (blueprint === undefined || object === undefined) return `the faculty ${name} offers beings nothing`;
-      const kinds = this.#stood.get(name)?.entry.kinds;
+      if (name === GROUND && house !== undefined) {
+        offers.push({ blueprint: GroundHouses, object: this.#granted(house) });
+        continue;
+      }
+      const stood = this.#stood.get(name);
+      if (stood === undefined) return `no faculty ${name} stands here`;
+      const blueprint = blueprintHeld(stood);
+      if (blueprint === undefined) continue;
+      if (servesOf(blueprint) !== 'offer') return `the faculty ${name} offers beings nothing`;
+      const { kinds } = stood.entry;
+      const window = stood.body?.window ?? stood.Class?.window;
       offers.push({
         blueprint,
-        object,
+        object: this.#seat(name, blueprint),
         ...(window === undefined ? {} : { window }),
         ...(kinds === undefined ? {} : { kinds }),
-        ...(stood.opened === undefined ? {} : { opened: stood.opened.bind(stood) }),
+        opened: (context) => this.#stood.get(name)?.body?.opened?.(context),
       });
     }
     return offers;
+  }
+
+  /**
+   * What a house whose entry grants `ground` holds of it: the dock
+   * steward's houses asks, each asked through the hand under a call id of
+   * that house's own. It reaches every house of this ground but herself,
+   * and the house that invites is named by the ground, never by her.
+   */
+  #granted(house: string): object {
+    const ask = async (method: string, args: Json, context: FacultyContext): Promise<Answer> => {
+      const named = (args as { name?: unknown }).name;
+      if (named === house) return failed(`the house ${house} asks nothing of herself through the ${GROUND}`);
+      const dock = this.#dock;
+      if (dock === undefined) return failed('the ground is closed');
+      const answered = await this.#counted(dock, dock.opened.ask({ method, args, call: `${house}:${context.id}` }));
+      return 'describe' in answered ? failed(`the ${DOCK} answered no ${method}`) : answered;
+    };
+    return Object.fromEntries(
+      Object.keys(settled(GroundHouses).methods).map((method) => [
+        method,
+        (args: Json, context: FacultyContext) => ask(method, method === 'housesInvite' ? { ...(args as Record<string, Json>), by: house } : args, context),
+      ]),
+    );
+  }
+
+  // A new occupant of an open house's steward, and her invitation: a house asleep opens first.
+  async #invite(name: string, occupant: string, notes: Record<string, Json>): Promise<{ invitation: string }> {
+    const held = await this.#woken(name);
+    if (held?.opened === undefined) throw new Error(`no house ${name} is open here`);
+    const answered = await this.#counted(held, held.opened.ask({ invite: { occupant, notes } }));
+    if ('error' in answered) throw new Error(answered.error.message);
+    return { invitation: (answered as { result: string }).result };
   }
 
   // What a foundation body serves one house, or why it serves it nothing.
   async #served<T>(named: BodyNamed, serves: 'memory' | 'classes', house: string): Promise<T> {
     const stood = this.#standing(named.faculty);
     if (typeof stood === 'string') throw new Error(stood);
-    if (stood.serves !== serves || stood.house === undefined) throw new Error(`the faculty ${named.faculty} serves no ${serves}`);
+    if (servesOf(blueprintHeld(this.#stood.get(named.faculty))) !== serves || stood.house === undefined) throw new Error(`the faculty ${named.faculty} serves no ${serves}`);
     return (await stood.house({ house, args: argsOf(named) })) as T;
   }
 
@@ -666,21 +1049,25 @@ export class Ground {
   // One house opened on the bodies its entry names, or closed and why.
   async #open(name: string, entry: Entry, seed: string, bound: number | undefined): Promise<Held> {
     try {
-      const offers = this.#offers(entry);
+      const offers = this.#offers(entry, name);
       if (typeof offers === 'string') return { entry, why: offers };
       const hooked = this.#carry();
       if (typeof hooked === 'string') return { entry, why: hooked };
       const ticking = this.#clock();
       const memory = await this.#houseMemory(name, entry);
-      const classes = await this.#served<Classes>(entry.classes, 'classes', name);
+      const classes = await this.#served<Classes | ClassesSource>(entry.classes, 'classes', name);
       const clock = new HouseClock(ticking, name);
       const carry = new HouseCarry(hooked);
       const wait = entry.wait === undefined ? bound : bound === undefined ? entry.wait : Math.min(entry.wait, bound);
-      const opened = await openHouse(
-        { keys: new SeedKeys(seed, this.#crypto), memory, classes, carry, clock, crypto: this.#crypto, tools: this.#tools },
-        offers,
-        wait === undefined ? {} : { wait },
-      );
+      const foundation = { keys: new SeedKeys(seed, this.#crypto), memory, carry, clock, crypto: this.#crypto, tools: this.#tools };
+      const options = wait === undefined ? {} : { wait };
+      const runner = this.#options.runner;
+      // A ground that contains its houses opens each in a runner, which loads its classes from their modules there.
+      if (runner !== undefined && !isSource(classes)) throw new Error(`the faculty ${entry.classes.faculty} serves classes no runner loads: a contained house loads hers from modules`);
+      const opened =
+        runner !== undefined
+          ? await contain(runner, foundation, classes as ClassesSource, offers, options)
+          : await openHouse({ ...foundation, classes: isSource(classes) ? await ClassList.load(classes) : classes }, offers, options);
       await hooked.listen({ ward: opened.ward, door: (box) => this.#door(name, box) });
       return { entry, opened, clock, carry, hooked, flight: new Set(), ...(bound === undefined ? {} : { bound }) };
     } catch (error) {
@@ -764,6 +1151,7 @@ export class Ground {
     held.carry?.close();
     held.clock?.close();
     await Promise.allSettled([...(held.flight ?? [])]);
+    (held.opened as Partial<Contained> | undefined)?.close?.();
   }
 
   // Every place of a house's memory, each entry's bytes as hex.
@@ -850,13 +1238,14 @@ export class Ground {
     return (await this.#steward('facultiesRestart', { name })) as { why?: string };
   }
 
-  /** A body taken down and its entry dropped through the dock, where no house and no body uses it. */
-  async unstand(name: string): Promise<void> {
-    await this.#steward('facultiesRemove', { name });
+  /** A body taken down and its entry dropped through the dock, where no house and no body uses it, answering why where its uninstall failed. */
+  async unstand(name: string): Promise<{ readonly why?: string }> {
+    return (await this.#steward('facultiesRemove', { name })) as { why?: string };
   }
 
   /** A being in a house asked as `root`, by her id, or the house's steward where none is named. */
   async ask({ house, ...request }: Omit<HandAsk, 'describe' | 'house'> & { readonly house: string }): Promise<Answer | { readonly describe: Json }> {
+    if (Object.hasOwn(request, 'invite')) return failed(UNINVITED);
     const held = await this.#woken(house);
     if (held?.opened === undefined) return { error: { message: `no house ${house} is open here` } };
     return this.#counted(held, held.opened.ask(request));
@@ -875,13 +1264,17 @@ export class Ground {
     const dock = this.#dock;
     if (dock === undefined) return { error: { message: 'the ground is closed' } };
     if (request.cells === true && request.id?.startsWith(IDS.secret) === true) return { error: { message: 'a secret’s cells are shown to no one' } };
-    return this.#counted(dock, dock.opened.ask(request));
+    if (Object.hasOwn(request, 'invite')) return failed(UNINVITED);
+    const answered = await this.#counted(dock, dock.opened.ask(request));
+    // The owner's dock classes named or dropped: the dock opens again on them now.
+    if (request.method === 'classesSet' && request.id === undefined && 'result' in answered) await this.#grantDock();
+    return answered;
   }
 
   /**
    * What the ground's hand shows its owner: the asks the dock's steward
    * shows `root`, every body of the ladder with its methods, what it serves,
-   * or why it is down, each method's description, args, result and hints,
+   * or why it is down, each method's description, args, result, flags and hint,
    * and every house. A face reads it and needs no code of its own for any
    * of them.
    */
@@ -891,15 +1284,16 @@ export class Ground {
       return {
         blueprint: blueprint.name,
         methods: Object.fromEntries(
-          Object.entries(blueprint.methods).map(([method, spec]) => [method, JSON.parse(JSON.stringify({ description: spec.description, args: spec.args, result: spec.result, hints: spec.hints })) as Json]),
+          Object.entries(blueprint.methods).map(([method, spec]) => [method, JSON.parse(JSON.stringify({ description: spec.description, args: spec.args, result: spec.result, readOnly: spec.readOnly, idempotent: spec.idempotent, hints: spec.hints })) as Json]),
         ),
       };
     };
     const faculties: Record<string, Json> = {};
     for (const [name, stood] of this.#stood) {
+      const serves = servesOf(blueprintHeld(stood));
       if (stood.body === undefined) faculties[name] = { why: stood.why ?? 'down' };
-      else if (stood.body.serves !== undefined) faculties[name] = { serves: stood.body.serves, methods: {} };
-      else faculties[name] = stood.body.blueprint === undefined ? { methods: {} } : shown(stood.body.blueprint);
+      else if (serves !== 'offer') faculties[name] = { serves: serves ?? null, methods: {} };
+      else faculties[name] = shown(blueprintHeld(stood));
     }
     const read = this.#dock === undefined ? null : await this.#dock.opened.ask({});
     return { dock: read !== null && 'describe' in read ? read.describe : null, faculties, houses: this.list() };
@@ -907,22 +1301,7 @@ export class Ground {
 
   // A method of a body of the ladder called by name, its args held to the method's schema. It holds no token of any house, so a call it makes back answers an error.
   async #callFaculty({ faculty: name, method, args = {} }: { faculty: string; method: string; args?: Json }): Promise<Json> {
-    const stood = this.#standing(name);
-    if (typeof stood === 'string') throw new Error(stood);
-    if (stood.blueprint === undefined || stood.object === undefined) throw new Error(`${name} offers no methods`);
-    const blueprint = blueprintOf(stood.blueprint) ?? (stood.blueprint as Blueprint);
-    const spec = blueprint.methods[method];
-    const run = (stood.object as Record<string, unknown>)[method];
-    if (spec === undefined || typeof run !== 'function') throw new Error(`${name} has no method ${method}`);
-    const why = this.#tools.check(spec.args, args);
-    if (why !== null) throw new Error(why);
-    const context: FacultyContext = {
-      id: this.#tools.hex(this.#crypto.random(16)),
-      call: () => Promise.resolve({ error: { message: 'the hand holds no token' } }),
-      describe: () => Promise.resolve({ error: { message: 'the hand holds no token' } }),
-    };
-    const answered = (await (run as (args: Json, context: FacultyContext) => Promise<unknown>).call(stood.object, args, context)) as Answer;
-    if (typeof answered !== 'object' || answered === null || !('result' in answered || 'error' in answered)) throw new Error(`${name} answered no answer`);
+    const answered = await this.#invoke(name, method, args, undefined, 'the hand holds no token');
     if ('error' in answered) throw new Error(answered.error.message);
     return answered.result;
   }
@@ -979,7 +1358,7 @@ export class Ground {
   async close(): Promise<void> {
     const hand = this.#primordial.get('hand');
     this.#primordial.delete('hand');
-    await hand?.down?.();
+    await letGo(hand);
     // Every being of the dock is read once as her steward reads her, so each first ask a change began has run before the dock's clock closes.
     const dock = this.#dock;
     if (dock !== undefined) await this.#counted(dock, dock.opened.ask({ method: 'housesList' }));
@@ -989,10 +1368,10 @@ export class Ground {
     await this.#closeDock();
     const stood = [...this.#stood.values()].reverse();
     this.#stood.clear();
-    for (const one of stood) await one.body?.down?.();
+    for (const one of stood) await letGo(one.body);
     const primordials = [...this.#primordial.values()].reverse();
     this.#primordial.clear();
-    for (const one of primordials) await one.down?.();
+    for (const one of primordials) await letGo(one);
   }
 
   // ---- the catalogue ----
@@ -1002,8 +1381,14 @@ export class Ground {
     const shown = (registry: Registry): Json =>
       Object.entries(registry.faculties ?? {})
         .sort(([a], [b]) => (a < b ? -1 : 1))
-        .map(([make, faculty]) => ({ make, ...(faculty.takes === undefined ? {} : { takes: JSON.parse(JSON.stringify(faculty.takes)) as Json }) }));
+        .map(([make, faculty]) => ({
+          make,
+          ...(faculty.takes === undefined ? {} : { takes: JSON.parse(JSON.stringify(faculty.takes)) as Json }),
+          ...(faculty.needs === undefined ? {} : { needs: faculty.needs }),
+          ...(faculty.version === undefined ? {} : { version: faculty.version }),
+        }));
     const bodies = [...this.#stood].flatMap(([name, stood]) => (stood.body?.registry === undefined ? [] : [{ from: name, faculties: shown(stood.body.registry) }]));
-    return [{ faculties: shown(this.#registry) }, ...bodies];
+    // Each faculty imported by its address joins the terrain's rung, under its address.
+    return [{ faculties: shown({ faculties: { ...this.#registry.faculties, ...Object.fromEntries(this.#images) } }) }, ...bodies];
   }
 }

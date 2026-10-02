@@ -8,8 +8,8 @@ export class Reader extends Being.of({
   cells: { room: '' },
   roles: { owner: (asker) => asker.id === 'root' },
   asks: {
-    take: { for: 'owner', hints: { idempotent: true }, args: s.object({ invitation: s.handle() }) },
-    follow: { for: 'owner', wait: 60_000, hints: { readOnly: true }, args: s.object({ after: s.array(Message) }), result: s.array(Message) },
+    take: { for: 'owner', idempotent: true, args: s.object({ invitation: s.handle() }) },
+    follow: { for: 'owner', wait: 60_000, readOnly: true, args: s.object({ after: s.array(Message) }), result: s.array(Message) },
     push: { for: 'owner', args: s.object({ text: s.string() }) },
   },
 }) {
@@ -17,8 +17,10 @@ export class Reader extends Being.of({
     this.cells.room = invitation;
   }
 
-  follow({ after }: Args<Reader, 'follow'>) {
-    return this.held(this.cells.room, Messages).messages({}, { after });
+  async follow({ after }: Args<Reader, 'follow'>) {
+    const { result, error } = await this.held(this.cells.room, Messages).messages({}, { after });
+    if (error) this.fail(error.message);
+    return result;
   }
 
   // A watch on an ask that is not readOnly is refused where she makes it.

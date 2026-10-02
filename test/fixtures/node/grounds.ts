@@ -9,7 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { ClassList, Ground, JoinedCarry, WebCarry, type Body, type Faculty, type Opened } from 'nervur';
+import { Carry, Classes, ClassList, Ground, JoinedCarry, Memory, Unlock, WebCarry, type FacultyClass, type Offer, type Opened } from 'nervur';
+import { serving } from '../serving.ts';
 import { FileMemory, FileUnlock, serveHttp, TcpCarry } from 'nervur/node';
 import { Guest } from '../world/guest.ts';
 import { Host } from '../world/host.ts';
@@ -63,14 +64,17 @@ export const paper = async (ask: Ask, being: string, occupant: string) => ((awai
  * the boxes each listener's door took. `dials` lets it dial another ground
  * on this machine, and proves no pointer then. `faculties` are the ground's,
  * each stood by its entry, and granted to a house by name when it opens.
+ * `down` closes its listeners, so another ground reads it as down.
  */
-export const groundOne = async (t: TestContext, { dials = false, faculties = {} }: { dials?: boolean; faculties?: Readonly<Record<string, Body>> } = {}) => {
+export const groundOne = async (t: TestContext, { dials = false, faculties = {} }: { dials?: boolean; faculties?: Readonly<Record<string, Offer>> } = {}) => {
   const tcp = new TcpCarry({ host: '127.0.0.1', allowPrivate: dials });
-  t.after(() => tcp.close());
   let httpAt = '';
   const web = new WebCarry({ addresses: () => [httpAt], allowPrivate: dials });
   const served = await serveHttp({ host: '127.0.0.1' }, [web]);
-  t.after(() => served.close());
+  // Its listeners closed, once: what a ground that went down is to every other ground.
+  let closed: Promise<void> | undefined;
+  const down = () => (closed ??= Promise.all([served.close(), tcp.close()]).then(() => undefined));
+  t.after(down);
   httpAt = `http://127.0.0.1:${served.port}/quo`;
   const carry = new CountingCarry(new JoinedCarry({ tcp, http: web }), { tcp, http: web });
   // Its key and its memory in a folder of its own, as an owner's hand-written ground keeps them.
@@ -78,16 +82,16 @@ export const groundOne = async (t: TestContext, { dials = false, faculties = {} 
   t.after(() => rmSync(state, { recursive: true, force: true }));
   // Each house's classes, by its name, as the entry that opens it names them.
   const classes = new Map<string, ClassList>();
-  const own: Record<string, Faculty> = {
-    'file-unlock': { up: () => ({ serves: 'unlock', object: new FileUnlock(join(state, 'key')) }) },
-    drawer: { up: () => ({ serves: 'memory', object: new FileMemory(join(state, 'drawer')) }) },
-    counted: { up: () => ({ serves: 'carry', schemes: ['tcp', 'http'], object: carry }) },
-    file: { up: () => ({ serves: 'memory', house: ({ house }) => new FileMemory(join(state, `${house}.memory`)) }) },
-    named: { up: () => ({ serves: 'classes', house: ({ house }) => classes.get(house)! }) },
+  const own: Record<string, FacultyClass> = {
+    'file-unlock': serving(Unlock, () => new FileUnlock(join(state, 'key'))),
+    ledger: serving(Memory, () => new FileMemory(join(state, 'ledger'))),
+    counted: serving(Carry, () => carry, { schemes: ['tcp', 'http'] }),
+    file: serving(Memory, undefined, { house: ({ house }) => new FileMemory(join(state, `${house}.memory`)) }),
+    named: serving(Classes, undefined, { house: ({ house }) => classes.get(house)! }),
   };
   const ground = await Ground.open({
-    registry: { faculties: { ...own, ...Object.fromEntries(Object.entries(faculties).map(([name, body]) => [name, { up: () => body }])) } },
-    primordial: { unlock: { make: 'file-unlock' }, memory: { make: 'drawer' }, crypto: { make: 'noble' }, tools: { make: 'strict' }, clock: { make: 'clock' } },
+    registry: { faculties: { ...own, ...Object.fromEntries(Object.entries(faculties).map(([name, { blueprint, object, window }]) => [name, serving(blueprint, () => object, window === undefined ? {} : { window })])) } },
+    primordial: { unlock: { make: 'file-unlock' }, memory: { make: 'ledger' }, crypto: { make: 'noble' }, tools: { make: 'strict' }, clock: { make: 'clock' } },
     entries: { carry: { make: 'counted' }, file: { make: 'file' }, named: { make: 'named' } },
   });
   t.after(() => ground.close());
@@ -102,20 +106,20 @@ export const groundOne = async (t: TestContext, { dials = false, faculties = {} 
     const ask: Ask = (request) => ground.ask({ house: name, ...request });
     return { ask, ward: standing.ward };
   };
-  return { open, carry, heard: carry.heard };
+  return { open, carry, heard: carry.heard, down };
 };
 
 /**
  * Ground two: a NodeGround on `fixtures/node`, one house `main` from the
  * folder `two` in its view of the ground's ledger, and its owner's hand.
  * `down` stops its process, and `up` starts it again on the same state and
- * port, which opens the house again from its drawer.
+ * port, which opens the house again from its dock.
  */
 export const groundTwo = async (t: TestContext) => {
   const folder = new URL('./', import.meta.url).pathname;
   const state = mkdtempSync(join(tmpdir(), 'nv-'));
   const env = { NERVUR_STATE: state };
-  // Its TCP carry on the loopback at one port, which the drawer keeps across a restart.
+  // Its TCP carry on the loopback at one port, which the dock's entries keep across a restart.
   await onLoopback(folder, state, 40_000 + Math.floor(Math.random() * 20_000));
   let running: { child: Awaited<ReturnType<typeof nervurUp>>['child']; close: () => void } | undefined;
   let current: Ask = async () => ({ error: { message: 'ground two is down' } });

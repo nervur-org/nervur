@@ -11,8 +11,8 @@ export class Sender extends Being.of({
   cells: { replies: [] as string[] },
   asks: {
     go: { args: s.object({ n: s.number() }) },
-    sent: { args: s.reply(Post.send) },
-    replies: { hints: { readOnly: true }, result: s.array(s.string()) },
+    sent: { for: 'post', args: s.reply(Post.send) },
+    replies: { readOnly: true, result: s.array(s.string()) },
   },
 }) {
   go({ n }: Args<Sender, 'go'>) {

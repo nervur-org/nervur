@@ -3,11 +3,12 @@
 // on the Pi, which only dials: it watches the mirror as a reply, and
 // pulses its relay once for each opening it hears.
 import { Being, need, s, type Args } from 'nervur/being';
+import { house, world } from '../house.ts';
 import { Steward } from './steward.ts';
 
 /** The mirror, as the Pi's twin watches it. */
 export const Openings = need('openings', {
-  openings: { hints: { readOnly: true }, result: s.integer() },
+  openings: { readOnly: true, result: s.integer() },
 });
 
 /** The relay, as the Pi's ground offers it: one pulse, acted once for each call id. */
@@ -19,7 +20,7 @@ export class Mirror extends Being.of({
   cells: { openings: 0 },
   asks: {
     open: {},
-    openings: { hints: { readOnly: true }, result: s.integer() },
+    openings: { readOnly: true, result: s.integer() },
   },
 }) {
   open() {
@@ -37,9 +38,9 @@ export class Twin extends Being.of({
   needs: { relay: Relay },
   cells: { mirror: '', heard: 0 },
   asks: {
-    accept: { for: 'root', args: s.object({ invitation: s.handle() }), hints: { idempotent: true } },
+    accept: { for: 'root', args: s.object({ invitation: s.handle() }), idempotent: true },
     watch: { for: 'root' },
-    heard: { for: 'steward', args: s.reply(Openings.openings) },
+    heard: { for: 'standing', args: s.reply(Openings.openings) },
   },
 }) {
   accept({ invitation }: Args<Twin, 'accept'>) {
@@ -91,5 +92,6 @@ export class Pulses {
   }
 }
 
-export const station = { steward: Steward, beings: [Mirror] };
-export const outpost = { steward: Steward, beings: [Twin] };
+// Both houses load this module, which holds the mirror and the twin, each beside the steward.
+export const station = house(Steward, [world('steward'), world('outpost')]);
+export const outpost = station;

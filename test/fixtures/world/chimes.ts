@@ -5,7 +5,7 @@
 import { Being, s, need, type Args } from 'nervur/being';
 
 export const Bell = need('bell', {
-  watch: { args: s.object({ inbox: s.handle() }), hints: { idempotent: true } },
+  watch: { args: s.object({ inbox: s.handle() }), idempotent: true },
   ring: {},
 });
 
@@ -16,17 +16,18 @@ export class Chimes extends Being.of({
   needs: { bell: Bell, knocker: Knocker },
   cells: { rings: 0, knocked: '' },
   asks: {
-    arm: { hints: { idempotent: true } },
+    arm: { idempotent: true },
     ring: {},
     knock: {},
-    knocked: { args: s.reply(Knocker.knock) },
+    knocked: { for: 'knocker', args: s.reply(Knocker.knock) },
     rang: { for: 'handle' },
-    rings: { hints: { readOnly: true }, result: s.integer() },
-    heard: { hints: { readOnly: true }, result: s.string() },
+    rings: { readOnly: true, result: s.integer() },
+    heard: { readOnly: true, result: s.string() },
   },
 }) {
   async arm() {
-    await this.bell.watch({ inbox: this.handle('rang') });
+    const { error } = await this.bell.watch({ inbox: this.handle('rang') });
+    if (error) this.fail(error.message);
   }
 
   ring() {

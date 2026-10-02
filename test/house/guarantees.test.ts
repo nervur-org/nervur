@@ -3,17 +3,18 @@
 // effect queued behind one that gives up.
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
-import type { Body } from 'nervur';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import { Gauge, Latch, latch } from '../fixtures/world/gauge.ts';
-import { Post, Sender } from '../fixtures/world/sender.ts';
+import { house, world } from '../fixtures/house.ts';
+import { Latch, latch } from '../fixtures/world/gauge.ts';
+import { Post } from '../fixtures/world/sender.ts';
 import { Steward } from '../fixtures/world/steward.ts';
 
 type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
+type Body = NonNullable<Parameters<typeof BenchGround.open>[0]['faculties']>[string];
 
 const open = async (t: TestContext, faculties: Record<string, Body>, beings: readonly string[]) => {
   const network = new FakeNetwork();
-  const ground = await BenchGround.open({ network, host: 'home', modules: { house: { steward: Steward, beings: [Gauge, Sender] } }, faculties });
+  const ground = await BenchGround.open({ network, host: 'home', modules: { house: house(Steward, [world('steward'), world('gauge'), world('sender')]) }, faculties });
   t.after(() => ground.down());
   await ground.add('house', 'house', { faculties: Object.keys(faculties) });
   const ask = (id: string, method: string, args: Json = {}) => ground.ask({ house: 'house', id, method, args });

@@ -43,7 +43,7 @@ test('Its key rests in the secret store, and its memory in the native store', as
     'every place in a view of the ground’s memory',
   );
   const views = new Set(places.map((key) => /\/p\/([0-9a-f]{16})\//.exec(key)?.[1]));
-  assert.equal(views.size, 2, 'the dock’s rows, which are its drawer, and the house’s, each in a view of its own');
+  assert.equal(views.size, 2, 'the dock’s rows, which hold its cells, and the house’s, each in a view of its own');
   const described = (await ground.hand({ describe: true })) as { result: { persisted: boolean } };
   assert.equal(described.result.persisted, true, 'an app’s own store is kept');
 });

@@ -4,9 +4,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import * as desk from '../fixtures/world/desk.ts';
 import { Front, FrontBlueprint } from '../fixtures/world/front.ts';
-import * as home from '../fixtures/world/home.ts';
+
+const desk = new URL('../fixtures/world/desk.ts', import.meta.url);
+const home = new URL('../fixtures/world/home.ts', import.meta.url);
 
 const MINUTE = 60_000;
 
@@ -57,12 +58,29 @@ test('A being with no need declared reads what a public being shows a stranger, 
   await alice.ask({ house: 'home', method: 'bear', args: { kind: 'org.example.avatar', id: 'avatar' } });
   const ask = (method: string, args: Record<string, unknown>) => alice.ask({ house: 'home', id: 'avatar', method, args: args as never });
 
-  assert.deepEqual(await ask('browse', card), { result: ['signup'] }, 'a stranger is shown the signup alone');
+  assert.deepEqual(await ask('browse', card), { result: ['note', 'signup'] }, 'a stranger is shown what is for a stranger alone');
   assert.deepEqual(await ask('enter', { ...card, method: 'enroll' }), { result: 'refused: enroll is not in the describe she read of the public being' });
   assert.deepEqual(await ask('enter', { ...card, method: 'signup' }), { result: 'invitation' }, 'the signup answers by the schema its describe showed');
 });
 
-test('A stranger’s ask that is no idempotent one is refused before it leaves', async (t) => {
+test('A stranger’s ask that is no idempotent one leaves as an effect once she lands, and its answer reaches her reply as house', async (t) => {
+  const network = new FakeNetwork();
+  const front = { blueprint: FrontBlueprint, object: new Front() };
+  const shop = await BenchGround.open({ network, host: 'desk', names: ['desk.example'], modules: { desk }, faculties: { front } });
+  t.after(() => shop.down());
+  const { ward } = await shop.add('desk', 'desk', { faculties: ['front'] });
+  const card = { ward: ward!, at: ['bench://desk.example'] };
+  const alice = await BenchGround.open({ network, host: 'alice', modules: { home } });
+  t.after(() => alice.down());
+  await alice.add('home');
+  await alice.ask({ house: 'home', method: 'bear', args: { kind: 'org.example.avatar', id: 'avatar' } });
+  assert.deepEqual(await alice.ask({ house: 'home', id: 'avatar', method: 'sign', args: card }), { result: null }, 'her ask lands without waiting on the lobby');
+  await network.elapse(0);
+  assert.deepEqual(await shop.ask({ house: 'desk', id: 'public', method: 'notes' }), { result: 1 });
+  assert.deepEqual(await alice.ask({ house: 'home', id: 'avatar', method: 'heard' }), { result: 1 });
+});
+
+test('A stranger is reached by a ward and its addresses, and any other card is refused before anything leaves', async (t) => {
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'alice', modules: { home } });
   t.after(() => ground.down());
   await ground.add('home');

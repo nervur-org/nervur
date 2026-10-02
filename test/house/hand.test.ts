@@ -2,9 +2,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import { Counter } from '../fixtures/world/counter.ts';
-import * as shop from '../fixtures/world/shop.ts';
+import { house, world } from '../fixtures/house.ts';
 import { Steward } from '../fixtures/world/steward.ts';
+
+const shop = world('shop');
 
 const open = async () => {
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'shop', modules: { shop } });
@@ -25,7 +26,7 @@ test('The hand names a being that is not here', async () => {
 });
 
 test('The hand reads a being’s cells: her defaults under what landed', async (t) => {
-  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', modules: { house: { steward: Steward, beings: [Counter] } } });
+  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', modules: { house: house(Steward, [world('steward'), world('counter')]) } });
   t.after(() => ground.down());
   await ground.add('house');
   await ground.ask({ house: 'house', method: 'bear', args: { kind: 'org.example.counter', id: 'c', args: { start: 3 } } });

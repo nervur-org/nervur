@@ -2,33 +2,86 @@
 // A ground in memory. It joins a FakeNetwork under its host, keeps its key
 // and its memory in a machine that outlives it, and opens house modules by
 // name. So a test turns it off, opens it again on the same machine, or
-// moves the machine to another host.
+// moves the machine to another host. Each faculty stands its fake here, so
+// a faculty that needs its terrain stands only as its stand-in.
 import { s } from '../being/index.ts';
-import { ClassList, Ground, type Body, type Faculty, type Handler, type Registry } from '../index.ts';
+import { Carry, Classes, Clock, Crypto, Faculty, Ground, Hand, Memory, OK, Unlock, type ClassesSource, type FacultyClass, type ForHouse, type Handler, type Made, type OpenedContext, type Registry, type Status } from '../index.ts';
 import { FakeMemory } from './fake-memory.ts';
 import { clockOf, type FakeNetwork } from './fake-network.ts';
 import { FakeUnlock } from './fake-unlock.ts';
 import { SeededCrypto } from './seeded.ts';
+import { watchedStart } from './settle.ts';
 
-type BeingClass = ConstructorParameters<typeof ClassList>[0]['steward'];
 type Entry = Parameters<Ground['add']>[1];
 type Standing = Awaited<ReturnType<Ground['add']>>;
 
-/** A house module: what a folder's index exports. */
-export interface HouseModule {
-  readonly steward: BeingClass;
-  readonly public?: BeingClass;
-  readonly beings?: readonly BeingClass[];
+/**
+ * A house module: a module file, by its URL, exporting what a folder's
+ * index exports, or the modules a source names. Its classes load in the
+ * house's own runner, never in the test's process.
+ */
+export type HouseModule = URL | string | ClassesSource;
+
+// A house module as the runner loads it.
+const sourceOf = (module: HouseModule): ClassesSource => (module instanceof URL ? { modules: [module.href] } : typeof module === 'string' ? { modules: [module] } : module);
+
+/** A body the test writes, living: its blueprint and the object that answers it, its window, its handler, and the kinds it is granted. */
+export interface Living {
+  readonly blueprint: unknown;
+  readonly object: object;
+  readonly window?: number;
+  /** What it answers on the ground's one listener, as a face does. */
+  readonly handler?: Handler;
+  readonly kinds?: readonly string[];
+  opened?(context: OpenedContext): void | Promise<void>;
+  down?(): void | Promise<void>;
 }
 
-/** A body the test writes, living, with the kinds it is granted. */
-export type Living = Body & { readonly kinds?: readonly string[] };
-
-// Registries' faculties as one, the first first: a name one holds is refused to the next, never replaced.
 const NONE = { args: s.object({}) } as const;
 
-const joined = (...each: readonly Readonly<Record<string, Faculty>>[]): Record<string, Faculty> => {
-  const all: Record<string, Faculty> = {};
+// Every method an object holds, its own and its class's, bound to it, set on a body that has none of that name.
+const forward = (body: Faculty, object: object): void => {
+  for (let at: object | null = object; at !== null && at !== Object.prototype; at = Object.getPrototypeOf(at) as object | null) {
+    for (const name of Object.getOwnPropertyNames(at)) {
+      const value = (object as Record<string, unknown>)[name];
+      if (name !== 'constructor' && typeof value === 'function' && !(name in body)) (body as unknown as Record<string, unknown>)[name] = (value as (...args: unknown[]) => unknown).bind(object);
+    }
+  }
+};
+
+// A faculty whose body is what the test wrote: its object's methods, its window, and what it is told and lets go.
+const living = ({ blueprint, object, window, handler, opened, down }: Living): FacultyClass =>
+  class LivingFaculty extends Faculty {
+    static override readonly blueprint = blueprint;
+    static override readonly takes = NONE;
+    static override readonly window = window;
+    constructor(made: Made) {
+      super(made);
+      forward(this, object);
+      if (handler !== undefined) this.handler = handler;
+      if (opened !== undefined) this.opened = opened;
+    }
+    override async down(): Promise<void> {
+      await down?.();
+    }
+  };
+
+// A faculty the bench stands for a part of its machine: the contract it fills, and the object that fills it.
+const part = (blueprint: unknown, object: (made: Made) => object, parts: { readonly schemes?: readonly string[]; house?(options: ForHouse): unknown } = {}): FacultyClass =>
+  class Part extends Faculty {
+    static override readonly blueprint = blueprint;
+    static override readonly takes = NONE;
+    override up(): Status {
+      forward(this, object(this.made));
+      if (parts.schemes !== undefined) this.schemes = parts.schemes;
+      if (parts.house !== undefined) this.house = parts.house;
+      return OK;
+    }
+  };
+
+// Registries' faculties as one, the first first: a name one holds is refused to the next, never replaced.
+const joined = (...each: readonly Readonly<Record<string, FacultyClass>>[]): Record<string, FacultyClass> => {
+  const all: Record<string, FacultyClass> = {};
   for (const faculties of each) {
     for (const [name, faculty] of Object.entries(faculties)) {
       if (Object.hasOwn(all, name)) throw new TypeError(`the faculty ${name} is the bench's own`);
@@ -64,7 +117,7 @@ export interface BenchGroundOptions {
   readonly host: string;
   /** The names that point at it; a ground with none is a device, and is never dialled. */
   readonly names?: readonly string[];
-  /** The house modules its entries name, by name. */
+  /** The house modules its entries name, by name: module files, whose classes load in each house's runner. */
   readonly modules?: Readonly<Record<string, HouseModule>>;
   /** Faculties the test hands living, by name: each stands on its first up, granted the kinds it names. */
   readonly faculties?: Readonly<Record<string, Living>>;
@@ -73,6 +126,9 @@ export interface BenchGroundOptions {
   /** The machine it opens on; a fresh one, seeded by its host, where none is named. */
   readonly machine?: Machine;
 }
+
+// An address resolved from where `nervur` is installed, as a NodeGround resolves it: the test's own install.
+const installed = (address: string): Promise<unknown> => import(address);
 
 export class BenchGround {
   readonly host: string;
@@ -97,50 +153,53 @@ export class BenchGround {
     return this.#ground;
   }
 
-  /** The ground on its machine again, joined to the network, its ladder standing and every house of its drawer open. */
+  /** The ground on its machine again, joined to the network, its ladder standing and every house its dock holds open. */
   async up(): Promise<void> {
     if (this.#ground !== undefined) return;
     const { network, host, names = [], modules = {}, faculties = {}, registry = {} } = this.#options;
     network.up(host);
     const machine = this.machine;
-    // Each living body the test hands stands through a faculty whose `up` answers it, as any body stands.
-    const living: Record<string, Faculty> = Object.fromEntries(Object.entries(faculties).map(([name, { kinds: _kinds, ...body }]) => [name, { up: () => body }]));
+    // Each living body the test hands stands through a faculty whose body is it, as any body stands.
+    const lives: Record<string, FacultyClass> = Object.fromEntries(Object.entries(faculties).map(([name, body]) => [name, living(body)]));
     const own: Registry = {
       faculties: {
-        'bench-unlock': { takes: NONE, up: () => ({ serves: 'unlock', object: machine.unlock }) },
-        'bench-memory': { takes: NONE, up: () => ({ serves: 'memory', object: machine.memory }) },
-        seeded: { takes: NONE, up: () => ({ serves: 'crypto', object: machine.crypto }) },
+        'bench-unlock': part(Unlock, () => machine.unlock),
+        'bench-memory': part(Memory, () => machine.memory),
+        seeded: part(Crypto, () => machine.crypto),
         // The test holds the hand in its own process, so this hand listens on nothing.
-        'bench-hand': { takes: NONE, up: () => ({ serves: 'hand' }) },
-        'bench-clock': { takes: NONE, up: () => ({ serves: 'clock', object: clockOf(network) }) },
-        // Its listener on the network is the ground's one, which its entry names in `faculties`.
-        'bench-carry': {
-          takes: NONE,
-          up: ({ faculties: called }) => {
-            const listener = called.listener as Handler;
+        'bench-hand': part(Hand, () => ({})),
+        'bench-clock': part(Clock, () => clockOf(network)),
+        // Its listener on the network is the ground's one.
+        'bench-carry': part(
+          Carry,
+          ({ listener }) => {
             const serve = async (request: Request) => (await listener.fetch(request)) ?? new Response(null, { status: 404 });
-            return { serves: 'carry', schemes: ['bench'], object: network.join(host, { names, listens: names.length > 0, serve }) };
+            return network.join(host, { names, listens: names.length > 0, serve });
           },
-        },
-        fake: { takes: NONE, up: () => ({ serves: 'memory', house: ({ house }) => machine.memoryOf(house) }) },
-        module: {
-          takes: NONE,
-          up: () => ({
-            serves: 'classes',
-            house: ({ args }) => {
-              const module = modules[args.name as string];
-              if (module === undefined) throw new Error(`no house module ${String(args.name)}`);
-              return new ClassList({ steward: module.steward, ...(module.public === undefined ? {} : { public: module.public }), beings: module.beings ?? [] });
-            },
-          }),
-        },
+          { schemes: ['bench'] },
+        ),
+        fake: part(Memory, () => ({}), { house: ({ house }) => machine.memoryOf(house) }),
+        module: part(Classes, () => ({}), {
+          house: ({ args }) => {
+            const module = modules[args.name as string];
+            if (module === undefined) throw new Error(`no house module ${String(args.name)}`);
+            return sourceOf(module);
+          },
+        }),
       },
     };
     this.#ground = await Ground.open({
       // The bench's own faculties, then the test's beside them, never in their place.
-      registry: { faculties: joined(own.faculties ?? {}, living, registry.faculties ?? {}) },
+      registry: { faculties: joined(own.faculties ?? {}, lives, registry.faculties ?? {}) },
       primordial: { unlock: { make: 'bench-unlock' }, memory: { make: 'bench-memory' }, crypto: { make: 'seeded' }, tools: { make: 'strict' }, clock: { make: 'bench-clock' }, hand: { make: 'bench-hand' } },
-      entries: { listener: { make: 'listener' }, carry: { make: 'bench-carry', faculties: ['listener'] }, module: { make: 'module' }, fake: { make: 'fake' } },
+      entries: { carry: { make: 'bench-carry' }, module: { make: 'module' }, fake: { make: 'fake' } },
+      // A faculty stands its fake here, and one that needs its terrain and has none stays down.
+      fakes: true,
+      // An address stands what it stands on a NodeGround, imported from the test's install.
+      image: installed,
+      // Every house runs contained, its randomness drawn from the machine's stream, so the bench runs the same twice.
+      // A house idle a second sleeps, its thread free for the next, and opens again from memory when reached.
+      runner: { start: watchedStart, idle: 1_000, seed:() => Array.from(machine.crypto.random(32), (byte) => byte.toString(16).padStart(2, '0')).join('') },
     });
     // Each living faculty stands on its first up, as its owner would stand it through the hand.
     for (const [name, { kinds }] of Object.entries(faculties)) {

@@ -4,7 +4,7 @@ import { Being, need, s } from 'nervur/being';
 import { Steward } from './steward.ts';
 
 const Doorbell = need('doorbell', {
-  watch: { args: s.object({ inbox: s.handle() }), hints: { idempotent: true } },
+  watch: { args: s.object({ inbox: s.handle() }), idempotent: true },
   press: {},
 });
 
@@ -13,14 +13,15 @@ export class Porch extends Being.of({
   needs: { bell: Doorbell },
   cells: { rings: 0 },
   asks: {
-    arm: { hints: { idempotent: true } },
+    arm: { idempotent: true },
     press: {},
     rang: { for: 'handle' },
-    rings: { hints: { readOnly: true }, result: s.integer() },
+    rings: { readOnly: true, result: s.integer() },
   },
 }) {
   async arm() {
-    await this.bell.watch({ inbox: this.handle('rang') });
+    const { error } = await this.bell.watch({ inbox: this.handle('rang') });
+    if (error) this.fail(error.message);
   }
 
   press() {

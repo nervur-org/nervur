@@ -1,9 +1,12 @@
 // Invitations that go wrong. What is refused inside the taker's own house
 // is refused with its reason. What goes wrong past a door is silence, and
-// the being reads every silence alike: `answered nothing`.
+// the being reads every silence alike: `answered nothing`. A relation the
+// far side let go after it bound is the one answer she reads as gone.
+// Every ground here stands in the test's process. A ground stopped and
+// started again as a process of its own is `deep/node/unhappy.test.ts`.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { being, failed, groundOne, groundTwo, hand, paper, type Ask } from '../fixtures/node/grounds.ts';
+import { being, failed, groundOne, hand, paper, type Ask } from '../fixtures/node/grounds.ts';
 import { Bob } from '../fixtures/world/bob.ts';
 import { Guest } from '../fixtures/world/guest.ts';
 import { Host } from '../fixtures/world/host.ts';
@@ -15,6 +18,8 @@ const SILENCE = /^greet answered nothing$/;
 const bear = (ask: Ask, kind: 'host' | 'guest', id: string) => hand(ask, 'bear', { kind: `org.example.${kind}`, id });
 const give = (ask: Ask, invitation: string, id: string) => ask({ id, method: 'accept', args: { invitation } });
 const standingsOf = async (ask: Ask, id: string) => (await being(ask, id, 'standingsList')) as string[];
+// Bob lets an occupant go through the hand, which answers once it landed. Forwarded by his steward it would be an effect, landing after.
+const dismiss = async (ask: Ask, occupant: string) => assert.ok('result' in (await ask({ id: 'bob', method: 'dismiss', args: { id: occupant } })));
 
 // Bob in house a on ground one, and two more houses there for Alice and a bystander.
 const threeHouses = async (t: Parameters<typeof groundOne>[0]) => {
@@ -82,12 +87,12 @@ test('Two holders knock at once, and exactly one binds', async (t) => {
 test('An occupant Bob dismissed before Alice knocked is silence to her', async (t) => {
   const { bobs, hers, mint } = await threeHouses(t);
   const given = await mint();
-  await being(bobs, 'bob', 'dismiss', { id: 'for-alice' });
+  await dismiss(bobs, 'for-alice');
   await give(hers, given, 'alice');
   assert.match(await failed(hers, 'alice', 'greetHost'), SILENCE);
 });
 
-test('Bob removed is silence to Alice, before her knock and after it', async (t) => {
+test('Bob removed after Alice’s knock tells her the standing was removed, and before a knock is silence', async (t) => {
   const { bobs, hers, other, mint } = await threeHouses(t);
   const first = await mint();
   const second = await paper(bobs, 'bob', 'for-bystander');
@@ -95,29 +100,34 @@ test('Bob removed is silence to Alice, before her knock and after it', async (t)
   assert.equal(await being(hers, 'alice', 'greetHost'), 'bob greets for-alice');
   await give(other, second, 'bystander');
   await hand(bobs, 'remove', { id: 'bob' });
-  assert.match(await failed(hers, 'alice', 'greetHost'), SILENCE, 'after her knock bound');
+  assert.equal(await failed(hers, 'alice', 'greetHost'), 'the standing was removed', 'after her knock bound, the door kept her keys');
+  assert.deepEqual(await standingsOf(hers, 'alice'), [], 'and her standing went with the answer');
   assert.match(await failed(other, 'bystander', 'greetHost'), SILENCE, 'before any knock');
 });
 
-test('Bob’s ground down is silence to Alice, and once it is back her asks reach him, bound once', async (t) => {
+test('An occupant Bob dismissed after Alice knocked tells her the standing was removed', async (t) => {
+  const { bobs, hers, mint } = await threeHouses(t);
+  await give(hers, await mint(), 'alice');
+  assert.equal(await being(hers, 'alice', 'greetHost'), 'bob greets for-alice');
+  await dismiss(bobs, 'for-alice');
+  assert.equal(await failed(hers, 'alice', 'greetHost'), 'the standing was removed');
+  assert.deepEqual(await standingsOf(hers, 'alice'), []);
+});
+
+// A ground down and back, a process stopped and started on its state, is `deep/node/unhappy.test.ts`.
+test('Bob’s ground down is silence to Alice', async (t) => {
   const ground = await groundOne(t, { dials: true });
   const hers = await ground.open('b');
   await bear(hers.ask, 'guest', 'alice');
-  const bobs = await groundTwo(t);
+  const his = await groundOne(t);
+  const bobs = await his.open('main');
   await bear(bobs.ask, 'host', 'bob');
   await give(hers.ask, await paper(bobs.ask, 'bob', 'for-alice'), 'alice');
-
-  await bobs.down();
-  assert.match(await failed(hers.ask, 'alice', 'greetHost'), SILENCE);
-  await bobs.up();
-  const after: string[] = [];
-  for (let ask = 0; ask < 3 && after.at(-1) !== 'answered'; ask++) {
-    const answer = await hers.ask({ method: 'forward', args: { id: 'alice', method: 'greetHost' } });
-    after.push('result' in answer ? 'answered' : 'silence');
-  }
-  assert.deepEqual(after, ['answered'], 'the first ask after Bob came back reaches him');
   assert.equal(await being(hers.ask, 'alice', 'greetHost'), 'bob greets for-alice');
-  assert.deepEqual(await being(bobs.ask, 'bob', 'occupantsList'), ['for-alice']);
+
+  await his.down();
+  assert.match(await failed(hers.ask, 'alice', 'greetHost'), SILENCE);
+  assert.equal((await standingsOf(hers.ask, 'alice')).length, 1, 'silence lets no standing go');
 });
 
 // ---- the triangle ----
@@ -141,22 +151,23 @@ test('The same email twice leaves Alice one standing on Carol', async (t) => {
   const hers = (await ground.open('b')).ask;
   await standOn(hers);
   const body = JSON.stringify({ invitation: await paper(carols, 'carol', 'for-alice') });
+  await mailbox.watched;
   assert.deepEqual(await mailbox.arrive(body), { result: null });
   assert.deepEqual(await mailbox.arrive(body), { result: null });
   assert.equal((await standingsOf(hers, 'alice')).length, 1);
   assert.equal(await being(hers, 'alice', 'greetHost'), 'carol greets for-alice');
 });
 
-test('An email that finds Alice’s ground down fails to the mailbox, and the paper stays unspent for its next delivery', async (t) => {
+test('An email that finds Alice’s ground down fails to the mailbox, and Alice takes nothing', async (t) => {
   const { mailbox, carols, standOn } = await triangle(t, true);
-  const alices = await groundTwo(t);
+  const theirs = await groundOne(t, { dials: true });
+  const alices = await theirs.open('main');
   await standOn(alices.ask);
   const body = JSON.stringify({ invitation: await paper(carols, 'carol', 'for-alice') });
 
-  await alices.down();
+  await mailbox.watched;
+  await theirs.down();
   const lost = await mailbox.arrive(body);
   assert.ok('error' in lost && /answered nothing$/.test(lost.error.message), JSON.stringify(lost));
-  await alices.up();
-  assert.deepEqual(await mailbox.arrive(body), { result: null }, 'delivered again once Alice’s ground is back');
-  assert.equal(await being(alices.ask, 'alice', 'greetHost'), 'carol greets for-alice');
+  assert.deepEqual(await standingsOf(alices.ask, 'alice'), [], 'Alice took nothing');
 });

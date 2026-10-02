@@ -4,7 +4,7 @@
 import { Being, s, need, type Args } from 'nervur/being';
 
 /** A faculty that answers once the test lets it. */
-export const Latch = need('latch', { wait: { hints: { readOnly: true } } });
+export const Latch = need('latch', { wait: { readOnly: true } });
 
 /** A relation as a test reads it: her own `mine`, and her steward's `trusted`. */
 const Relation = s.object({ id: s.string(), mine: s.optional(s.boolean()), trusted: s.optional(s.boolean()) });
@@ -21,18 +21,18 @@ export class Gauge extends Being.of({
   cells: { n: 0 },
   asks: {
     bump: {},
-    get: { hints: { readOnly: true }, result: s.number() },
+    get: { readOnly: true, result: s.number() },
     // Reads her count, then holds on the latch before it answers.
-    hold: { hints: { readOnly: true }, result: s.number() },
+    hold: { readOnly: true, result: s.number() },
     ticket: { result: s.object({ handle: s.handle() }) },
     punch: { for: 'handle' },
-    take: { hints: { idempotent: true }, args: s.object({ invitation: s.handle() }), result: s.string() },
+    take: { idempotent: true, args: s.object({ invitation: s.handle() }), result: s.string() },
     // An invitation carried unopened, and handed back as it came.
-    carry: { hints: { idempotent: true }, args: s.object({ invitation: s.invitation() }), result: s.object({ invitation: s.invitation() }) },
+    carry: { idempotent: true, args: s.object({ invitation: s.invitation() }), result: s.object({ invitation: s.invitation() }) },
     noteStanding: { args: s.object({ on: s.string(), mine: s.boolean() }) },
     noteOccupant: { args: s.object({ on: s.string(), mine: s.boolean() }) },
-    standingNotes: { hints: { readOnly: true }, result: s.array(Relation) },
-    occupantNotes: { hints: { readOnly: true }, result: s.array(Relation) },
+    standingNotes: { readOnly: true, result: s.array(Relation) },
+    occupantNotes: { readOnly: true, result: s.array(Relation) },
   },
 }) {
   bump() {
@@ -45,7 +45,8 @@ export class Gauge extends Being.of({
 
   async hold() {
     const n = this.cells.n;
-    await this.latch.wait({});
+    const { error } = await this.latch.wait({});
+    if (error) this.fail(error.message);
     return n;
   }
 

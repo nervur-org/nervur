@@ -4,25 +4,32 @@
 // would.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ClassList, type Faculty } from 'nervur';
+import { Classes, Faculty, OK, type FacultyClass, type Status } from 'nervur';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import * as next from '../fixtures/world/host-next.ts';
-import * as shop from '../fixtures/world/shop.ts';
 
 test('A custom faculty brings new code to a house by an update, installed once for each entry, and the house keeps its ward and its rows', async () => {
-  const versions: Record<string, typeof shop | typeof next> = { v1: shop, v2: next };
+  const versions: Record<string, URL> = { v1: new URL('../fixtures/world/shop.ts', import.meta.url), v2: new URL('../fixtures/world/host-next.ts', import.meta.url) };
   const installed: string[] = [];
   const ups: string[] = [];
   const downs: string[] = [];
-  const code: Faculty = {
-    install: ({ args }) => void installed.push(String(args.version)),
-    up: ({ args }) => {
-      const version = String(args.version);
-      ups.push(version);
-      const module = versions[version];
-      return { serves: 'classes', house: () => new ClassList({ steward: module.steward, beings: module.beings }), down: () => void downs.push(version) };
-    },
-  };
+  class Code extends Faculty {
+    static override readonly blueprint = Classes;
+    override install(): Status {
+      installed.push(String(this.made.args.version));
+      return OK;
+    }
+    override up(): Status {
+      ups.push(String(this.made.args.version));
+      return OK;
+    }
+    override house() {
+      return { modules: [versions[String(this.made.args.version)].href] };
+    }
+    override down(): void {
+      downs.push(String(this.made.args.version));
+    }
+  }
+  const code: FacultyClass = Code;
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'shop', names: ['shop.example'], registry: { faculties: { code } } });
   const faculty = (method: string, args: Record<string, unknown>) => ground.hand({ method: `faculties${method[0].toUpperCase()}${method.slice(1)}`, args: args as never });
   assert.deepEqual(await faculty('add', { name: 'code', make: 'code', args: { version: 'v1' } }), { result: {} });
@@ -46,5 +53,5 @@ test('A custom faculty brings new code to a house by an update, installed once f
 });
 
 test('A custom faculty never takes the place of the bench’s own', async () => {
-  await assert.rejects(BenchGround.open({ network: new FakeNetwork(), host: 'x', registry: { faculties: { fake: { up: () => ({}) } } } }), /the faculty fake is the bench's own/);
+  await assert.rejects(BenchGround.open({ network: new FakeNetwork(), host: 'x', registry: { faculties: { fake: class extends Faculty {} } } }), /the faculty fake is the bench's own/);
 });

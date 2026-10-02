@@ -21,7 +21,7 @@ export class Tally extends Being.of({
     },
     stop: { in: 'counting', for: 'keeper', to: 'stopped', examples: [{ gives: { result: null } }] },
     read: {
-      hints: { readOnly: true },
+      readOnly: true,
       result: s.number(),
       examples: [{ description: 'stopped at seven', given: [{ ask: 'bump', args: { by: 7 } }, { ask: 'stop' }], gives: { result: 7 } }],
     },

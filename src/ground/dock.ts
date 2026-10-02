@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// The dock: the house every ground stands, whose beings are the ground's
-// drawer. Its steward answers the hand. A twin stands for each faculty
+// The dock: the house every ground stands, whose beings' cells hold the
+// ground's state. Its steward answers the hand. A twin stands for each faculty
 // entry, a house being for each house entry, and a secret being for each
 // secret. Their cells hold every entry, what each faculty installed, each
 // house's seed and ward, every secret and the ground's bound on every
@@ -8,9 +8,15 @@
 // notes naming the grant. The dock's beings reach the ground through the
 // `ground` faculty, offered to their kinds alone. The dock is offered each
 // body its steward stands on, as a house is: the terrain's shell, granted
-// to the dock's shell being alone. Her classes are the library's, fixed: no entry names them.
-import type { Json, Notes } from '../being/being.ts';
-import { Being, need, s, type Args } from '../being/index.ts';
+// to the dock's shell being alone. Her classes are the library's, and an
+// owner extends them through `classesSet`: a steward of hers that adds to
+// the library's and never overrides it, and beings of her own kinds, sealed
+// from every seed and every secret.
+import { DECLARATION, declarationOf, MEMBERS, type Declaration, type Entry, type Face as NeedFace, type Json, type Notes, type Reply, type Typed } from '../being/being.ts';
+import type { Need } from '../being/need.ts';
+import type { BeingClass } from '../foundation.ts';
+import { ANY, CATALOG, CHANGE, FACULTIES_SHOWN, FACULTY, HEALTH, HOUSE, HOUSE_MOVED, HOUSES_SHOWN, INVITED, LIST, NAME, OBJECT, STOOD, WHY } from '../being/dock-pilot.ts';
+import { Being, need, s, type Args, type Result } from '../being/index.ts';
 import { WAIT_BOUND } from '../being/need.ts';
 import { ClassList } from '../bodies/class-list.ts';
 
@@ -32,31 +38,28 @@ const SHELL_ID = 'shell';
 /** The prefix of each dock being's id, before the name its entry gives. */
 export const IDS = Object.freeze({ faculty: 'faculty.', house: 'house.', secret: 'secret.' });
 
-/** Any JSON value: a schema with no keyword. */
-const ANY = Object.freeze({});
-const OBJECT = { type: 'object', properties: {}, additionalProperties: true } as const;
-const NAME = s.object({ name: s.string() });
-const WHY = s.object({ why: s.optional(s.string()) });
-const STOOD = s.object({ ward: s.optional(s.string()), why: s.optional(s.string()) });
-
 /**
- * The ground's work, as its faculty offers it to the dock: a body raised
- * and lowered, a house opened, closed or held asleep, the terrain's
- * defaults, what an entry's faculty takes, the catalogue, a body's method
- * called, and a house's places moved out and in. Each is awaited.
+ * The ground's work, as its faculty offers it to the dock: a body raised,
+ * lowered, uninstalled and asked its health, a house opened, closed or
+ * held asleep, the terrain's defaults, what an entry's faculty takes, the
+ * catalogue, a body's method called, and a house's places moved out and
+ * in. Each is awaited.
  */
 export const GroundNeed = need('org.nervur.ground', {
-  terrain: { result: ANY, hints: { readOnly: true } },
-  check: { args: s.object({ name: s.string(), entry: OBJECT }), result: WHY, hints: { readOnly: true } },
-  raise: { args: s.object({ name: s.string(), entry: OBJECT, installed: s.optional(s.string()) }), result: ANY, hints: { idempotent: true }, wait: WAIT_BOUND },
-  lower: { args: s.object({ name: s.string(), why: s.optional(s.string()) }), hints: { idempotent: true }, wait: WAIT_BOUND },
-  open: { args: s.object({ name: s.string(), entry: OBJECT, seed: s.string(), bound: s.optional(s.integer({ minimum: 1 })) }), result: STOOD, hints: { idempotent: true }, wait: WAIT_BOUND },
-  close: { args: s.object({ name: s.string(), why: s.optional(s.string()) }), hints: { idempotent: true }, wait: WAIT_BOUND },
-  sleep: { args: s.object({ name: s.string(), entry: OBJECT, ward: s.string() }), hints: { idempotent: true } },
-  catalog: { result: ANY, hints: { readOnly: true } },
-  call: { args: s.object({ faculty: s.string(), method: s.string(), args: s.optional(OBJECT) }), result: ANY, hints: { idempotent: true }, wait: WAIT_BOUND },
-  placesOut: { args: s.object({ name: s.string(), entry: OBJECT }), result: ANY, hints: { readOnly: true }, wait: WAIT_BOUND },
-  placesIn: { args: s.object({ name: s.string(), entry: OBJECT, places: OBJECT }), hints: { idempotent: true }, wait: WAIT_BOUND },
+  terrain: { result: ANY, readOnly: true },
+  check: { args: s.object({ name: s.string(), entry: OBJECT }), result: WHY, readOnly: true },
+  raise: { args: s.object({ name: s.string(), entry: OBJECT, installed: s.optional(s.string()), version: s.optional(s.string()), met: s.optional(OBJECT) }), result: ANY, idempotent: true, wait: WAIT_BOUND },
+  lower: { args: s.object({ name: s.string(), why: s.optional(s.string()) }), idempotent: true, wait: WAIT_BOUND },
+  uninstall: { args: s.object({ name: s.string(), entry: OBJECT }), result: WHY, idempotent: true, wait: WAIT_BOUND },
+  health: { args: NAME, result: HEALTH, readOnly: true, wait: WAIT_BOUND },
+  open: { args: s.object({ name: s.string(), entry: OBJECT, seed: s.string(), bound: s.optional(s.integer({ minimum: 1 })) }), result: STOOD, idempotent: true, wait: WAIT_BOUND },
+  close: { args: s.object({ name: s.string(), why: s.optional(s.string()) }), idempotent: true, wait: WAIT_BOUND },
+  sleep: { args: s.object({ name: s.string(), entry: OBJECT, ward: s.string() }), idempotent: true },
+  catalog: { result: ANY, readOnly: true },
+  call: { args: s.object({ faculty: s.string(), method: s.string(), args: s.optional(OBJECT) }), result: ANY, idempotent: true, wait: WAIT_BOUND },
+  placesOut: { args: s.object({ name: s.string(), entry: OBJECT }), result: ANY, readOnly: true, wait: WAIT_BOUND },
+  placesIn: { args: s.object({ name: s.string(), entry: OBJECT, places: OBJECT }), idempotent: true, wait: WAIT_BOUND },
+  invite: { args: s.object({ name: s.string(), occupant: s.string(), notes: OBJECT }), result: INVITED, idempotent: true, wait: WAIT_BOUND },
 });
 
 /** A command run on the ground's machine, as its owner runs one: its exit code and what it printed. */
@@ -64,21 +67,19 @@ export const ShellNeed = need('org.nervur.shell', {
   run: {
     args: s.object({ command: s.string(), args: s.optional(s.array(s.string())), cwd: s.optional(s.string()), stdin: s.optional(s.string()) }),
     result: s.object({ code: s.integer(), stdout: s.string(), stderr: s.string() }),
-    hints: { idempotent: true },
+    idempotent: true,
     wait: WAIT_BOUND,
   },
 });
 
-/** The ground's one listener, as a body offers it: the handler of every body, chained. It has no method a being calls. */
-export const ListenerNeed = need('org.nervur.listener', {});
-
-/** One faculty's entry, whole: who makes it, what it is handed, the bodies it calls, and its grant. */
+/** One faculty's entry, whole: who makes it, what it is handed, the bodies it calls, its installers, and its grant. */
 export interface WholeFaculty {
   readonly make?: string;
   readonly from?: string;
   readonly args?: Readonly<Record<string, Json>>;
   readonly secrets?: readonly string[];
   readonly faculties?: readonly string[];
+  readonly installers?: readonly string[];
   readonly kinds?: readonly string[];
 }
 
@@ -108,15 +109,18 @@ interface Shown {
 interface Held {
   readonly faculties: Map<string, Shown>;
   readonly houses: Map<string, Shown>;
-  readonly secrets: Set<string>;
+  /** Every secret's being by name, and whether it keeps a value: one an entry names stands before it is set. */
+  readonly secrets: Map<string, boolean>;
 }
 
 const NAMED = 'lowercase letters, digits, dots, dashes and underscores, at most fifty-six';
 const NAME_RULE = /^[a-z0-9][a-z0-9._-]{0,55}$/;
 const DOCKED = `the ${DOCK} is the library’s, and no entry names it`;
-// The dock's own faculties: no owner's entry names, makes or grants either.
+/** The library's own faculty, which a house's entry alone may grant. */
+export const GROUND = 'ground';
+// The dock's own faculties: no owner's faculty entry names or makes either, and only a house's `faculties` grants the ground.
 const OWN: Readonly<Record<string, string>> = {
-  ground: 'the ground is the library’s: no entry names it, makes it or grants it',
+  [GROUND]: 'the ground is the library’s: no faculty entry names it or makes it, and a house’s faculties alone grant it',
   shell: 'the shell is the dock’s alone: no entry names it, makes it or grants it',
 };
 
@@ -142,7 +146,7 @@ const some = <T>(key: string, value: T | undefined): Record<string, T> => (value
 /** A faculty's entry read from what the hand gave, or why it is no entry. */
 export const facultyEntryOf = (value: unknown): WholeFaculty | string => {
   if (!isObject(value)) return 'an entry is an object';
-  const { make, from, args, secrets, faculties, kinds, ...rest } = value;
+  const { make, from, args, secrets, faculties, installers, kinds, ...rest } = value;
   if (Object.keys(rest).length > 0) return `an entry names ${Object.keys(rest).join(', ')}, which no entry holds`;
   if (kinds !== undefined && !isNames(kinds)) return "an entry's kinds are a list of names";
   if (typeof make !== 'string') return "a faculty's entry names it in make";
@@ -150,7 +154,8 @@ export const facultyEntryOf = (value: unknown): WholeFaculty | string => {
   if (args !== undefined && !isObject(args)) return "an entry's args are an object";
   if (secrets !== undefined && !isNames(secrets)) return "an entry's secrets are a list of names";
   if (faculties !== undefined && !isNames(faculties)) return "an entry's faculties are a list of names";
-  return { make, ...some('from', from), ...some('args', args), ...some('secrets', secrets), ...some('faculties', faculties), ...some('kinds', kinds) };
+  if (installers !== undefined && !isNames(installers)) return "an entry's installers are a list of names";
+  return { make, ...some('from', from), ...some('args', args), ...some('secrets', secrets), ...some('faculties', faculties), ...some('installers', installers), ...some('kinds', kinds) };
 };
 
 const namedOf = (held: unknown, what: string): Named | string => {
@@ -181,17 +186,24 @@ const facultyGrants = (entry: WholeFaculty): Map<string, Record<string, Json>> =
   const add = (id: string, notes: Record<string, Json>) => grants.set(id, { ...grants.get(id), ...notes });
   if (entry.from !== undefined) add(IDS.faculty + entry.from, { from: true });
   (entry.faculties ?? []).forEach((name, at) => add(IDS.faculty + name, { faculties: at }));
+  (entry.installers ?? []).forEach((name, at) => add(IDS.faculty + name, { installers: at }));
   (entry.secrets ?? []).forEach((name, at) => add(IDS.secret + name, { secrets: at }));
   return grants;
 };
 
-/** What a house's entry grants, as a faculty's does. */
+/**
+ * What a house's entry grants, as a faculty's does. The ground has no
+ * twin, so its grant is no standing: the house being's cells keep its
+ * place in `faculties`.
+ */
 const houseGrants = (entry: WholeHouse): Map<string, Record<string, Json>> => {
   const grants = new Map<string, Record<string, Json>>();
   const add = (id: string, notes: Record<string, Json>) => grants.set(id, { ...grants.get(id), ...notes });
   add(IDS.faculty + entry.classes.faculty, { classes: true });
   if (entry.memory !== undefined) add(IDS.faculty + entry.memory.faculty, { memory: true });
-  (entry.faculties ?? []).forEach((name, at) => add(IDS.faculty + name, { faculties: at }));
+  (entry.faculties ?? []).forEach((name, at) => {
+    if (name !== GROUND) add(IDS.faculty + name, { faculties: at });
+  });
   return grants;
 };
 
@@ -216,19 +228,22 @@ const wholeFaculty = (cells: Readonly<Record<string, Json>>, standings: Shown['s
     ...some('args', held.args),
     ...some('secrets', listed(standings, 'secrets', IDS.secret)),
     ...some('faculties', listed(standings, 'faculties', IDS.faculty)),
+    ...some('installers', listed(standings, 'installers', IDS.faculty)),
     ...some('kinds', held.kinds),
   };
 };
 
-/** A house's entry whole, as a twin's is. */
+/** A house's entry whole, as a twin's is: the ground's grant stands in `faculties` at the place her cells keep. */
 const wholeHouse = (cells: Readonly<Record<string, Json>>, standings: Shown['standings']): WholeHouse => {
-  const held = cells.entry as { classes: Record<string, Json>; memory?: Record<string, Json>; wait?: number };
+  const held = cells.entry as { classes: Record<string, Json>; memory?: Record<string, Json>; wait?: number; ground?: number };
   const code = single(standings, 'classes') ?? '';
   const kept = single(standings, 'memory');
+  const faculties = listed(standings, 'faculties', IDS.faculty);
+  if (typeof held.ground === 'number') faculties.splice(held.ground, 0, GROUND);
   return {
     classes: { faculty: code, ...held.classes },
     ...(held.memory === undefined || kept === undefined ? {} : { memory: { faculty: kept, ...held.memory } }),
-    ...some('faculties', listed(standings, 'faculties', IDS.faculty)),
+    ...some('faculties', faculties),
     ...some('wait', held.wait),
   };
 };
@@ -241,14 +256,17 @@ const houseCells = (entry: WholeHouse): Record<string, Json> => ({
   classes: argsOf(entry.classes),
   ...(entry.memory === undefined ? {} : { memory: argsOf(entry.memory) }),
   ...some('wait', entry.wait),
+  ...(entry.faculties?.includes(GROUND) === true ? { ground: entry.faculties.indexOf(GROUND) } : {}),
 });
 
 /**
- * The ladder's order: each body after the one whose registry it stands on
- * and after each it calls. Each body in a cycle is named with it.
+ * The ladder's order: each body after the one whose registry it stands on,
+ * after each installer it names, and after each body it names in
+ * `faculties`, since its code, its terrain and its callees come from
+ * them. Each body in a cycle is named with it.
  */
 const ladder = (entries: Readonly<Record<string, WholeFaculty>>): { order: string[]; cycles: Map<string, string> } => {
-  const below = (entry: WholeFaculty): readonly string[] => [...(entry.from === undefined ? [] : [entry.from]), ...(entry.faculties ?? [])];
+  const below = (entry: WholeFaculty): readonly string[] => [...(entry.from === undefined ? [] : [entry.from]), ...(entry.installers ?? []), ...(entry.faculties ?? [])];
   const order: string[] = [];
   const cycles = new Map<string, string>();
   const seen = new Map<string, 'visiting' | 'done'>();
@@ -277,50 +295,35 @@ interface Terrain {
   readonly wait?: number;
 }
 
-const houseArgs = { name: s.string(), classes: OBJECT, memory: s.optional(OBJECT), faculties: s.optional(s.array(s.string())), wait: s.optional(s.integer({ minimum: 1 })) };
-const facultyArgs = {
-  name: s.string(),
-  make: s.optional(s.string()),
-  from: s.optional(s.string()),
-  args: s.optional(OBJECT),
-  secrets: s.optional(s.array(s.string())),
-  faculties: s.optional(s.array(s.string())),
-  kinds: s.optional(s.array(s.string())),
-};
 const PLACES = OBJECT;
 const WAIT_SHOWN = s.object({ wait: s.optional(s.integer({ minimum: 1 })), terrain: s.boolean() });
 // Who changes the houses and the faculties: the hand, and a pilot the owner handed a standing.
 const PILOTED = ['root', 'pilot'];
-// A change is safe to repeat, and one that may install a faculty or open a house takes the longest any ask may.
-const CHANGE = { idempotent: true } as const;
-const LIST = { readOnly: true, idempotent: true } as const;
 // The asks the steward alone makes of the beings she holds.
-const HERS = { for: 'steward', hints: CHANGE, wait: WAIT_BOUND } as const;
-const SHOWN = { for: ['steward', 'root'], result: ANY, hints: LIST } as const;
-
-const HOUSES_SHOWN = s.array(s.object({ name: s.string(), entry: OBJECT, ward: s.optional(s.string()), why: s.optional(s.string()) }));
-const FACULTIES_SHOWN = s.array(s.object({ name: s.string(), entry: OBJECT, terrain: s.optional(s.boolean()), serves: s.optional(s.string()), why: s.optional(s.string()) }));
-const CATALOG = s.array(s.object({ from: s.optional(s.string()), faculties: s.array(s.object({ make: s.string(), takes: s.optional(OBJECT) })) }));
-
-/**
- * A ground's dock as a pilot holds it: the asks its steward answers for a
- * standing the owner minted with `pilotsInvite`. A being far or near
- * pilots a ground by `this.held(id, DockPilot)`.
- */
-export const DockPilot = need('org.nervur.dock', {
-  housesAdd: { args: s.object(houseArgs), result: STOOD, hints: CHANGE, wait: WAIT_BOUND },
-  housesUpdate: { args: s.object(houseArgs), result: STOOD, hints: CHANGE, wait: WAIT_BOUND },
-  housesRemove: { args: NAME, hints: CHANGE, wait: WAIT_BOUND },
-  housesList: { result: HOUSES_SHOWN, hints: LIST, wait: WAIT_BOUND },
-  facultiesAdd: { args: s.object(facultyArgs), result: WHY, hints: CHANGE, wait: WAIT_BOUND },
-  facultiesUpdate: { args: s.object(facultyArgs), result: WHY, hints: CHANGE, wait: WAIT_BOUND },
-  facultiesRestart: { args: NAME, result: WHY, hints: CHANGE, wait: WAIT_BOUND },
-  facultiesRemove: { args: NAME, hints: CHANGE, wait: WAIT_BOUND },
-  facultiesList: { result: FACULTIES_SHOWN, hints: LIST, wait: WAIT_BOUND },
-  facultiesCatalog: { result: CATALOG, hints: LIST },
-});
+const HERS = { for: 'steward', ...CHANGE, wait: WAIT_BOUND } as const;
+const SHOWN = { for: ['steward', 'root'], result: ANY, ...LIST } as const;
 
 type Face = Record<string, (args?: unknown) => Promise<unknown>>;
+
+/**
+ * What the dock calls, read as it acts on it: an awaited call's result, or
+ * its error failing the dock's own ask, so nothing of that ask lands.
+ */
+const answered = (reply: unknown, fail: (message: string) => never): unknown => {
+  const read = reply as Reply | undefined;
+  if (read?.error !== undefined) fail(read.error.message);
+  return read?.result;
+};
+// A face whose calls answer as `answered` reads them: every method, or the one named.
+const failing = <T extends object>(face: T, fail: (message: string) => never, only?: string): T =>
+  // A face is frozen, so the proxy stands over an empty object and reads the face.
+  new Proxy({} as T, {
+    get: (_empty, name) => {
+      const member = Reflect.get(face, name) as unknown;
+      if (typeof member !== 'function' || (only !== undefined && name !== only)) return member;
+      return async (...args: unknown[]) => answered(await (member as (...given: unknown[]) => unknown).apply(face, args), fail);
+    },
+  });
 type Powers = {
   list(): Promise<readonly { id: string; kind: string; absent: boolean }[]>;
   /** With no method, what the being shows her steward, once her first ask has run. */
@@ -330,61 +333,69 @@ type Powers = {
   introduce(options: { from: string; to: string; notes?: Notes }): void;
 };
 type Stood = { ward?: string; why?: string };
-type Raised = { installed?: string; why?: string; serves?: string; port?: number };
-const RAISED = s.object({ installed: s.optional(s.string()), why: s.optional(s.string()), serves: s.optional(s.string()), port: s.optional(s.integer()) });
+type Raised = { installed?: string; why?: string; serves?: string; port?: number; version?: string; met?: Record<string, Json> };
+const RAISED = s.object({ installed: s.optional(s.string()), why: s.optional(s.string()), serves: s.optional(s.string()), port: s.optional(s.integer()), version: s.optional(s.string()), met: s.optional(OBJECT) });
 
 /** The dock's steward: every ask the hand makes of the ground. */
 export class DockSteward extends Being.of({
   kind: KINDS.steward,
   description: 'The ground’s own steward: its houses, its faculties, its secrets, its moves and its shell.',
   needs: { ground: GroundNeed },
-  cells: { wait: null as number | null },
+  cells: { wait: null as number | null, classes: null as Record<string, Json> | null, classesWhy: null as string | null },
   roles: { pilot: (asker) => asker.notes.pilot === true },
   asks: {
     boot: {
       for: 'root',
       description: 'Stands the ladder from every entry, the terrain’s and the owner’s, and opens every house: each wake asks it once.',
-      hints: CHANGE,
+      ...CHANGE,
       wait: WAIT_BOUND,
     },
     housesAdd: {
       for: PILOTED,
       description: 'Opens a house on the bodies its entry names, and answers its ward, or why it stands closed; the same name and entry answer as it stands.',
-      args: s.object(houseArgs),
+      args: HOUSE,
       result: STOOD,
-      hints: CHANGE,
+      ...CHANGE,
       wait: WAIT_BOUND,
     },
     housesUpdate: {
       for: PILOTED,
       description: 'Lands a new entry over a house’s in one write, and opens the house again on it.',
-      args: s.object(houseArgs),
+      args: HOUSE,
       result: STOOD,
-      hints: CHANGE,
+      ...CHANGE,
       wait: WAIT_BOUND,
     },
-    housesRemove: { for: PILOTED, description: 'Closes a house and drops its entry; its seed and its places stay.', args: NAME, hints: CHANGE, wait: WAIT_BOUND },
+    housesRemove: { for: PILOTED, description: 'Closes a house and drops its entry; its seed and its places stay.', args: NAME, ...CHANGE, wait: WAIT_BOUND },
     housesList: {
       for: PILOTED,
       description: 'Every house with its whole entry, open with its ward or closed with why.',
       result: HOUSES_SHOWN,
-      hints: LIST,
+      ...LIST,
+      wait: WAIT_BOUND,
+    },
+    housesInvite: {
+      for: PILOTED,
+      description: 'Mints a new occupant of a house’s steward, and answers her invitation, for the being who takes it; `by` is the granted house that invites, which the ground alone names.',
+      args: s.object({ name: s.string(), id: s.string(), by: s.optional(s.string()) }),
+      result: INVITED,
+      ...CHANGE,
       wait: WAIT_BOUND,
     },
     facultiesAdd: {
       for: PILOTED,
       description: 'Raises a body from the registry its entry names, and answers why it is down where it is; the same name and entry answer as it stands.',
-      args: s.object(facultyArgs),
+      args: FACULTY,
       result: WHY,
-      hints: CHANGE,
+      ...CHANGE,
       wait: WAIT_BOUND,
     },
     facultiesUpdate: {
       for: PILOTED,
       description: 'Lands a new entry over a faculty’s in one write: its body goes down, installs where the entry moved, and goes up, and each house and body that uses it follows.',
-      args: s.object(facultyArgs),
+      args: FACULTY,
       result: WHY,
-      hints: CHANGE,
+      ...CHANGE,
       wait: WAIT_BOUND,
     },
     facultiesRestart: {
@@ -392,44 +403,66 @@ export class DockSteward extends Being.of({
       description: 'Takes a body down and up again on its entry, and each house and body that uses it follows.',
       args: NAME,
       result: WHY,
-      hints: CHANGE,
+      ...CHANGE,
       wait: WAIT_BOUND,
     },
-    facultiesRemove: { for: PILOTED, description: 'Takes down a body no house and no body uses, and drops its entry.', args: NAME, hints: CHANGE, wait: WAIT_BOUND },
+    facultiesRemove: {
+      for: PILOTED,
+      description: 'Takes down a body no house and no body uses, lets go of what it installed, and drops its entry; it answers why where the uninstall failed.',
+      args: NAME,
+      result: WHY,
+      ...CHANGE,
+      wait: WAIT_BOUND,
+    },
+    facultiesHealth: {
+      for: PILOTED,
+      description: 'Asks a body its health now: whether it serves, and why not where it does not. A body down is not ok.',
+      args: NAME,
+      result: HEALTH,
+      ...LIST,
+      wait: WAIT_BOUND,
+    },
     facultiesList: {
       for: PILOTED,
       description: 'Every faculty entry whole, the terrain’s marked so and the owner’s, standing, or down with why. An entry names its secrets and holds none.',
       result: FACULTIES_SHOWN,
-      hints: LIST,
+      ...LIST,
       wait: WAIT_BOUND,
     },
     facultiesCatalog: {
       for: PILOTED,
       description: 'Every registry of the ladder, the ground’s first and then each body’s that carries one, with each faculty it holds and what it takes: the schema its args meet and the secrets its entry names.',
       result: CATALOG,
-      hints: LIST,
+      ...LIST,
     },
     waitSet: {
       for: PILOTED,
       description: 'Sets the ground’s bound on every ask, in milliseconds, or drops it back to the terrain’s where none is given; every open house opens again on it.',
       args: s.object({ wait: s.optional(s.integer({ minimum: 1 })) }),
       result: WAIT_SHOWN,
-      hints: CHANGE,
+      ...CHANGE,
       wait: WAIT_BOUND,
     },
-    waitShow: { for: PILOTED, description: 'The ground’s bound on every ask, and whether it is the terrain’s.', result: WAIT_SHOWN, hints: LIST },
+    waitShow: { for: PILOTED, description: 'The ground’s bound on every ask, and whether it is the terrain’s.', result: WAIT_SHOWN, ...LIST },
     secretsSet: {
       for: 'root',
-      description: 'Keeps a secret, for the faculties whose entries name it. It answers nothing, so no answer holds it.',
+      description: 'Keeps a secret, for the faculties whose entries name it, and raises each of their bodies again on it, with the houses above them. It answers nothing, so no answer holds it.',
       args: s.object({ name: s.string(), value: s.string() }),
-      hints: CHANGE,
+      ...CHANGE,
+      wait: WAIT_BOUND,
     },
-    secretsRemove: { for: 'root', description: 'Drops a secret.', args: NAME, hints: CHANGE },
+    secretsRemove: {
+      for: 'root',
+      description: 'Drops a secret, and each body whose entry names it goes down waiting for it.',
+      args: NAME,
+      ...CHANGE,
+      wait: WAIT_BOUND,
+    },
     secretsList: {
       for: 'root',
       description: 'Every secret kept or named, whether it is kept, and the faculty entries that name it, and never a value.',
       result: s.array(s.object({ name: s.string(), kept: s.boolean(), entries: s.array(s.string()) })),
-      hints: LIST,
+      ...LIST,
       wait: WAIT_BOUND,
     },
     movesOut: {
@@ -443,7 +476,7 @@ export class DockSteward extends Being.of({
     movesIn: {
       for: 'root',
       description: 'Keeps a moved seed, writes its places into an empty memory, and opens the house on the bodies its entry names.',
-      args: s.object({ ...houseArgs, seed: s.string(), places: PLACES }),
+      args: HOUSE_MOVED,
       result: STOOD,
       wait: WAIT_BOUND,
     },
@@ -468,31 +501,41 @@ export class DockSteward extends Being.of({
       result: s.object({ invitation: s.handle() }),
     },
     pilotsDismiss: { for: 'root', description: 'Lets a pilot go.', args: s.object({ id: s.string() }) },
-    pilotsList: { for: 'root', description: 'Every pilot she holds.', result: s.array(s.string()), hints: LIST },
-    grants: { for: 'root', description: 'Every body the dock is offered: the twins she stands on.', result: s.array(s.string()), hints: LIST },
-    granted: { for: 'root', description: 'Bears the being that holds the shell’s offer, once the dock is offered it.', hints: CHANGE },
+    pilotsList: { for: 'root', description: 'Every pilot she holds.', result: s.array(s.string()), ...LIST },
+    classesSet: {
+      for: 'root',
+      description: 'Names the body of the ladder that serves the owner’s dock classes, as a house entry’s classes, or drops back to the library’s where none is given; the dock opens again on them.',
+      args: s.object({ classes: s.optional(OBJECT) }),
+      ...CHANGE,
+      wait: WAIT_BOUND,
+    },
+    classesShow: {
+      for: 'root',
+      description: 'The body that serves the owner’s dock classes, where one is named, and why the dock stands on the library’s alone where they did not load.',
+      result: s.object({ classes: s.optional(OBJECT), why: s.optional(s.string()) }),
+      ...LIST,
+    },
+    classesLoaded: { for: 'root', description: 'Keeps why the owner’s dock classes did not load, or that they did: the ground asks it each time the dock opens on them.', args: WHY, ...CHANGE },
+    grants: { for: 'root', description: 'Every body the dock is offered: the twins she stands on.', result: s.array(s.string()), ...LIST },
+    granted: { for: 'root', description: 'Bears the being that holds the shell’s offer, once the dock is offered it.', ...CHANGE },
   },
 }) {
   get #powers(): Powers {
-    return this.powers as unknown as Powers;
+    return failing(this.powers as unknown as Powers, this.fail, 'ask');
   }
 
   get #ground(): Face {
-    return this.ground as unknown as Face;
+    return failing(this.ground as unknown as Face, this.fail);
   }
 
   // Every being she holds, the twins and the house beings with their cells and standings.
   async #beings(): Promise<Held> {
     const faculties = new Map<string, Shown>();
     const houses = new Map<string, Shown>();
-    const secrets = new Set<string>();
+    const secrets = new Map<string, boolean>();
     for (const { id, kind, absent } of await this.#powers.list()) {
       if (absent) continue;
-      if (kind === KINDS.secret) {
-        // Read as her steward reads her, so her first ask has run.
-        await this.#powers.ask({ id });
-        secrets.add(nameOf(id, IDS.secret));
-      }
+      if (kind === KINDS.secret) secrets.set(nameOf(id, IDS.secret), (await this.#powers.ask({ id, method: 'kept' })) === true);
       if (kind !== KINDS.faculty && kind !== KINDS.house) continue;
       const shown = (await this.#powers.ask({ id, method: 'shown' })) as Omit<Shown, 'id' | 'kind'>;
       const one = { id, kind, ...shown };
@@ -519,7 +562,7 @@ export class DockSteward extends Being.of({
 
   // Every twin's id and every secret's, which a grant may name.
   static #relatable(held: Held): Set<string> {
-    return new Set([...[...held.faculties.keys()].map((one) => IDS.faculty + one), ...[...held.secrets].map((one) => IDS.secret + one)]);
+    return new Set([...[...held.faculties.keys()].map((one) => IDS.faculty + one), ...[...held.secrets.keys()].map((one) => IDS.secret + one)]);
   }
 
   // The name an entry takes, or why it takes none.
@@ -534,23 +577,39 @@ export class DockSteward extends Being.of({
     if (Object.hasOwn(OWN, name)) this.fail(OWN[name]);
     const entry = facultyEntryOf(given);
     if (typeof entry === 'string') this.fail(entry);
-    if (Object.hasOwn(terrain.primordial, name)) this.fail(`the ${name} is primordial: its entry is the host’s, and the drawer names none`);
+    if (Object.hasOwn(terrain.primordial, name)) this.fail(`the ${name} is primordial: its entry is the host’s, and the dock’s entries name none`);
     if (entry.from === undefined && entry.make !== undefined && Object.hasOwn(OWN, entry.make)) this.fail(OWN[entry.make]);
     const role = Object.entries(terrain.primordial).find(([, make]) => entry.from === undefined && make === entry.make)?.[0];
-    if (role !== undefined) this.fail(`the faculty ${entry.make} is the ground’s ${role}, which is primordial, and the drawer names none`);
-    for (const callee of [...(entry.from === undefined ? [] : [entry.from]), ...(entry.faculties ?? [])]) {
+    if (role !== undefined) this.fail(`the faculty ${entry.make} is the ground’s ${role}, which is primordial, and the dock’s entries name none`);
+    for (const callee of [...(entry.from === undefined ? [] : [entry.from]), ...(entry.faculties ?? []), ...(entry.installers ?? [])]) {
       if (Object.hasOwn(OWN, callee)) this.fail(OWN[callee]);
       if (!held.faculties.has(callee)) this.fail(`the faculty ${name} is refused: no faculty ${callee} is here`);
     }
     return entry;
   }
 
-  // What the ground's faculty says the entry fails of what its faculty takes, then each secret it names kept.
-  async #takes(name: string, entry: WholeFaculty, secrets: ReadonlySet<string>): Promise<void> {
+  // What the ground's faculty says the entry's args fail of what its faculty takes. A secret not kept yet is no refusal: its body waits for it.
+  async #takes(name: string, entry: WholeFaculty): Promise<void> {
     const { why } = (await this.#ground.check({ name, entry })) as { why?: string };
-    const unkept = (entry.secrets ?? []).find((secret) => !secrets.has(secret));
-    const refused = why ?? (unkept === undefined ? undefined : `no secret ${unkept} is kept`);
-    if (refused !== undefined) this.fail(`the faculty ${name} is refused: ${refused}`);
+    if (why !== undefined) this.fail(`the faculty ${name} is refused: ${why}`);
+  }
+
+  // Each secret an entry names that no being holds is borne empty, so its twin stands on it before it is set.
+  #room(entry: WholeFaculty, held: Held): void {
+    for (const secret of entry.secrets ?? []) {
+      if (held.secrets.has(secret)) continue;
+      this.#powers.bear({ kind: KINDS.secret, id: IDS.secret + secret, args: {} });
+      held.secrets.set(secret, false);
+    }
+  }
+
+  // Every body whose twin stands on a secret goes down and up again with everything above it, so a secret set or dropped reaches it now.
+  async #raiseOn(secret: string): Promise<void> {
+    const held = await this.#beings();
+    for (const [name, twin] of [...held.faculties].sort(byName)) {
+      if (Object.hasOwn(OWN, name) || !twin.standings.some(({ id }) => id === IDS.secret + secret)) continue;
+      await this.#cycle(name, async () => (await this.#powers.ask({ id: twin.id, method: 'restart' })) as { why?: string });
+    }
   }
 
   // A house's entry held to what the dock refuses before anything lands.
@@ -558,7 +617,10 @@ export class DockSteward extends Being.of({
     this.#named(name, 'house');
     const entry = houseEntryOf(given);
     if (typeof entry === 'string') this.fail(entry);
-    for (const faculty of [entry.classes.faculty, ...(entry.memory === undefined ? [] : [entry.memory.faculty]), ...(entry.faculties ?? [])]) {
+    // A house's faculties alone grant the ground, which stands on every ground and has no twin.
+    const granted = (entry.faculties ?? []).filter((faculty) => faculty !== GROUND);
+    if (granted.length < (entry.faculties ?? []).length - 1) this.fail(`the house ${name} is refused: it names the ${GROUND} twice`);
+    for (const faculty of [entry.classes.faculty, ...(entry.memory === undefined ? [] : [entry.memory.faculty]), ...granted]) {
       if (Object.hasOwn(OWN, faculty)) this.fail(OWN[faculty]);
       if (!held.faculties.has(faculty)) this.fail(`the house ${name} is refused: no faculty ${faculty} is here`);
     }
@@ -664,12 +726,16 @@ export class DockSteward extends Being.of({
         const raised = cycle === undefined ? ((await this.#powers.ask({ id, method: 'stand' })) as Raised) : { why: cycle };
         if (DockSteward.#moved(twin.cells, raised)) await this.#powers.ask({ id, method: 'record', args: raised });
         // A terrain's entry grants what the terrain's code gives now.
-        if (!hasEntry(twin)) this.#introduce(id, facultyGrants(entries[name]), twin.standings);
+        if (!hasEntry(twin)) {
+          this.#room(entries[name], held);
+          this.#introduce(id, facultyGrants(entries[name]), twin.standings);
+        }
         continue;
       }
       // A default of the terrain's that no twin holds yet stands now, and its twin is borne.
       const raised = cycle === undefined ? ((await this.#ground.raise({ name, entry: entries[name] })) as Raised) : { why: cycle };
       this.#powers.bear({ kind: KINDS.faculty, id, args: { terrain: true, ...raised } });
+      this.#room(entries[name], held);
       this.#introduce(id, facultyGrants(entries[name]));
     }
     // The dock is offered each body its steward stands on: the terrain's shell, where it has one.
@@ -692,8 +758,34 @@ export class DockSteward extends Being.of({
       (raised.installed ?? cells.installed ?? null) !== (cells.installed ?? null) ||
       (raised.why ?? null) !== (cells.why ?? null) ||
       (raised.serves ?? null) !== (cells.serves ?? null) ||
-      (raised.port ?? null) !== (cells.port ?? null)
+      (raised.port ?? null) !== (cells.port ?? null) ||
+      (raised.version ?? cells.version ?? null) !== (cells.version ?? null) ||
+      canonical(raised.met ?? cells.met ?? null) !== canonical(cells.met ?? null)
     );
+  }
+
+  async classesSet({ classes }: Args<DockSteward, 'classesSet'>) {
+    this.cells.classesWhy = null;
+    if (classes === undefined) {
+      this.cells.classes = null;
+      return;
+    }
+    const named = namedOf(classes, 'classes');
+    if (typeof named === 'string') return this.fail(named);
+    if (Object.hasOwn(OWN, named.faculty)) return this.fail(OWN[named.faculty]);
+    const twin = (await this.#beings()).faculties.get(named.faculty);
+    if (twin === undefined) return this.fail(`the ${DOCK}’s classes are refused: no faculty ${named.faculty} is on the ladder`);
+    // A body down is taken on its word, and one standing serves classes or is refused.
+    if (typeof twin.cells.why !== 'string' && twin.cells.serves !== 'classes') return this.fail(`the ${DOCK}’s classes are refused: the faculty ${named.faculty} serves no classes`);
+    this.cells.classes = named as unknown as Record<string, Json>;
+  }
+
+  classesShow() {
+    return { ...(this.cells.classes === null ? {} : { classes: this.cells.classes }), ...(this.cells.classesWhy === null ? {} : { why: this.cells.classesWhy }) };
+  }
+
+  classesLoaded({ why }: Args<DockSteward, 'classesLoaded'>) {
+    this.cells.classesWhy = why ?? null;
   }
 
   async grants() {
@@ -764,6 +856,17 @@ export class DockSteward extends Being.of({
     await this.#release(house.id, houseGrants(wholeHouse(house.cells, house.standings)), new Map(), DockSteward.#relatable(held));
   }
 
+  // Her notes say who invited: the hand, a pilot, or a house the ground granted, which the ground names through the hand alone.
+  async housesInvite({ name, id, by }: Args<DockSteward, 'housesInvite'>) {
+    const root = this.asker.id === 'root';
+    if (by !== undefined && !root) return this.fail('only the ground names the house that invites');
+    if (by === name) return this.fail(`the house ${name} invites nothing onto herself`);
+    const held = await this.#beings();
+    if (!hasEntry(held.houses.get(name))) return this.fail(`no house ${name} is here`);
+    const notes = !root ? { by: 'pilot' } : by === undefined ? { by: 'root' } : { by: GROUND, house: by };
+    return (await this.#ground.invite({ name, occupant: id, notes })) as never;
+  }
+
   async housesList() {
     const held = await this.#beings();
     return [...held.houses]
@@ -788,10 +891,11 @@ export class DockSteward extends Being.of({
       if (whole === undefined || canonical(whole) !== canonical(entry)) this.fail(`the faculty ${name} stands with another entry; update it`);
       return typeof twin.cells.why === 'string' ? { why: twin.cells.why } : {};
     }
-    await this.#takes(name, entry, held.secrets);
+    await this.#takes(name, entry);
     const raised = (await this.#ground.raise({ name, entry })) as Raised;
     const id = IDS.faculty + name;
     this.#powers.bear({ kind: KINDS.faculty, id, args: { terrain: false, entry: facultyCells(entry), ...raised } });
+    this.#room(entry, held);
     this.#introduce(id, facultyGrants(entry));
     await this.#mend();
     return raised.why === undefined ? {} : { why: raised.why };
@@ -806,9 +910,10 @@ export class DockSteward extends Being.of({
     const entry = this.#facultyEntry(name, rest, terrain, held);
     const before = DockSteward.#whole(twin!, terrain, name);
     if (before !== undefined && canonical(before) === canonical(entry)) return typeof twin!.cells.why === 'string' ? { why: twin!.cells.why } : {};
-    await this.#takes(name, entry, held.secrets);
+    await this.#takes(name, entry);
     const id = IDS.faculty + name;
     const stood = await this.#cycle(name, async () => (await this.#powers.ask({ id, method: 'update', args: { entry } })) as { why?: string });
+    this.#room(entry, held);
     this.#introduce(id, facultyGrants(entry));
     if (before !== undefined) await this.#release(id, facultyGrants(before), facultyGrants(entry), DockSteward.#relatable(held));
     return stood.why === undefined ? {} : { why: stood.why };
@@ -827,20 +932,27 @@ export class DockSteward extends Being.of({
     const terrain = await this.#terrain();
     const held = await this.#beings();
     const twin = held.faculties.get(name);
-    if (twin === undefined) return;
+    if (twin === undefined) return {};
     if (!hasEntry(twin)) return this.fail(`the faculty ${name} is the terrain’s; update it`);
     const { houses, faculties } = DockSteward.#users(name, held);
-    const users = [...houses.map((house) => `the house ${house}`), ...faculties.map((faculty) => `the faculty ${faculty}`)];
+    const users = [...houses.map((house) => `the house ${house}`), ...faculties.map((faculty) => `the faculty ${faculty}`), ...(this.cells.classes?.faculty === name ? [`the ${DOCK}’s classes`] : [])];
     if (users.length > 0) return this.fail(`the faculty ${name} is in use by ${users.join(', ')}`);
-    await this.#powers.ask({ id: twin.id, method: 'remove' });
+    const { why } = (await this.#powers.ask({ id: twin.id, method: 'remove' })) as { why?: string };
     await this.#release(twin.id, facultyGrants(wholeFaculty(twin.cells, twin.standings)), new Map(), DockSteward.#relatable(held));
     // A terrain's entry under the same name stands again in its place.
     if (terrain.entries[name] === undefined) this.#powers.remove({ id: twin.id });
     else {
+      this.#room(terrain.entries[name], held);
       this.#introduce(twin.id, facultyGrants(terrain.entries[name]));
       await this.#powers.ask({ id: twin.id, method: 'up' });
       await this.#mend();
     }
+    return why === undefined ? {} : { why };
+  }
+
+  async facultiesHealth({ name }: Args<DockSteward, 'facultiesHealth'>) {
+    if (!(await this.#powers.list()).some(({ id }) => id === IDS.faculty + name)) return this.fail(`no faculty ${name} stands here`);
+    return (await this.#powers.ask({ id: IDS.faculty + name, method: 'health' })) as { ok: boolean; why?: string };
   }
 
   async facultiesList() {
@@ -886,23 +998,30 @@ export class DockSteward extends Being.of({
   async secretsSet({ name, value }: Args<DockSteward, 'secretsSet'>) {
     if (!NAME_RULE.test(name)) this.fail(`a secret is named with ${NAMED}`);
     const held = await this.#beings();
-    if (held.secrets.has(name)) await this.#powers.ask({ id: IDS.secret + name, method: 'set', args: { value } });
-    else this.#powers.bear({ kind: KINDS.secret, id: IDS.secret + name, args: { value } });
+    // A secret no entry names is borne; one an entry names has her being already, so the bodies on her rise on her value now.
+    if (!held.secrets.has(name)) return this.#powers.bear({ kind: KINDS.secret, id: IDS.secret + name, args: { value } });
+    await this.#powers.ask({ id: IDS.secret + name, method: 'set', args: { value } });
+    await this.#raiseOn(name);
   }
 
   async secretsRemove({ name }: Args<DockSteward, 'secretsRemove'>) {
     const held = await this.#beings();
-    if (held.secrets.has(name)) this.#powers.remove({ id: IDS.secret + name });
+    if (!held.secrets.has(name)) return;
+    const id = IDS.secret + name;
+    // A secret an entry names keeps her being with no value, and each body on her goes down waiting for her.
+    if (![...held.faculties.values()].some((twin) => twin.standings.some((one) => one.id === id))) return this.#powers.remove({ id });
+    await this.#powers.ask({ id, method: 'set', args: {} });
+    await this.#raiseOn(name);
   }
 
   async secretsList() {
     const terrain = await this.#terrain();
     const held = await this.#beings();
-    const naming: Record<string, string[]> = Object.fromEntries([...held.secrets].map((name) => [name, []]));
+    const naming: Record<string, string[]> = Object.fromEntries([...held.secrets].filter(([, kept]) => kept).map(([name]) => [name, []]));
     for (const [faculty, twin] of held.faculties) for (const secret of DockSteward.#whole(twin, terrain, faculty)?.secrets ?? []) (naming[secret] ??= []).push(faculty);
     return Object.entries(naming)
       .sort(byName)
-      .map(([name, entries]) => ({ name, kept: held.secrets.has(name), entries: entries.sort() }));
+      .map(([name, entries]) => ({ name, kept: held.secrets.get(name) === true, entries: entries.sort() }));
   }
 
   async movesOut({ name }: Args<DockSteward, 'movesOut'>) {
@@ -926,7 +1045,7 @@ export class DockSteward extends Being.of({
     const entry = this.#houseEntry(name, rest, held);
     // A house moves into a memory of its own, never over another's places, and onto no other seed.
     await this.#ground.placesIn({ name, entry, places: {} });
-    if (house !== undefined && house.cells.seed !== seed) return this.fail(`the drawer keeps another seed for ${name}`);
+    if (house !== undefined && house.cells.seed !== seed) return this.fail(`the dock’s cells keep another seed for ${name}`);
     await this.#ground.placesIn({ name, entry, places });
     return this.#land(name, entry, house, this.#bounded(await this.#terrain()), seed);
   }
@@ -975,26 +1094,50 @@ const shownOf = (being: Showing): { cells: Record<string, Json>; standings: Show
 
 /**
  * A faculty's twin: her cells hold the owner's entry, or mark the
- * terrain's, what her body installed, and whether it stands or is down
- * with why. Going up and down is her state machine, and each change the
- * steward asks of her lands in her own write.
+ * terrain's, what her body installed, the version its memory was last
+ * brought to, which installer met each of its needs and what it
+ * answered, and whether it
+ * stands or is down with why. Going up and down is her state machine, and
+ * each change the steward asks of her lands in her own write.
  */
 export class DockFaculty extends Being.of({
   kind: KINDS.faculty,
-  description: 'The twin of one body of the ladder: its entry, what it installed, and whether it stands.',
+  description: 'The twin of one body of the ladder: its entry, what it installed, its version, and whether it stands.',
   needs: { ground: GroundNeed },
-  cells: { terrain: false as boolean, entry: null as Record<string, Json> | null, installed: null as string | null, why: null as string | null, serves: null as string | null, port: null as number | null },
+  cells: {
+    terrain: false as boolean,
+    entry: null as Record<string, Json> | null,
+    installed: null as string | null,
+    version: null as string | null,
+    met: null as Record<string, Json> | null,
+    why: null as string | null,
+    serves: null as string | null,
+    port: null as number | null,
+  },
   asks: {
-    born: { for: 'steward', args: s.object({ terrain: s.boolean(), entry: s.optional(OBJECT), installed: s.optional(s.string()), why: s.optional(s.string()), serves: s.optional(s.string()), port: s.optional(s.integer()) }) },
+    born: {
+      for: 'steward',
+      args: s.object({
+        terrain: s.boolean(),
+        entry: s.optional(OBJECT),
+        installed: s.optional(s.string()),
+        version: s.optional(s.string()),
+        met: s.optional(OBJECT),
+        why: s.optional(s.string()),
+        serves: s.optional(s.string()),
+        port: s.optional(s.integer()),
+      }),
+    },
     shown: SHOWN,
-    up: { ...HERS, result: WHY, description: 'Raises her body on her entry, installing where it moved.' },
-    stand: { for: 'steward', result: RAISED, hints: LIST, wait: WAIT_BOUND, description: 'Raises her body on her entry and answers what came of it, writing nothing: a boot writes only what moved.' },
+    up: { ...HERS, result: WHY, description: 'Raises her body on her entry, installing where it moved and migrating where its version moved.' },
+    stand: { for: 'steward', result: RAISED, ...LIST, wait: WAIT_BOUND, description: 'Raises her body on her entry and answers what came of it, writing nothing: a boot writes only what moved.' },
     record: { ...HERS, args: RAISED, description: 'Keeps what came of raising her body.' },
     down: { ...HERS, args: s.object({ why: s.string() }), description: 'Takes her body down, and says why.' },
     update: { ...HERS, args: s.object({ entry: OBJECT }), result: WHY, description: 'Lands a new entry over hers, and raises her body on it.' },
     restart: { ...HERS, result: WHY, description: 'Takes her body down and up again.' },
-    remove: { ...HERS, description: 'Takes her body down and drops the owner’s entry.' },
+    remove: { ...HERS, result: WHY, description: 'Takes her body down, lets go of what it installed, and drops the owner’s entry.' },
     release: { ...HERS, args: s.object({ id: s.string() }), description: 'Lets go of a being whose entry leaves her out.' },
+    health: { for: ['steward', 'root'], result: HEALTH, ...LIST, wait: WAIT_BOUND, description: 'Asks her body its health now, and writes nothing: a body down is not ok.' },
   },
 }) {
   get #name(): string {
@@ -1002,7 +1145,7 @@ export class DockFaculty extends Being.of({
   }
 
   get #ground(): Face {
-    return this.ground as unknown as Face;
+    return failing(this.ground as unknown as Face, this.fail);
   }
 
   born({ terrain, entry, ...raised }: Args<DockFaculty, 'born'>) {
@@ -1012,17 +1155,28 @@ export class DockFaculty extends Being.of({
   }
 
   // What came of raising her body, kept.
-  #keep({ installed, why, serves, port }: Raised): void {
+  #keep({ installed, version, met, why, serves, port }: Raised): void {
     this.cells.installed = installed ?? this.cells.installed;
+    this.cells.version = version ?? this.cells.version;
+    this.cells.met = met ?? this.cells.met;
     this.cells.why = why ?? null;
     this.cells.serves = serves ?? null;
     this.cells.port = port ?? null;
   }
 
+  // What she hands the ground to raise her body: what it installed, the version its memory was brought to, and what met each of its needs.
+  #kept(): { installed?: string; version?: string; met?: Record<string, Json> } {
+    return {
+      ...(this.cells.installed === null ? {} : { installed: this.cells.installed }),
+      ...(this.cells.version === null ? {} : { version: this.cells.version }),
+      ...(this.cells.met === null ? {} : { met: this.cells.met }),
+    };
+  }
+
   async stand() {
     const entry = await this.#whole();
     if (entry === undefined) return { why: 'the terrain names no entry for it' };
-    return (await this.#ground.raise({ name: this.#name, entry, ...(this.cells.installed === null ? {} : { installed: this.cells.installed }) })) as Raised;
+    return (await this.#ground.raise({ name: this.#name, entry, ...this.#kept() })) as Raised;
   }
 
   record(raised: Args<DockFaculty, 'record'>) {
@@ -1043,7 +1197,7 @@ export class DockFaculty extends Being.of({
       this.cells.why = 'the terrain names no entry for it';
       return { why: this.cells.why };
     }
-    const raised = (await this.#ground.raise({ name: this.#name, entry, ...(this.cells.installed === null ? {} : { installed: this.cells.installed }) })) as Raised;
+    const raised = (await this.#ground.raise({ name: this.#name, entry, ...this.#kept() })) as Raised;
     this.#keep(raised);
     return raised.why === undefined ? {} : { why: raised.why };
   }
@@ -1074,16 +1228,26 @@ export class DockFaculty extends Being.of({
     return this.#raise(whole);
   }
 
+  // Her body down, then what it installed let go of, then her entry dropped: the uninstall's failure is answered, and the removal stands.
   async remove() {
+    const whole = await this.#whole();
     await this.#ground.lower({ name: this.#name });
+    const { why } = whole === undefined ? {} : ((await this.#ground.uninstall({ name: this.#name, entry: whole })) as { why?: string });
     for (const { id } of shownOf(this).standings) this.standings.drop(id);
     this.cells.entry = null;
     this.cells.why = 'its entry is dropped';
     this.cells.serves = null;
+    this.cells.version = null;
+    this.cells.met = null;
+    return why === undefined ? {} : { why };
   }
 
   release({ id }: Args<DockFaculty, 'release'>) {
     if (this.occupants.list().some((one) => one.id === `being:${id}`)) this.occupants.dismiss(`being:${id}`);
+  }
+
+  async health() {
+    return (await this.#ground.health({ name: this.#name })) as { ok: boolean; why?: string };
   }
 }
 
@@ -1105,7 +1269,7 @@ export class DockHouse extends Being.of({
       description: 'Opens the house on her entry where it is not open on it, and answers its ward or why it stays closed.',
       args: s.object({ bound: s.optional(s.integer({ minimum: 1 })) }),
       result: STOOD,
-      hints: CHANGE,
+      ...CHANGE,
       wait: WAIT_BOUND,
     },
     opening: {
@@ -1113,7 +1277,7 @@ export class DockHouse extends Being.of({
       description: 'Opens the house as `open` does and answers what came of it, writing nothing: a boot writes only what moved.',
       args: s.object({ bound: s.optional(s.integer({ minimum: 1 })) }),
       result: STOOD,
-      hints: LIST,
+      ...LIST,
       wait: WAIT_BOUND,
     },
     record: { ...HERS, args: STOOD, description: 'Keeps what came of opening the house.' },
@@ -1127,7 +1291,7 @@ export class DockHouse extends Being.of({
   }
 
   get #ground(): Face {
-    return this.ground as unknown as Face;
+    return failing(this.ground as unknown as Face, this.fail);
   }
 
   born({ entry, seed, ward, why }: Args<DockHouse, 'born'>) {
@@ -1186,26 +1350,32 @@ export class DockHouse extends Being.of({
 }
 
 /**
- * A secret: her one cell holds its value. Her asks answer nothing, and the
- * hand never reads her cells, so only the bodies whose twins stand on her
- * receive it, when they go up.
+ * A secret: her one cell holds its value, or nothing while an entry names
+ * her and no value is set. Her asks answer at most whether she keeps one,
+ * and the hand never reads her cells, so only the bodies whose twins stand
+ * on her receive it, when they go up.
  */
 export class DockSecret extends Being.of({
   kind: KINDS.secret,
   description: 'One secret, for the faculties whose entries name it.',
-  cells: { value: '' },
+  cells: { value: null as string | null },
   asks: {
-    born: { for: 'steward', args: s.object({ value: s.string() }) },
-    set: { for: 'steward', args: s.object({ value: s.string() }), hints: CHANGE },
+    born: { for: 'steward', args: s.object({ value: s.optional(s.string()) }) },
+    set: { for: 'steward', args: s.object({ value: s.optional(s.string()) }), ...CHANGE },
+    kept: { for: 'steward', result: s.boolean(), ...LIST, description: 'Whether she keeps a value, and never the value.' },
     release: { ...HERS, args: s.object({ id: s.string() }) },
   },
 }) {
   born({ value }: Args<DockSecret, 'born'>) {
-    this.cells.value = value;
+    this.cells.value = value ?? null;
   }
 
   set({ value }: Args<DockSecret, 'set'>) {
-    this.cells.value = value;
+    this.cells.value = value ?? null;
+  }
+
+  kept() {
+    return this.cells.value !== null;
   }
 
   release({ id }: Args<DockSecret, 'release'>) {
@@ -1227,15 +1397,205 @@ export class DockShell extends Being.of({
       for: 'steward',
       args: s.object({ command: s.string(), args: s.optional(s.array(s.string())), cwd: s.optional(s.string()), stdin: s.optional(s.string()) }),
       result: s.object({ code: s.integer(), stdout: s.string(), stderr: s.string() }),
-      hints: CHANGE,
+      ...CHANGE,
       wait: WAIT_BOUND,
     },
   },
 }) {
   async run(args: Args<DockShell, 'run'>) {
-    return this.shell.run(args);
+    return answered(await this.shell.run(args), this.fail) as Result<DockShell, 'run'>;
   }
 }
 
-/** The dock's classes: the library's, the same on every ground. */
-export const dockClasses = (): ClassList => new ClassList({ steward: DockSteward, beings: [DockFaculty, DockHouse, DockSecret, DockShell] });
+/** The library's own classes of the dock, which boot every ground. */
+const LIBRARY: readonly BeingClass[] = [DockSteward, DockFaculty, DockHouse, DockSecret, DockShell];
+const LIBRARY_KINDS: ReadonlySet<string> = new Set(Object.values(KINDS));
+// The ids the library's beings take, which no being of the owner's takes.
+const libraryId = (id: string): boolean => id === SHELL_ID || Object.values(IDS).some((prefix) => id.startsWith(prefix));
+
+const declared = (Class: unknown): Declaration => declarationOf(Class)!;
+
+/**
+ * Every member the library's steward defines, which an owner's steward
+ * never defines again: her methods and accessors, and every member a being
+ * reaches.
+ */
+const KEPT: ReadonlySet<string> = new Set([...Object.getOwnPropertyNames(DockSteward.prototype), ...MEMBERS, ...Object.keys(declared(DockSteward).asks)]);
+
+/** The asks of hers an owner's steward calls on herself: those a pilot reaches, since the owner's code reaches no further than a pilot. */
+const PILOT_ASKS: ReadonlySet<string> = new Set(
+  Object.entries(declared(DockSteward).asks)
+    .filter(([, entry]) => [entry.for].flat().includes('pilot'))
+    .map(([name]) => name),
+);
+
+type Sealed = Record<string | symbol, unknown>;
+type RawPowers = Powers & { invite(options: { id: string; occupant: string; notes?: Notes; expires?: number }): unknown };
+
+// A being's notes that would make her a pilot, which the owner's code never writes.
+const piloting = (notes: Notes | undefined): boolean => notes?.pilot !== undefined;
+
+/**
+ * The steward's powers as the owner's code holds them: each reaches her
+ * own beings alone. No library being is borne, removed, asked, introduced
+ * or stood on by the owner's code, so no seed and no secret reaches it.
+ */
+const sealedPowers = (powers: RawPowers, kinds: ReadonlySet<string>, fail: (message: string) => never): RawPowers => {
+  const mine = (id: string) => {
+    if (libraryId(id)) fail(`the being ${id} is the ${DOCK}’s own, and the owner’s code reaches her nowhere`);
+  };
+  return Object.freeze({
+    list: () => powers.list(),
+    ask: (call: { id: string; method?: string; args?: unknown }, options?: unknown) => {
+      mine(call.id);
+      return (powers.ask as (...given: unknown[]) => Promise<unknown>)(call, options);
+    },
+    bear: (options: { kind: string; id: string; args?: Json }) => {
+      if (!kinds.has(options.kind)) fail(`the owner’s steward bears beings of her own kinds alone, and ${options.kind} is none`);
+      mine(options.id);
+      powers.bear(options);
+    },
+    remove: (options: { id: string }) => {
+      mine(options.id);
+      powers.remove(options);
+    },
+    introduce: (options: { from: string; to: string; notes?: Notes }) => {
+      mine(options.from);
+      mine(options.to);
+      if (piloting(options.notes)) fail('the owner’s code makes no pilot');
+      powers.introduce(options);
+    },
+    invite: (options: { id: string; occupant: string; notes?: Notes; expires?: number }) => {
+      mine(options.id);
+      if (piloting(options.notes)) fail('the owner’s code makes no pilot');
+      return powers.invite(options);
+    },
+  });
+};
+
+/**
+ * The steward as the owner's code reaches her: her own members, her needs,
+ * her cells and the asks a pilot reaches. The ground's work, the powers
+ * over the library's beings, and every ask that is `root`'s alone stay
+ * the library's.
+ */
+const sealedSelf = (steward: DockSteward, kinds: ReadonlySet<string>): object => {
+  const target = steward as unknown as Sealed;
+  const fail = (message: string): never => steward.fail(message);
+  // A house defines her members fixed, so the proxy stands over an empty object of her class and reads her.
+  return new Proxy(Object.create(Object.getPrototypeOf(target) as object) as Sealed, {
+    get: (_empty, name) => {
+      if (name === 'powers') return sealedPowers(target.powers as RawPowers, kinds, fail);
+      if (name === 'ground') return fail(`the ground’s work is the ${DOCK}’s own`);
+      if (name === 'invite')
+        return (id: string, options?: { notes?: Notes }) => {
+          if (piloting(options?.notes)) fail('the owner’s code makes no pilot');
+          return (target.invite as (...given: unknown[]) => unknown)(id, options);
+        };
+      if (typeof name === 'string' && Object.hasOwn(DockSteward.prototype, name) && !PILOT_ASKS.has(name)) return () => fail(`${name} is the ${DOCK}’s own, and the owner’s code never calls it`);
+      const value = Reflect.get(target, name, target);
+      return typeof value === 'function' ? (value as (...given: unknown[]) => unknown).bind(target) : value;
+    },
+    set: (_empty, name, value) => Reflect.set(target, name, value, target),
+  });
+};
+
+/**
+ * The owner's steward sealed, or why she is refused: a subclass of the
+ * library's that adds asks, needs, cells, roles and methods and overrides
+ * none. Each method she adds runs on the steward as `sealedSelf` gives
+ * her, so her state is her cells, and a private member of hers is none.
+ */
+const sealedSteward = (Owner: BeingClass, kinds: ReadonlySet<string>): BeingClass => {
+  if (Owner === DockSteward) return DockSteward;
+  if (!(Owner.prototype instanceof DockSteward)) throw new Error(`the owner’s steward is no subclass of the ${DOCK}’s steward`);
+  const base = declared(DockSteward);
+  const own = declared(Owner);
+  for (const part of ['asks', 'needs', 'cells', 'roles'] as const) {
+    const held = (base[part] ?? {}) as Record<string, unknown>;
+    const given = (own[part] ?? {}) as Record<string, unknown>;
+    for (const name of Object.keys(held)) if (given[name] !== held[name]) throw new Error(`the owner’s steward overrides the ${DOCK}’s ${name}, which is the library’s`);
+  }
+  const added = new Set<string>();
+  for (let at = Owner.prototype as object; at !== DockSteward.prototype; at = Object.getPrototypeOf(at) as object) {
+    for (const name of Object.getOwnPropertyNames(at)) {
+      if (name === 'constructor') continue;
+      if (KEPT.has(name)) throw new Error(`the owner’s steward overrides the ${DOCK}’s ${name}, which is the library’s`);
+      added.add(name);
+    }
+  }
+  // Her own class, so her methods run sealed and the owner's class stays as she wrote it.
+  abstract class Sealing extends (Owner as unknown as typeof DockSteward) {}
+  for (const name of added) {
+    const descriptor = Object.getOwnPropertyDescriptor(Owner.prototype, name) ?? findDescriptor(Owner.prototype, name);
+    if (descriptor === undefined) continue;
+    const wrap = (run: (...given: unknown[]) => unknown) =>
+      function (this: DockSteward, ...given: unknown[]) {
+        return run.apply(sealedSelf(this, kinds), given);
+      };
+    Object.defineProperty(Sealing.prototype, name, {
+      ...descriptor,
+      ...(typeof descriptor.value === 'function' ? { value: wrap(descriptor.value as (...given: unknown[]) => unknown) } : {}),
+      ...(descriptor.get === undefined ? {} : { get: wrap(descriptor.get) }),
+      ...(descriptor.set === undefined ? {} : { set: wrap(descriptor.set) }),
+    });
+  }
+  return Sealing;
+};
+
+const findDescriptor = (from: object, name: string): PropertyDescriptor | undefined => {
+  for (let at: object | null = from; at !== null && at !== DockSteward.prototype; at = Object.getPrototypeOf(at) as object | null) {
+    const found = Object.getOwnPropertyDescriptor(at, name);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+};
+
+/**
+ * The dock's classes: the library's, the same on every ground, joined to
+ * the owner's where she names them. Her steward is sealed. Her beings take
+ * kinds of their own, never the library's. It throws why she is refused.
+ */
+export const dockClasses = (owner: readonly BeingClass[] = []): ClassList => {
+  const hers = owner.filter((Class) => !LIBRARY.includes(Class));
+  const stewards = hers.filter((Class) => declared(Class).kind === KINDS.steward);
+  if (stewards.length > 1) throw new Error(`the owner names ${stewards.length} stewards of the ${DOCK}, and it takes one`);
+  const beings = hers.filter((Class) => declared(Class).kind !== KINDS.steward);
+  for (const Class of beings) {
+    const { kind } = declared(Class);
+    if (LIBRARY_KINDS.has(kind)) throw new Error(`the kind ${kind} is the ${DOCK}’s own, and no being of the owner’s takes it`);
+  }
+  const kinds = new Set(beings.map((Class) => declared(Class).kind));
+  const steward = stewards.length === 0 ? DockSteward : sealedSteward(stewards[0], kinds);
+  return new ClassList({ steward, beings: [...LIBRARY.slice(1), ...beings] });
+};
+
+/** The kinds of the owner's beings among classes, which the dock is offered bodies for. */
+export const ownerKinds = (owner: readonly BeingClass[]): Set<string> =>
+  new Set(owner.filter((Class) => !LIBRARY.includes(Class)).map((Class) => declared(Class).kind));
+
+/** An owner's steward of the dock: the library's, and the asks, needs, cells and roles she adds, none of the library's taken again. */
+export const dockSteward = <const A extends Record<string, Entry> = Record<never, never>, const N extends Record<string, Need> = Record<never, never>, C extends Record<string, Json> = Record<never, never>>(declaration: {
+  readonly description?: string;
+  readonly cells?: C;
+  readonly needs?: N;
+  readonly roles?: Declaration['roles'];
+  readonly asks?: A;
+}): (abstract new () => DockSteward & Typed<A> & { readonly [K in keyof N]: NeedFace<N[K]> } & { cells: C }) & Pick<typeof DockSteward, typeof DECLARATION> => {
+  const base = declared(DockSteward);
+  for (const part of ['asks', 'needs', 'cells', 'roles'] as const) {
+    const taken = Object.keys(declaration[part] ?? {}).find((name) => Object.hasOwn(base[part] ?? {}, name));
+    if (taken !== undefined) throw new TypeError(`the owner’s steward overrides the ${DOCK}’s ${taken}, which is the library’s`);
+  }
+  const merged: Declaration = {
+    ...base,
+    ...(declaration.description === undefined ? {} : { description: declaration.description }),
+    cells: { ...declaration.cells, ...base.cells },
+    needs: { ...declaration.needs, ...base.needs },
+    roles: { ...declaration.roles, ...base.roles },
+    asks: { ...declaration.asks, ...base.asks },
+  };
+  abstract class Owned extends DockSteward {}
+  Object.defineProperty(Owned, DECLARATION, { value: merged });
+  return Owned as never;
+};

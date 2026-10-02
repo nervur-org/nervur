@@ -3,11 +3,11 @@
 // noting a standing she was never given, taking an occupant id the house
 // reserves, a public being inviting, a steward reading a being's cells, a
 // class with an ask it never wrote, and two classes claiming one kind.
-import { Being, need, s, type Args } from 'nervur/being';
+import { Being, need, s, type Args, type Reply } from 'nervur/being';
 
 /** A faculty she looks through, awaited, and pokes, as an effect. */
 export const Probe = need('probe', {
-  look: { hints: { idempotent: true }, args: s.object({ n: s.number() }), result: s.string() },
+  look: { idempotent: true, args: s.object({ n: s.number() }), result: s.string() },
   poke: {},
 });
 
@@ -22,22 +22,43 @@ export class Looker extends Being.of({
   cells: { heard: 0 },
   roles: { keeper: (asker) => asker.steward.keeper === true },
   asks: {
-    look: { hints: { idempotent: true }, args: s.object({ n: s.number() }), result: s.string() },
+    look: { idempotent: true, args: s.object({ n: s.number() }), result: s.string() },
+    glance: { idempotent: true, args: s.object({ n: s.number() }), result: s.string() },
     poke: {},
+    nudge: {},
+    nudged: { for: 'probe', args: s.reply(Probe.poke) },
     heard: { for: 'keeper', args: s.reply(Probe.poke) },
-    count: { for: 'keeper', hints: { readOnly: true }, result: s.integer() },
+    count: { for: 'keeper', readOnly: true, result: s.integer() },
+    stare: { args: s.object({ n: s.number() }) },
   },
 }) {
   async look({ n }: Args<Looker, 'look'>) {
-    try {
-      return await this.probe.look({ n });
-    } catch (error) {
-      return `failed: ${(error as Error).message}`;
-    }
+    const { result, error } = await this.probe.look({ n });
+    return error ? `failed: ${error.message}` : result;
+  }
+
+  // An awaited call she never awaits: whatever it answers, it is data, and nothing is thrown.
+  glance({ n }: Args<Looker, 'glance'>) {
+    void this.probe.look({ n });
+    return 'went on';
   }
 
   poke() {
     this.probe.poke({}, { reply: 'heard' });
+  }
+
+  // A poke whose answer the probe alone may bring, since her reply names it.
+  nudge() {
+    this.probe.poke({}, { reply: 'nudged' });
+  }
+
+  // An awaited look given a reply, which fails her ask: her need declared it awaited.
+  stare({ n }: Args<Looker, 'stare'>) {
+    void (this.probe.look as (args: { n: number }, options: { reply: string }) => unknown)({ n }, { reply: 'heard' });
+  }
+
+  nudged() {
+    this.cells.heard += 1;
   }
 
   heard() {
@@ -60,20 +81,33 @@ const met = (attempt: () => unknown): string => {
 };
 
 /** Every member a being might reach for, the foundation's names among them. */
-const REACHES = ['id', 'position', 'asker', 'cells', 'house', 'standings', 'occupants', 'steward', 'powers', 'held', 'stranger', 'handle', 'invite', 'fail', 'keys', 'memory', 'classes', 'carry', 'clock', 'crypto', 'tools'];
+const REACHES = ['id', 'asker', 'cells', 'house', 'standings', 'occupants', 'steward', 'powers', 'held', 'stranger', 'handle', 'invite', 'fail', 'keys', 'memory', 'classes', 'carry', 'clock', 'crypto', 'tools'];
 
 export class Prober extends Being.of({
   kind: 'org.example.prober',
   cells: { kept: null as unknown as string | null },
   asks: {
-    reach: { hints: { readOnly: true }, result: s.object({ members: s.array(s.string()), house: s.array(s.string()), standings: s.array(s.string()) }) },
+    reach: { readOnly: true, result: s.object({ members: s.array(s.string()), house: s.array(s.string()), standings: s.array(s.string()) }) },
     keep: { args: s.object({ ask: s.enum(['ping']) }) },
     ping: { for: 'handle' },
-    note: { hints: { readOnly: true }, args: s.object({ standing: s.string() }), result: s.string() },
-    occupy: { hints: { readOnly: true }, args: s.object({ id: s.string() }), result: s.string() },
+    note: { readOnly: true, args: s.object({ standing: s.string() }), result: s.string() },
+    occupy: { readOnly: true, args: s.object({ id: s.string() }), result: s.string() },
     twice: { result: s.string() },
+    hoard: { args: s.object({ size: s.integer() }) },
+    hush: {},
   },
 }) {
+  // She writes, then answers nothing: her silence lands none of it.
+  hush() {
+    this.cells.kept = 'heard';
+    this.silence();
+  }
+
+  // Her cells grown to the size asked, which the house bounds.
+  hoard({ size }: Args<Prober, 'hoard'>) {
+    this.cells.kept = 'x'.repeat(size);
+  }
+
   reach() {
     const self = this as unknown as Record<string, unknown>;
     return {
@@ -109,7 +143,7 @@ export class Prober extends Being.of({
 /** A public being who tries to invite. */
 export class Lectern extends Being.of({
   kind: 'org.example.lectern',
-  asks: { open: { hints: { idempotent: true }, result: s.string() } },
+  asks: { open: { idempotent: true, result: s.string() } },
 }) {
   open() {
     return met(() => this.invite('reader'));
@@ -130,7 +164,9 @@ export class Peeker extends Being.of({
   }
 
   async peek({ id }: Args<Peeker, 'peek'>) {
-    return Object.keys((await this.powers!.ask({ id, cells: true } as never)) as object).sort();
+    const shown = (await this.powers!.ask({ id, cells: true } as never)) as Reply;
+    if (shown.error) this.fail(shown.error.message);
+    return Object.keys(shown.result as object).sort();
   }
 }
 
@@ -140,10 +176,7 @@ export class Broken extends Being.of({
   asks: { ghost: {} },
 }) {}
 
-/** Two classes that claim one kind. */
-export class TwinOne extends Being.of({ kind: 'org.example.twin', asks: { hi: {} } }) {
-  hi() {}
-}
-export class TwinTwo extends Being.of({ kind: 'org.example.twin', asks: { hi: {} } }) {
-  hi() {}
+// Written as hints, the two flags that change what the house does.
+export class FlagsAsHints extends Being.of({ kind: 'org.example.hint', asks: { go: { hints: { readOnly: true, idempotent: true } as never } } }) {
+  go() {}
 }

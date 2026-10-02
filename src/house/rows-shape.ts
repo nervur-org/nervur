@@ -28,6 +28,15 @@ export interface OwnerRow {
   faculty?: string;
 }
 
+/**
+ * An heir's place once the door stops holding it spent: the keys kept at
+ * removal, answered `removed` until `until`, and silence after.
+ */
+export interface KeptRow {
+  kept: QuoOccupant;
+  until: number;
+}
+
 export interface OccupantRow {
   notes: Notes;
   steward: Notes;
@@ -59,7 +68,7 @@ export interface StandingRow {
 }
 
 /** Where an effect goes. */
-export type Target = { need: string } | { standing: string } | { being: string };
+export type Target = { need: string } | { standing: string } | { being: string } | { stranger: { ward: string; at: string[] } };
 
 export interface OutboxEntry {
   id: string;
@@ -94,6 +103,8 @@ export interface BeingRow {
   alarms: Record<string, { at: number; ask: string; args: Json }>;
   dead: DeadLetter[];
   calls: Record<string, { answer: Answer; at: number }>;
+  /** The ask she runs now, by its call id, alarm, reply or `born`: refused where it is still marked when it comes again. */
+  holding?: string;
 }
 
 export const emptyRow = (kind: string, cells: Record<string, Json>): BeingRow => ({

@@ -8,11 +8,11 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { groundOne, hand } from '../fixtures/node/grounds.ts';
-import { ground, onLoopback, stop, up } from '../fixtures/node/spawned.ts';
+import { groundOne, hand } from '../../test/fixtures/node/grounds.ts';
+import { ground, onLoopback, stop, up } from '../../test/fixtures/node/spawned.ts';
 
 const pkg = new URL('../../', import.meta.url).pathname;
-const fixtures = new URL('../fixtures/', import.meta.url).pathname;
+const fixtures = new URL('../../test/fixtures/', import.meta.url).pathname;
 
 const npm = (args: readonly string[], cwd: string): string => {
   const run = spawnSync('npm', args, { cwd, encoding: 'utf8' });
@@ -20,7 +20,7 @@ const npm = (args: readonly string[], cwd: string): string => {
   return run.stdout;
 };
 
-test('The packed tarball ships dist alone, and runs a written ground and the guides’ folders from an empty folder', { timeout: 60_000 }, async (t) => {
+test('The packed tarball ships dist, the runner and the base config, and runs a written ground and the guides’ folders from an empty folder', { timeout: 60_000 }, async (t) => {
   const folder = mkdtempSync(join(tmpdir(), 'nervur-packed-'));
   const stranger = join(folder, 'stranger');
   mkdirSync(join(stranger, 'node'), { recursive: true });
@@ -38,7 +38,7 @@ test('The packed tarball ships dist alone, and runs a written ground and the gui
   const shipped = packed.files.map((file) => file.path);
   assert.deepEqual(
     shipped.filter((path) => !path.startsWith('dist/')),
-    ['AUTHORING.md', 'COMMAND.md', 'FACES.md', 'FACULTIES.md', 'GROUNDS.md', 'KIT-SPEC.md', 'LICENSE', 'NOTICE', 'README.md', 'WORLD.md', 'package.json'],
+    ['AUTHORING.md', 'COMMAND.md', 'FACES.md', 'FACULTIES.md', 'GROUNDS.md', 'KIT-SPEC.md', 'LICENSE', 'NOTICE', 'README.md', 'WORLD.md', 'package.json', 'source.mjs', 'test.mjs', 'tsconfig.base.json'],
   );
   for (const entry of ['index', 'being/index', 'node/index', 'bench/index', 'browser/index', 'app/index']) {
     assert.ok(shipped.includes(`dist/${entry}.js`) && shipped.includes(`dist/${entry}.d.ts`), entry);
@@ -49,7 +49,12 @@ test('The packed tarball ships dist alone, and runs a written ground and the gui
   const bin = spawnSync(join(stranger, 'node_modules/.bin/nervur'), ['ask', 'main', 'whoami'], { encoding: 'utf8', env: { ...process.env, NERVUR_HAND: join(folder, 'no-hand') } });
   assert.equal(bin.status, 2, 'the command is installed, and says so where no hand answers');
   assert.match(bin.stderr, /does not answer/);
+  // A stranger's suite, through the installed runner, reads what shipped.
+  copyFileSync(join(fixtures, 'packed/stranger.ts'), join(stranger, 'stranger.test.ts'));
+  const suite = spawnSync(join(stranger, 'node_modules/.bin/nervur-test'), ['stranger.test.ts'], { cwd: stranger, encoding: 'utf8' });
+  assert.equal(suite.status, 0, `${suite.stdout}${suite.stderr}`);
   copyFileSync(join(fixtures, 'node/ground.ts'), join(stranger, 'node/ground.ts'));
+  copyFileSync(join(fixtures, 'serving.ts'), join(stranger, 'serving.ts'));
   copyFileSync(join(fixtures, 'world/steward.ts'), join(stranger, 'world/steward.ts'));
   const port = String(40_000 + Math.floor(Math.random() * 20_000));
   far = await ground('node/ground.ts', { cwd: stranger, env: { NERVUR_KEY: 'c'.repeat(64), GROUND_PORT: port, GROUND_MEMORY: join(folder, 'far.memory'), GROUND_OFFER: '1' } });

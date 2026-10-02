@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 const src = fileURLToPath(new URL('../../src/', import.meta.url));
 
 const BEING = 'being';
-const CORE = new Set(['index.ts', 'foundation.ts', 'house', 'quo', 'bodies', 'ground']);
+const CORE = new Set(['index.ts', 'foundation.ts', 'faculty.ts', 'house', 'quo', 'bodies', 'ground']);
 const TERRAINS = new Set(['node', 'edge', 'browser', 'app', 'bench', 'serve']);
 // What a terrain may stand on beside `nervur/being`, `nervur` and itself.
 const BESIDE: Readonly<Record<string, readonly string[]>> = { app: ['browser'] };

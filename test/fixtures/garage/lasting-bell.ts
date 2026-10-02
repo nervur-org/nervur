@@ -8,7 +8,7 @@ import { need, s } from 'nervur/being';
 import { serve } from 'nervur/serve';
 
 const Doorbell = need('doorbell', {
-  watch: { args: s.object({ inbox: s.handle() }), hints: { idempotent: true } },
+  watch: { args: s.object({ inbox: s.handle() }), idempotent: true },
   press: {},
 });
 

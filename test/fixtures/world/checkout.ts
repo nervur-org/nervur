@@ -11,10 +11,10 @@ export class Checkout extends Being.of({
   state: (me) => me.cells.state,
   asks: {
     checkout: { in: 'open', to: 'paying', args: s.object({ amount: s.number() }) },
-    charged: { in: 'paying', args: s.reply(Payments.charge), to: ['paying', 'open'] },
+    charged: { in: 'paying', for: 'pay', args: s.reply(Payments.charge), to: ['paying', 'open'] },
     settled: { in: 'paying', for: 'handle', to: 'paid' },
     cancel: { in: 'paying', to: 'open' },
-    status: { hints: { readOnly: true }, result: s.object({ state: s.string(), refused: s.string() }) },
+    status: { readOnly: true, result: s.object({ state: s.string(), refused: s.string() }) },
   },
 }) {
   checkout({ amount }: Args<Checkout, 'checkout'>) {

@@ -9,7 +9,7 @@ type Answer = Awaited<ReturnType<FacultyContext['call']>>;
 
 /** What the steward arms the face with. */
 export const FrontBlueprint = need('front', {
-  arm: { args: s.object({ signup: s.handle() }), hints: { idempotent: true } },
+  arm: { args: s.object({ signup: s.handle() }), idempotent: true },
 });
 
 type Calls = Pick<FacultyContext, 'call' | 'describe'>;

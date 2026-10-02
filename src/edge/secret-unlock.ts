@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // An edge's unlock: the Worker's one secret is the ground's key. It draws
-// nothing, so an edge whose secret is missing opens no drawer. Storage
+// nothing, so an edge whose secret is missing opens no dock. Storage
 // alone opens nothing, and the secret alone holds nothing.
 import type { Unlock } from '../ground/ground.ts';
 

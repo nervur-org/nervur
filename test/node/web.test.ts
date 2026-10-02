@@ -5,9 +5,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { ClassList, Ground, WebCarry } from 'nervur';
+import { Carry, Classes, ClassList, Ground, Memory, Unlock, WebCarry } from 'nervur';
 import { FileMemory, FileUnlock } from 'nervur/node';
 import { loopbackGround } from '../fixtures/node/spawned.ts';
+import { serving } from '../fixtures/serving.ts';
 import { Steward } from '../fixtures/world/steward.ts';
 
 const folder = new URL('../fixtures/node/', import.meta.url).pathname;
@@ -24,13 +25,13 @@ test('A holder that dials only the web reaches a NodeGround whose invitation nam
   const near = await Ground.open({
     registry: {
       faculties: {
-        'file-unlock': { up: () => ({ serves: 'unlock', object: new FileUnlock(join(state, 'near', 'key')) }) },
-        drawer: { up: () => ({ serves: 'memory', object: new FileMemory(join(state, 'near', 'drawer')) }) },
-        web: { up: () => ({ serves: 'carry', schemes: ['https', 'http', 'wss', 'ws'], object: web, down: () => web.close() }) },
-        steward: { up: () => ({ serves: 'classes', house: () => new ClassList({ steward: Steward }) }) },
+        'file-unlock': serving(Unlock, () => new FileUnlock(join(state, 'near', 'key'))),
+        ledger: serving(Memory, () => new FileMemory(join(state, 'near', 'ledger'))),
+        web: serving(Carry, () => web, { schemes: ['https', 'http', 'wss', 'ws'], down: () => web.close() }),
+        steward: serving(Classes, undefined, { house: () => new ClassList({ steward: Steward }) }),
       },
     },
-    primordial: { unlock: { make: 'file-unlock' }, memory: { make: 'drawer' }, crypto: { make: 'noble' }, tools: { make: 'strict' }, clock: { make: 'clock' } },
+    primordial: { unlock: { make: 'file-unlock' }, memory: { make: 'ledger' }, crypto: { make: 'noble' }, tools: { make: 'strict' }, clock: { make: 'clock' } },
     entries: { web: { make: 'web' }, steward: { make: 'steward' } },
   });
   t.after(() => near.close());

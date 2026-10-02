@@ -20,7 +20,8 @@ marked `readOnly`, and the empty ask, run beside them. Asks to two beings
 run side by side.
 
 **Question 2.** The ground that runs the house holds its seed, sealed in
-the ground's drawer under the one key the ground holds outside itself. A
+the cells of the ground's own house, its dock, under the one key the
+ground holds outside itself. A
 keys body gives signatures and agreements from the seed, and never the
 seed itself. `House.open`
 hands the ground a hand, `ask({ id, method, args })`, which asks the being
@@ -63,7 +64,8 @@ ground. None of these names crosses a door.
 **Question 6.** A ward's seed is sixty-four lowercase hex digits, and
 anything else opens no house. `SeedKeys` takes it as a string. A ground
 draws a fresh seed when a house is first added, and keeps it sealed in
-its drawer. The drawer's key rests outside the ground, in a file only
+its dock's cells. The key that seals them rests outside the ground, in a
+file only
 its owner may read, the macOS keychain, a Worker's secret, or the
 platform's keystore. The house never holds the seed, and asks its keys
 body for operations alone. The lock is
@@ -98,10 +100,13 @@ still unspent past it, is one the door never held. The door lets it go
 at the next mint or binding knock. A spent heir never expires, nor one
 minted without a time.
 
-**Question 10.** The door keeps no keys at removal, for any time.
-Dismissal deletes the heir from the door's index. So an ask signed by any
-of the relation's keys hears silence at once, and the door never answers
-`removed` in this version.
+**Question 10.** Seven days. When the door stops holding a spent heir, it
+keeps that heir's keys kept at removal in the heir's place, with the time
+they go. An ask signed by one hears `removed` until then, and silence
+after. The first box that finds them past their time lets them go. Seven
+days is the deadline of an effect a standing sends, so a holder still
+sending one hears `removed` while it tries. An heir the door stops
+holding while it is fresh leaves at once, and its holder hears silence.
 
 **Question 11.** None. A door honours no number below the highest it
 honoured on a relation, and a number at or below it hears `repeated`. A
@@ -137,7 +142,7 @@ entry shown to that asker names hears `{"error":{"message":"no such ask"}}`.
 
 ```text
 describe = { lang: "org.nervur.asks/1", kind?, description?, view?, state, asks }
-entry    = { method, in, to, description?, args, result?, hints, wait }
+entry    = { method, in, to, description?, args, result?, readOnly, idempotent, hints, wait }
 answer   = { result } | { error: { message } }
 ```
 
@@ -204,13 +209,20 @@ The next ask signs with the same key under the same edge key, with a new
 number and a new announced key.
 
 **Question 23.** The Quo layer reads a reply as one of four: an object
-with its `seen`, silence, one of Quo's three words, or nothing. The house
-treats silence, a word and nothing alike, as transient, and names no
-cause for any of them. An address that never answered, a spent heir and
-a reply that came late read the same. An awaited call fails with the
-method's name followed by `answered nothing`. An effect is sent again.
-Past its deadline, its reply ask reads `the call gave up at its
-deadline`. A being never reads silence, a word or nothing as such.
+with its `seen`, silence, one of Quo's three words, or nothing.
+`removed` is final. The house drops the standing in the write that lands
+the reply. An awaited call fails with `the standing was removed`, and so
+does every effect queued on that standing, through its reply ask. A
+later call on the standing fails at once, naming a standing she does not
+hold.
+
+The house treats silence, `unannounced`, `repeated` and nothing alike,
+as transient, and names no cause for any of them. An address that never
+answered, an heir let go before it was spent and a reply that came late
+read the same. An awaited call fails with the method's name followed by
+`answered nothing`. An effect is sent again. Past its deadline, its reply
+ask reads `the call gave up at its deadline`. A being never reads a word,
+silence or nothing as such, only the error the house writes.
 
 ## What a kit carries
 

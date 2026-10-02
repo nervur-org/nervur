@@ -2,12 +2,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import { Counter } from '../fixtures/world/counter.ts';
+import { house, world } from '../fixtures/house.ts';
 import { Steward } from '../fixtures/world/steward.ts';
 
 type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
 
-const modules = { house: { steward: Steward, beings: [Counter] } };
+const modules = { house: house(Steward, [world('steward'), world('counter')]) };
 
 const pair = async () => {
   const network = new FakeNetwork();
@@ -63,4 +63,63 @@ test('An effect crosses once, even where its reply was lost', async () => {
   assert.equal(await a.result('pings'), 1, 'the far door answered and the reply was lost');
   await network.elapse(1000);
   assert.equal(await a.result('pings'), 1, 'the retry is a new box with the same call id, answered from the stored answer');
+});
+
+// ---- a relation the far side let go ----
+
+const WEEK = 7 * 86_400_000;
+
+// A counter in house a, and in house b a holder who took an invitation to it and knocked once.
+const holding = async () => {
+  const network = new FakeNetwork();
+  const open = async (host: string) => {
+    const ground = await BenchGround.open({ network, host, names: [`${host}.example`], modules: { house: house(Steward, [world('steward'), world('counter'), world('holder')]) } });
+    await ground.add('house');
+    const asked = (id: string, method: string, args: Json = {}) => ground.ask({ house: 'house', id, method, args });
+    const result = async (id: string, method: string, args: Json = {}) => {
+      const answer = await asked(id, method, args);
+      assert.ok('result' in answer, JSON.stringify(answer));
+      return answer.result;
+    };
+    const failed = async (id: string, method: string, args: Json = {}) => {
+      const answer = await asked(id, method, args);
+      assert.ok('error' in answer, JSON.stringify(answer));
+      return answer.error.message;
+    };
+    return { result, failed };
+  };
+  const a = await open('a');
+  const b = await open('b');
+  await a.result('steward', 'bear', { kind: 'org.example.counter', id: 'counter' });
+  await b.result('steward', 'bear', { kind: 'org.example.holder', id: 'holder' });
+  const { handle } = (await a.result('steward', 'offerFor', { being: 'counter', occupant: 'far' })) as { handle: string };
+  await b.result('holder', 'take', { invitation: handle });
+  assert.equal(await b.result('holder', 'total'), 0, 'her knock bound the far door');
+  const [standing] = (await b.result('holder', 'holding')) as string[];
+  return { network, a, b, standing };
+};
+
+test('It refuses a standing kept after the being it reaches let her go: her far door answered removed, an awaited call fails final, the standing goes, and a later call fails at once', async () => {
+  const { a, b, standing } = await holding();
+  await a.result('steward', 'remove', { id: 'counter' });
+  assert.equal(await b.failed('holder', 'total'), 'the standing was removed');
+  assert.deepEqual(await b.result('holder', 'holding'), [], 'the house dropped it in the write that landed the answer');
+  assert.equal(await b.failed('holder', 'total'), `she holds no standing ${standing}`, 'a later call names the standing gone, and nothing crosses');
+});
+
+test('An answer is final, and a failure to answer is not: removed fails an effect final, with every entry queued behind it', async () => {
+  const { network, a, b } = await holding();
+  await a.result('steward', 'remove', { id: 'counter' });
+  await b.result('holder', 'bump', { times: 2 });
+  await network.settle();
+  assert.deepEqual(await b.result('holder', 'replies'), ['the standing was removed', 'the standing was removed'], 'the first answered removed, and the second failed with it');
+  assert.deepEqual(await b.result('holder', 'holding'), []);
+});
+
+test('Keys kept at removal answer removed for a week, and silence after, which stays transient', async () => {
+  const { network, a, b, standing } = await holding();
+  await a.result('steward', 'remove', { id: 'counter' });
+  await network.elapse(WEEK, { step: WEEK });
+  assert.equal(await b.failed('holder', 'total'), 'total answered nothing', 'past the week the door keeps nothing, and the holder hears silence');
+  assert.deepEqual(await b.result('holder', 'holding'), [standing], 'silence drops nothing');
 });

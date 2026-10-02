@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import type { Crypto } from 'nervur';
-import { quo } from '../fixtures/quo.ts';
+import { vectors as held } from '../fixtures/quo.ts';
 
 type Vector = Record<string, string | boolean | undefined>;
-const vectors: Vector[] = JSON.parse(readFileSync(new URL('vectors/arithmetic.json', quo), 'utf8')).vectors;
+const vectors: Vector[] = JSON.parse(readFileSync(new URL('arithmetic.json', held), 'utf8')).vectors;
 const bytes = (hex: unknown) => Uint8Array.from((hex as string).match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
 const hex = (value: Uint8Array | null) => (value === null ? null : Buffer.from(value).toString('hex'));
 const has = (vector: Vector, ...keys: string[]) => keys.every((key) => key in vector);

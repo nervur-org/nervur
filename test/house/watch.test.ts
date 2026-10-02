@@ -4,9 +4,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import * as watch from '../fixtures/watch/index.ts';
+import { house, world } from '../fixtures/house.ts';
+import { Level, meter } from '../fixtures/world/dial.ts';
+import { Steward } from '../fixtures/world/steward.ts';
 
-const modules = { watch };
+const modules = { watch: new URL('../fixtures/watch/index.ts', import.meta.url) };
 
 const station = async (network = new FakeNetwork()) => {
   const ground = await BenchGround.open({ network, host: 'acme', names: ['acme.com'], modules });
@@ -108,6 +110,21 @@ test('A being watches only a readOnly ask', async (t) => {
   await phone.ask({ house: 'pocket', id: 'reader', method: 'take', args: { invitation: handle } });
   const pushed = await phone.ask({ house: 'pocket', id: 'reader', method: 'push', args: { text: 'no' } });
   assert.deepEqual(pushed, { error: { message: 'post is not readOnly, so it is never watched' } });
+});
+
+test('A being watches a faculty’s readOnly method as she watches a standing’s ask', async (t) => {
+  const dial = meter();
+  const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'home', modules: { house: house(Steward, [world('steward'), world('dial')]) }, faculties: { level: { blueprint: Level, object: dial.object } } });
+  t.after(() => ground.down());
+  await ground.add('house', 'house', { faculties: ['level'] });
+  await ground.ask({ house: 'house', method: 'bear', args: { kind: 'org.example.dial', id: 'd' } });
+  const follow = (held: number) => ground.ask({ house: 'house', id: 'd', method: 'follow', args: { held } });
+  assert.deepEqual(await follow(3), { result: 0 }, 'a level that already differs answers at once');
+  const held = watched(follow(0));
+  await Promise.resolve();
+  assert.equal(held.answered, false, 'the faculty holds while its answer stands');
+  dial.turn(2);
+  assert.deepEqual(await held.value, { result: 2 });
 });
 
 test('Her view travels in her describe, to every asker', async (t) => {

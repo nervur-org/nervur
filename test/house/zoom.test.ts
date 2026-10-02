@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
 import { Front, FrontBlueprint } from '../fixtures/world/front.ts';
-import * as zoom from '../fixtures/zoom/zoom.ts';
+
+const zoom = new URL('../fixtures/zoom/zoom.ts', import.meta.url);
 
 const open = async (t: { after(done: () => unknown): void }) => {
   const front = new Front();

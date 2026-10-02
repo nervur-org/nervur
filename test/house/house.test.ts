@@ -3,18 +3,18 @@
 // faculties' answers land once, and what landed outlives a restart.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Body, Registry } from 'nervur';
+import { Memory, type Registry } from 'nervur';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import { Checkout } from '../fixtures/world/checkout.ts';
-import { Counter } from '../fixtures/world/counter.ts';
+import { house, world } from '../fixtures/house.ts';
+import { serving } from '../fixtures/serving.ts';
 import { FakePayments, PaymentsOffer } from '../fixtures/world/payments.ts';
-import { Reader } from '../fixtures/world/reader.ts';
 import { Steward } from '../fixtures/world/steward.ts';
-import { hanging, Slow, Waiter } from '../fixtures/world/waiter.ts';
+import { hanging, Slow } from '../fixtures/world/waiter.ts';
 
 type Json = NonNullable<Parameters<BenchGround['ask']>[0]['args']>;
+type Body = NonNullable<Parameters<typeof BenchGround.open>[0]['faculties']>[string];
 
-const modules = { house: { steward: Steward, beings: [Counter, Reader, Checkout, Waiter] } };
+const modules = { house: house(Steward, [world('steward'), world('counter'), world('reader'), world('checkout'), world('waiter')]) };
 
 const open = async ({ faculties = {} }: { faculties?: Record<string, Body> } = {}) => {
   const network = new FakeNetwork();
@@ -97,7 +97,7 @@ test('An ask lands whole or not at all', async () => {
 test('It refuses a readOnly ask that writes', async () => {
   const { ask, bear, being } = await open();
   await bear('org.example.counter', 'c', { start: 1 });
-  assert.deepEqual(await ask({ method: 'forward', args: { id: 'c', method: 'sneaky' } }), { error: { message: 'the ask failed' } });
+  assert.deepEqual(await ask({ method: 'forward', args: { id: 'c', method: 'sneaky' } }), { error: { message: 'a readOnly ask wrote' } });
   assert.equal(await being('c', 'peek'), 1);
 });
 
@@ -107,6 +107,35 @@ test('A standing is matched to a need, and an awaited call answers during her as
   await bear('org.example.reader', 'r');
   await result('introduce', { from: 'r', to: 'c', trusted: true });
   assert.equal(await being('r', 'look', { at: 'c' }), 3);
+});
+
+test('It refuses a standing kept after the being it reaches let her go: removed from this house, her call fails final and the standing goes', async () => {
+  const { ask, bear, being, result } = await open();
+  await bear('org.example.counter', 'c', { start: 3 });
+  await bear('org.example.reader', 'r');
+  await result('introduce', { from: 'r', to: 'c', trusted: true });
+  assert.equal(await being('r', 'look', { at: 'c' }), 3);
+  await result('remove', { id: 'c' });
+  assert.deepEqual(await ask({ method: 'forward', args: { id: 'r', method: 'look', args: { at: 'c' } } }), { error: { message: 'the standing was removed' } });
+  assert.deepEqual(await being('r', 'holding'), [], 'the house dropped it, as a far removed drops it');
+  assert.deepEqual(await ask({ method: 'forward', args: { id: 'r', method: 'look', args: { at: 'c' } } }), { error: { message: 'she holds no standing c' } }, 'a later call names the standing gone');
+});
+
+test('A standing ends where its far side lets her go: an occupant dismissed in this house ends the standing on it, and a new being of that id is no one she holds', async () => {
+  const { ask, bear, being, result, settle } = await open();
+  await bear('org.example.counter', 'c', { start: 3 });
+  await bear('org.example.reader', 'r');
+  await result('introduce', { from: 'r', to: 'c', trusted: true });
+  // Forwarded by the steward, the dismissal is an effect, and lands once the house settles.
+  await being('c', 'dismiss', { id: 'being:r' });
+  await settle();
+  assert.deepEqual(await ask({ method: 'forward', args: { id: 'r', method: 'look', args: { at: 'c' } } }), { error: { message: 'the standing was removed' } });
+  assert.deepEqual(await being('r', 'holding'), []);
+
+  await result('introduce', { from: 'r', to: 'c', trusted: true });
+  await result('remove', { id: 'c' });
+  await bear('org.example.counter', 'c', { start: 9 });
+  assert.deepEqual(await ask({ method: 'forward', args: { id: 'r', method: 'look', args: { at: 'c' } } }), { error: { message: 'the standing was removed' } }, 'the new c never held her occupant');
 });
 
 test('A standing whose describe does not cover the need fails the call, and she may catch it', async () => {
@@ -232,7 +261,7 @@ test('It refuses a memory opened with keys that derive another bound: the bound 
   const first = await BenchGround.open({ network, host: 'first', modules });
   assert.ok((await first.add('house', 'house', { memory: { faculty: 'fake' } })).ward !== undefined);
   // A second ground, with its own seeds, handed the memory of the first's house.
-  const registry: Registry = { faculties: { shared: { up: () => ({ serves: 'memory', house: () => first.machine.memoryOf('house') }) } } };
+  const registry: Registry = { faculties: { shared: serving(Memory, undefined, { house: () => first.machine.memoryOf('house') }) } };
   const second = await BenchGround.open({ network, host: 'second', modules, registry });
   await second.hand({ method: 'facultiesAdd', args: { name: 'shared', make: 'shared' } });
   assert.match((await second.add('house', { memory: { faculty: 'shared' }, classes: { faculty: 'module', name: 'house' } })).why ?? '', /bound to other keys/);

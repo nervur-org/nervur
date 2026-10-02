@@ -7,7 +7,7 @@ a door is one function: bytes in, bytes or nothing out.
 Install it with `npm i nervur`. It runs on Node 22.18 or later. The API
 moves until 1.0.0.
 [Reading a world](WORLD.md) reads a real situation into the four pieces.
-[Writing for nervur](AUTHORING.md) teaches beings and grounds.
+[Writing a species](AUTHORING.md) teaches beings and how to prove them.
 [Writing a faculty](FACULTIES.md) teaches faculties, in any language.
 [Faces](FACES.md) teaches the sites, APIs and tools people reach a being
 through. [Grounds](GROUNDS.md) says what each terrain's ground does, and
@@ -57,8 +57,10 @@ export class Greeter extends Being.of({
 ## A test
 
 The bench opens two houses in one process, so every ask crosses a door
-as it would in production. `Bench.check` runs every example twice and
-describes every state to every role.
+as it would in production. Each house runs in a thread of its own, and
+loads her classes there from the module file the test names.
+`Bench.check` runs every example twice and describes every state to
+every role.
 
 ```ts
 // greeter.test.ts
@@ -67,12 +69,15 @@ import { test } from 'node:test';
 import { Bench } from 'nervur/bench';
 import { Greeter } from './greeter.ts';
 
+// Her module, which the bench loads in the house's own runner.
+const module = new URL('./greeter.ts', import.meta.url);
+
 test('Greeter keeps her examples and her table', async () => {
-  await Bench.check(Greeter);
+  await Bench.check(Greeter, { module });
 });
 
 test('Greeter counts whoever she greets', async () => {
-  const bench = await Bench.open({ classes: [Greeter] });
+  const bench = await Bench.open({ module });
   const greeter = await bench.place(Greeter);
   assert.deepEqual(await greeter.ask('hello', { name: 'Ada' }), { result: 'Hello, Ada. You are number 1.' });
   assert.deepEqual(await greeter.ask('hello', { name: 'Bo' }), { result: 'Hello, Bo. You are number 2.' });
@@ -146,14 +151,14 @@ security policy. The page and the house's module must share one copy of
 
 An app on a phone opens the same ground with `AppGround` from
 `nervur/app`, on the Keychain or the Keystore and a store the system
-keeps. [Writing for nervur](AUTHORING.md) shows both.
+keeps. [Grounds](GROUNDS.md) shows both.
 
 ## Entries
 
 | Entry | For |
 | --- | --- |
-| `nervur/being` | writing a being: `Being`, `s`, `need`, `tableOf`, `Args`, `Result`, `Json`, `Table` |
-| `nervur` | any engine: `Ground`, `House`, `DockPilot`, `vouchesOf` and the bodies they take |
+| `nervur/being` | writing a being: `Being`, `s`, `need`, `tableOf`, `DockPilot`, `GroundHouses`, `Args`, `Result`, `Json`, `Table` |
+| `nervur` | any engine: `Ground`, `House`, `vouchesOf` and the bodies they take |
 | `nervur/node` | a ground on Node: `NodeGround`, the `nervur` command, and its bodies |
 | `nervur/browser` | a ground in a page or its service worker: `BrowserGround` and its bodies |
 | `nervur/edge` | a ground on the edge, a Worker and its Durable Object: `EdgeGround` and its bodies |

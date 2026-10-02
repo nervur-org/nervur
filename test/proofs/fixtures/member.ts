@@ -5,7 +5,7 @@ export class Member extends Being.of({
   kind: 'org.example.member',
   roles: { owner: (asker) => asker.steward.owner === true },
   asks: {
-    whoami: { for: 'owner', hints: { readOnly: true }, result: s.string() },
+    whoami: { for: 'owner', readOnly: true, result: s.string() },
     ping: { for: 'owner' },
   },
 }) {

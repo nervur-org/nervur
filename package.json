@@ -1,6 +1,6 @@
 {
   "name": "nervur",
-  "version": "0.23.0",
+  "version": "0.23.1-0",
   "description": "Nervur's kit of Quo: write beings and faculties, and open the house that holds them on any ground.",
   "keywords": [
     "quo",
@@ -20,6 +20,21 @@
   },
   "type": "module",
   "exports": {
+    "./being": {
+      "nervur-source": "./src/being/index.ts",
+      "types": "./dist/being/index.d.ts",
+      "default": "./dist/being/index.js"
+    },
+    "./bench": {
+      "nervur-source": "./src/bench/index.ts",
+      "types": "./dist/bench/index.d.ts",
+      "default": "./dist/bench/index.js"
+    },
+    "./serve": {
+      "nervur-source": "./src/serve/index.ts",
+      "types": "./dist/serve/index.d.ts",
+      "default": "./dist/serve/index.js"
+    },
     ".": {
       "nervur-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
@@ -45,27 +60,17 @@
       "types": "./dist/browser/index.d.ts",
       "default": "./dist/browser/index.js"
     },
-    "./being": {
-      "nervur-source": "./src/being/index.ts",
-      "types": "./dist/being/index.d.ts",
-      "default": "./dist/being/index.js"
-    },
-    "./serve": {
-      "nervur-source": "./src/serve/index.ts",
-      "types": "./dist/serve/index.d.ts",
-      "default": "./dist/serve/index.js"
-    },
-    "./bench": {
-      "nervur-source": "./src/bench/index.ts",
-      "types": "./dist/bench/index.d.ts",
-      "default": "./dist/bench/index.js"
-    }
+    "./tsconfig.base.json": "./tsconfig.base.json"
   },
   "bin": {
-    "nervur": "dist/node/cli.js"
+    "nervur": "dist/node/cli.js",
+    "nervur-test": "test.mjs"
   },
   "files": [
     "dist",
+    "test.mjs",
+    "source.mjs",
+    "tsconfig.base.json",
     "AUTHORING.md",
     "COMMAND.md",
     "FACES.md",
@@ -78,13 +83,17 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepack": "npm run build",
-    "check": "tsc -p tsconfig.json && tsc -p tsconfig.pure.json && node test.mjs \"test/**/*.test.ts\"",
+    "check": "node quo.mjs && tsc -p tsconfig.json && tsc -p tsconfig.pure.json && NERVUR_TEST_COVER_LINES=95 NERVUR_TEST_COVER_BRANCHES=86 NERVUR_TEST_COVER_FUNCTIONS=90 node test.mjs \"test/**/*.test.ts\"",
     "mutate": "node mutate.mjs",
     "deep": "tsc -p deep && NERVUR_TEST_CAP=900000 node test.mjs \"deep/**/*.test.ts\"",
     "prepublishOnly": "test \"$NERVUR_GATED\" = 1 || { echo 'a publish is /release, from the root, on the human'\"'\"'s word' >&2; exit 1; }"
   },
   "engines": {
     "node": ">=22.18"
+  },
+  "quo": {
+    "repository": "https://github.com/razvangherghina/quo",
+    "commit": "993a01077c812bd0d9ca5c29ba52f6544e589ee0"
   },
   "dependencies": {
     "@noble/curves": "2.4.0",

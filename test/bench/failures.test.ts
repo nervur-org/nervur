@@ -4,9 +4,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import * as shop from '../fixtures/world/shop.ts';
 
-const modules = { shop };
+const modules = { shop: new URL('../fixtures/world/shop.ts', import.meta.url) };
 
 // Acme's tally, and Alice's sender holding a standing on it.
 const world = async (seed?: string) => {

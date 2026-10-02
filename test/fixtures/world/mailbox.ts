@@ -8,21 +8,27 @@ export const MailBlueprint = need('mail', {
   watch: {
     description: 'Hands every email that arrives to the inbox.',
     args: s.object({ inbox: s.handle() }),
-    hints: { idempotent: true },
+    idempotent: true,
   },
   latest: {
     description: 'The paper of the last email kept for collection.',
     result: s.object({ invitation: s.handle() }),
-    hints: { readOnly: true, idempotent: true },
+    readOnly: true,
   },
 });
 
 export class Mailbox {
   #inbox: { token: string; context: FacultyContext } | undefined;
   #received = 0;
+  #heard!: () => void;
+  /** Resolves once an inbox watches the mailbox: her watch is an effect, which leaves after her ask lands. */
+  readonly watched = new Promise<void>((heard) => {
+    this.#heard = heard;
+  });
 
   async watch({ inbox }: { inbox: string }, context: FacultyContext) {
     this.#inbox = { token: inbox, context };
+    this.#heard();
     return { result: null };
   }
 

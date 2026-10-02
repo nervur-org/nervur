@@ -9,19 +9,24 @@ export class Counter extends Being.of({
   asks: {
     born: { args: s.object({ start: s.optional(s.number()) }) },
     add: { in: 'open', args: s.object({ by: s.optional(s.number()) }) },
-    total: { hints: { readOnly: true }, result: s.number() },
-    rings: { hints: { readOnly: true }, result: s.number() },
-    peek: { for: ['peer', 'steward'], hints: { idempotent: true }, result: s.number() },
+    total: { readOnly: true, result: s.number() },
+    rings: { readOnly: true, result: s.number() },
+    peek: { for: ['peer', 'steward'], idempotent: true, result: s.number() },
     close: { in: 'open', to: 'closed' },
     wrong: { in: 'open' },
-    sneaky: { hints: { readOnly: true } },
+    sneaky: { readOnly: true },
     refuse: { in: 'open', args: s.object({ why: s.string() }) },
     ring: { args: s.object({ in: s.number() }) },
-    rang: {},
+    rang: { for: 'house' },
     ticket: { result: s.object({ handle: s.handle() }) },
     punch: { for: 'handle', args: s.object({ by: s.number() }) },
+    dismiss: { for: 'steward', args: s.object({ id: s.string() }) },
   },
 }) {
+  dismiss({ id }: Args<Counter, 'dismiss'>) {
+    this.occupants.dismiss(id);
+  }
+
   born({ start }: Args<Counter, 'born'>) {
     this.cells.total = start ?? 0;
   }

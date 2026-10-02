@@ -6,8 +6,14 @@ import { DECLARATION, MEMBERS, type Declaration, type Json, type Me } from './be
 import { blueprintOf, method, WAIT_BOUND, type Blueprint, type BlueprintMethod } from './need.ts';
 import { outside } from './schema.ts';
 
-/** The roles the house names. */
-export const HOUSE_ROLES: ReadonlySet<string> = new Set(['handle', 'stranger', 'steward', 'being', 'root']);
+/**
+ * The roles the house names: five for who may ask her, and three for an
+ * edge out of her that answers: `house` ringing her alarms, `powers`
+ * answering her steward's asks, and `standing` answering her effect on it.
+ * Each need's member is a role too, held by the body that answers her
+ * effect on it.
+ */
+export const HOUSE_ROLES: ReadonlySet<string> = new Set(['handle', 'stranger', 'steward', 'being', 'root', 'house', 'powers', 'standing']);
 
 /** The state of a class that names none. */
 export const READY = 'ready';
@@ -21,8 +27,8 @@ export interface TableEntry extends BlueprintMethod {
   readonly for: readonly string[] | null;
   /** Where it may land; `null`, the state it began in. */
   readonly to: readonly string[] | null;
-  /** Its author wrote `idempotent: false`, which a public being's default needs to know. */
-  readonly effect: boolean;
+  /** Its author accepts that a stranger may repeat it, though it is not idempotent. */
+  readonly replayable: boolean;
   readonly examples: readonly Json[];
 }
 
@@ -55,9 +61,9 @@ const KIND = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*){2,}$/;
 const VIEW_BYTES = 65_536;
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const BLUEPRINT_NAME = /^[a-z][a-z0-9._-]*$/;
-const ENTRY_FIELDS = new Set(['in', 'for', 'to', 'args', 'result', 'hints', 'examples', 'description', 'wait']);
-const METHOD_FIELDS = new Set(['args', 'result', 'hints', 'description', 'wait']);
-const HINTS = new Set(['readOnly', 'idempotent', 'destructive']);
+const ENTRY_FIELDS = new Set(['in', 'for', 'to', 'args', 'result', 'readOnly', 'idempotent', 'hints', 'examples', 'description', 'wait', 'replayable']);
+const METHOD_FIELDS = new Set(['args', 'result', 'readOnly', 'idempotent', 'hints', 'description', 'wait']);
+const HINTS = new Set(['destructive']);
 const EXAMPLE_FIELDS = new Set(['description', 'given', 'role', 'args', 'fakes', 'gives']);
 const STEP_FIELDS = new Set(['ask', 'args', 'role']);
 const EVERY_OBJECT = new Set(Object.getOwnPropertyNames(Object.prototype));
@@ -106,7 +112,10 @@ const methodChecked =(spec: unknown, fields: ReadonlySet<string>, where: string,
     return undefined;
   }
   for (const key of Object.keys(spec)) if (!fields.has(key)) reasons.push(`${where} names ${key}, which is no field`);
-  const { args, result, hints, description, wait } = spec;
+  const { args, result, readOnly, idempotent, hints, description, wait } = spec;
+  if (readOnly !== undefined && typeof readOnly !== 'boolean') reasons.push(`${where}.readOnly is not true or false`);
+  if (idempotent !== undefined && typeof idempotent !== 'boolean') reasons.push(`${where}.idempotent is not true or false`);
+  if (readOnly === true && idempotent === false) reasons.push(`${where} is readOnly and not idempotent`);
   if (wait !== undefined && !(Number.isInteger(wait) && (wait as number) > 0 && (wait as number) <= WAIT_BOUND)) reasons.push(`${where}.wait is not a count of milliseconds within five minutes`);
   if (args !== undefined) {
     reasons.push(...outside(args, `${where}.args`));
@@ -121,7 +130,6 @@ const methodChecked =(spec: unknown, fields: ReadonlySet<string>, where: string,
         if (!HINTS.has(key)) reasons.push(`${where}.hints names ${key}, which is no hint`);
         else if (typeof value !== 'boolean') reasons.push(`${where}.hints.${key} is not true or false`);
       }
-      if (hints.readOnly === true && hints.idempotent === false) reasons.push(`${where} is readOnly and not idempotent`);
     }
   }
   return method(spec);
@@ -246,7 +254,7 @@ export const resolve = (Class: unknown): Table => {
       in: names(raw.in, `${where}.in`, reasons),
       for: names(raw.for, `${where}.for`, reasons),
       to: names(raw.to, `${where}.to`, reasons),
-      effect: raw.hints?.idempotent === false,
+      replayable: raw.replayable === true,
       examples: examplesChecked(raw.examples, where, plain(declaredAsks) ? Object.keys(declaredAsks) : [], reasons),
     });
   }
@@ -274,7 +282,7 @@ export const resolve = (Class: unknown): Table => {
     if (typeof declaration.state !== 'function') reasons.push('its state is not a function');
     else {
       try {
-        first = declaration.state({ id: '', position: 'normal', cells: cells });
+        first = declaration.state({ id: '', cells: cells });
       } catch {
         reasons.push('its state throws on its default cells');
       }
@@ -282,7 +290,11 @@ export const resolve = (Class: unknown): Table => {
     }
   }
 
-  const states = table(asks, roles, first, declaration.state !== undefined, reasons);
+  for (const member of Object.keys(needs)) {
+    if (HOUSE_ROLES.has(member)) reasons.push(`its need ${member} is a role of the house's`);
+    if (plain(roles) && Object.hasOwn(roles, member)) reasons.push(`its need ${member} and its role ${member} share a name`);
+  }
+  const states = table(asks, roles, Object.keys(needs), first, declaration.state !== undefined, reasons);
   if (reasons.length > 0) throw new Refused(what, reasons);
   return Object.freeze({
     kind,
@@ -300,7 +312,7 @@ export const resolve = (Class: unknown): Table => {
 
 // The table: every state reached from the first, every ask reached by a
 // role, and every role named by an ask. A terminal state is allowed.
-const table = (asks: Record<string, TableEntry>, roles: object, first: string, stated: boolean, reasons: string[]): readonly string[] => {
+const table = (asks: Record<string, TableEntry>, roles: object, needs: readonly string[], first: string, stated: boolean, reasons: string[]): readonly string[] => {
   const named = new Set([first]);
   for (const entry of Object.values(asks)) for (const name of [...(entry.in ?? []), ...(entry.to ?? [])]) named.add(name);
   if (!stated) for (const name of named) if (name !== READY) reasons.push(`it names the state ${name} and has no state of its own`);
@@ -325,7 +337,7 @@ const table = (asks: Record<string, TableEntry>, roles: object, first: string, s
   for (const entry of Object.values(asks)) {
     for (const role of entry.for ?? []) {
       used.add(role);
-      if (!declared.has(role) && !HOUSE_ROLES.has(role)) reasons.push(`its ask ${entry.method} is for ${role}, which is no role`);
+      if (!declared.has(role) && !HOUSE_ROLES.has(role) && !needs.includes(role)) reasons.push(`its ask ${entry.method} is for ${role}, which is no role`);
     }
   }
   for (const role of declared) if (!used.has(role)) reasons.push(`its role ${role} is named by no ask`);

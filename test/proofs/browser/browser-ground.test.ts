@@ -12,6 +12,7 @@ import { need } from 'nervur/being';
 import { FakeMemory } from '../../../src/bench/fake-memory.ts';
 import { LockedUnlock, type BrowserGround, type Shelf } from 'nervur/browser';
 import { openOn, type BrowserPlatform, type Stores } from '../../../src/browser/browser-ground.ts';
+import { serving } from '../../fixtures/serving.ts';
 
 const origin = pathToFileURL(new URL('../../fixtures/', import.meta.url).pathname).href;
 
@@ -83,7 +84,7 @@ test('An ask in flight when the tab running the ground closes is told to ask aga
   let called!: () => void;
   const reached = new Promise<void>((resolve) => (called = resolve));
   const slow = {
-    blueprint: need('slow', { wait: { hints: { idempotent: true } } }),
+    blueprint: need('slow', { wait: { idempotent: true } }),
     object: {
       wait: () => {
         called();
@@ -91,7 +92,7 @@ test('An ask in flight when the tab running the ground closes is told to ask aga
       },
     },
   };
-  const registry: Registry = { faculties: { slow: { up: () => slow } } };
+  const registry: Registry = { faculties: { slow: serving(slow.blueprint, () => slow.object) } };
   const first = await tab(t, 'in-flight', stores, { registry });
   await first.led();
   await first.hand({ method: 'facultiesAdd', args: { name: 'slow', make: 'slow' } });
@@ -156,7 +157,7 @@ test('A page’s registry stands beside the terrain’s own and never in its pla
   const { stores } = originStorage();
   await assert.rejects(
     (async () => {
-      const only = await tab(t, 'replaced', stores, { registry: { faculties: { origin: { up: () => Promise.reject(new Error('never raised')) } } } });
+      const only = await tab(t, 'replaced', stores, { registry: { faculties: { origin: serving(need('never', {}), () => Promise.reject(new Error('never raised'))) } } });
       await only.led();
     })(),
     /the registry names a faculty origin, which the ground holds already/,

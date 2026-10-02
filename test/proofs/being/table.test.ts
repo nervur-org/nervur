@@ -34,8 +34,9 @@ test('Every field is optional but kind and asks', () => {
   assert.equal(quote.in, null, 'omitted, every state');
   assert.equal(quote.for, null, 'omitted, every occupant but handles');
   assert.equal(quote.to, null, 'omitted, the state it began in');
-  assert.equal(quote.hints.idempotent, true);
-  assert.deepEqual(table.asks.booked.hints, { readOnly: false, idempotent: false, destructive: false });
+  assert.equal(quote.idempotent, true);
+  const { readOnly, idempotent, hints } = table.asks.booked;
+  assert.deepEqual({ readOnly, idempotent, hints }, { readOnly: false, idempotent: false, hints: { destructive: false } });
 });
 
 test('The kind lives in the declaration', () => {

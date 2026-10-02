@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // The platform's time and its timers, as every web engine and Node give them.
-import type { Clock } from '../foundation.ts';
+import { s } from '../being/schema.ts';
+import { Faculty } from '../faculty.ts';
+import { Clock } from '../foundation.ts';
 
 // A timer holds at most this long; a longer wait is a chain of them.
 const LONGEST = 2 ** 31 - 1;
 
-export class WebClock implements Clock {
+export class WebClock extends Faculty implements Clock {
+  static override readonly blueprint = Clock;
+  static override readonly takes = { args: s.object({}) };
+
   readonly #waits = new Map<string, { timer: ReturnType<typeof setTimeout>; resolve: (fired: boolean) => void }>();
 
   now(): number {

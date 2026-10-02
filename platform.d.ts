@@ -13,6 +13,11 @@ declare class TextDecoder {
   decode(input?: Uint8Array): string;
 }
 
+// A module's own URL, which names the module a runner's thread starts from.
+interface ImportMeta {
+  readonly url: string;
+}
+
 declare function setTimeout(handler: () => void, ms?: number): unknown;
 declare function clearTimeout(timer: unknown): void;
 

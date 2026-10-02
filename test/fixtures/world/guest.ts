@@ -8,9 +8,9 @@ export class Guest extends Being.of({
   cells: { standing: '' },
   asks: {
     // Taking a paper twice gives the standing it made, so it is safe to repeat.
-    accept: { args: s.object({ invitation: s.handle() }), hints: { idempotent: true } },
-    greetHost: { hints: { readOnly: true, idempotent: true }, result: s.string() },
-    standingsList: { hints: { readOnly: true, idempotent: true }, result: s.array(s.string()) },
+    accept: { args: s.object({ invitation: s.handle() }), idempotent: true },
+    greetHost: { readOnly: true, result: s.string() },
+    standingsList: { readOnly: true, result: s.array(s.string()) },
   },
 }) {
   accept({ invitation }: Args<Guest, 'accept'>) {
@@ -18,7 +18,9 @@ export class Guest extends Being.of({
   }
 
   async greetHost() {
-    return this.held(this.cells.standing, Hosted).greet({});
+    const { result, error } = await this.held(this.cells.standing, Hosted).greet({});
+    if (error) this.fail(error.message);
+    return result;
   }
 
   standingsList() {

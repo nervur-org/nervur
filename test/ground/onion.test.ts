@@ -57,11 +57,11 @@ test('A ground unpacks like an onion and stays pure: every entry, secret, seed a
   assert.deepEqual(await done('facultiesAdd', { name: 'b', from: 'a', make: 'b-reg', args: { depth: 1 }, secrets: ['b-key'] }), {});
   assert.deepEqual(await done('facultiesAdd', { name: 'c', from: 'b', make: 'c-reg', args: { depth: 2 }, secrets: ['c-key'] }), {});
   assert.deepEqual(
-    await ask('facultiesAdd', { name: 'leaf', from: 'c', make: 'leaf', args: { greeting: 'hi' }, faculties: ['b'] }),
-    { error: { message: 'the faculty leaf is refused: its entry names no secret leaf-key, which leaf takes: the seal it keeps' } },
-    'a secret it takes and does not name is refused at the hand',
+    await done('facultiesAdd', { name: 'leaf', from: 'c', make: 'leaf', args: { greeting: 'hi' }, faculties: ['b'] }),
+    { why: 'it waits for the secret leaf-key, which its entry does not name: the seal it keeps' },
+    'a secret it takes and its entry does not name keeps it down, waiting',
   );
-  assert.deepEqual(await done('facultiesAdd', { name: 'leaf', from: 'c', make: 'leaf', args: { greeting: 'hi' }, secrets: ['leaf-key'], faculties: ['b'] }), {});
+  assert.deepEqual(await done('facultiesUpdate', { name: 'leaf', from: 'c', make: 'leaf', args: { greeting: 'hi' }, secrets: ['leaf-key'], faculties: ['b'] }), {});
   assert.deepEqual(await done('facultiesAdd', { name: 'side', from: 'a', make: 'side', args: { path: side } }), {});
   assert.deepEqual(ups, ['b', 'c', 'leaf'], 'each rung after the one it stands on');
 
@@ -71,7 +71,8 @@ test('A ground unpacks like an onion and stays pure: every entry, secret, seed a
   await done('facultiesUpdate', { name: 'leaf', from: 'c', make: 'leaf', args: { greeting: 'hello' }, secrets: ['leaf-key'], faculties: ['b'] });
   assert.deepEqual(await done('waitSet', { wait: 20_000 }), { wait: 20_000, terrain: false });
   for (const house of ['inner', 'outer']) {
-    assert.ok('result' in (await reach({ house, method: 'bear', args: { kind: 'org.example.peeler', id: 'p' } })));
+    const borne = await reach({ house, method: 'bear', args: { kind: 'org.example.peeler', id: 'p' } });
+    assert.ok('result' in borne, JSON.stringify(borne));
     assert.deepEqual(await reach({ house, id: 'p', method: 'greet', args: { name: 'Ada' } }), { result: 'hello, Ada (signed with 16) #1' }, `${house} greets through the top rung, on its new args`);
   }
 
@@ -89,7 +90,7 @@ test('A ground unpacks like an onion and stays pure: every entry, secret, seed a
   assert.deepEqual(catalog[4].faculties[0].takes?.secrets, { 'leaf-key': 'the seal it keeps' });
 
   // Every entry, seed, secret and setting is cells of the dock's beings, and every name a standing.
-  assert.deepEqual(await cells('faculty.leaf'), { result: { terrain: false, entry: { make: 'leaf', args: { greeting: 'hello' } }, installed: JSON.stringify({ args: { greeting: 'hello' }, faculties: ['b'], from: 'c', make: 'leaf', secrets: ['leaf-key'] }), why: null, serves: null, port: null } });
+  assert.deepEqual(await cells('faculty.leaf'), { result: { terrain: false, entry: { make: 'leaf', args: { greeting: 'hello' } }, installed: JSON.stringify({ args: { greeting: 'hello' }, faculties: ['b'], from: 'c', make: 'leaf', secrets: ['leaf-key'] }), version: null, met: null, why: null, serves: null, port: null } });
   const leafShown = (await reach({ id: 'faculty.leaf', method: 'shown' })) as { result: { standings: { id: string; steward: Json }[] } };
   assert.deepEqual(
     [...leafShown.result.standings].sort((a, b) => (a.id < b.id ? -1 : 1)),
@@ -112,7 +113,7 @@ test('A ground unpacks like an onion and stays pure: every entry, secret, seed a
       { id: 'faculty.side', steward: { memory: true } },
     ],
   );
-  assert.deepEqual(await cells('steward'), { result: { wait: 20_000 } }, 'the bound is the steward’s cell');
+  assert.deepEqual(await cells('steward'), { result: { wait: 20_000, classes: null, classesWhy: null } }, 'the bound is the steward’s cell, beside the owner’s dock classes she names none of');
   assert.deepEqual(await cells('secret.b-key'), { error: { message: 'a secret’s cells are shown to no one' } });
 
   // Each house's rows land in its own memory: the outer's in the side ledger alone, sealed, and nothing of the inner's there.
@@ -142,27 +143,38 @@ test('A ground unpacks like an onion and stays pure: every entry, secret, seed a
   assert.deepEqual(ups, ['b', 'c', 'leaf'], 'the ladder stands again in the order the chain gives');
   assert.deepEqual(await snapshot(), before, 'everything came back from the dock’s cells, the same');
 
-  // A missing secret forced into the boot leaves its rung and everything above it down, with why, and the rest stands.
+  // A secret dropped takes its rung and every faculty above it down at once, with why, and the boot keeps them so while the rest and the houses stand.
+  const waiting = 'it waits for the secret c-key, which is not kept: the key of the third rung';
+  const downs = async () => {
+    const listed = (await done('facultiesList')) as { name: string; why?: string }[];
+    const why = Object.fromEntries(listed.map(({ name, why: down }) => [name, down ?? 'stands']));
+    const houses = (await done('housesList')) as { name: string; why?: string }[];
+    return { a: why.a, b: why.b, c: why.c, leaf: why.leaf, side: why.side, houses: houses.map(({ name, why: closed }) => [name, closed ?? 'open']) };
+  };
+  const dropped = {
+    a: 'stands',
+    b: 'stands',
+    c: waiting,
+    leaf: `its registry: the faculty c is down: ${waiting}`,
+    side: 'stands',
+    // A custom faculty down never closes a house: each stays open beside it.
+    houses: [
+      ['inner', 'open'],
+      ['outer', 'open'],
+    ],
+  };
   assert.deepEqual(await ask('secretsRemove', { name: 'c-key' }), { result: null });
+  assert.deepEqual(await downs(), dropped, 'dropped, with no restart');
   await open.close();
   open = await NodeGround.open({ folder, env });
-  const listed = (await done('facultiesList')) as { name: string; why?: string }[];
-  const why = Object.fromEntries(listed.map(({ name, why: down }) => [name, down ?? 'stands']));
-  assert.deepEqual(
-    { a: why.a, b: why.b, c: why.c, leaf: why.leaf, side: why.side },
-    { a: 'stands', b: 'stands', c: 'no secret c-key is kept', leaf: 'its registry: the faculty c is down: no secret c-key is kept', side: 'stands' },
-  );
-  const houses = (await done('housesList')) as { name: string; why?: string }[];
-  assert.deepEqual(
-    houses.map(({ name, why: closed }) => [name, closed]),
-    [
-      ['inner', 'the faculty leaf is down: its registry: the faculty c is down: no secret c-key is kept'],
-      ['outer', 'the faculty leaf is down: its registry: the faculty c is down: no secret c-key is kept'],
-    ],
-  );
+  assert.deepEqual(await downs(), dropped, 'and so at the boot');
+
+  // Set again, it raises its rung and everything above it, and opens the houses, with no restart.
+  assert.deepEqual(await ask('secretsSet', { name: 'c-key', value: SECRETS['c-key'] }), { result: null });
+  assert.deepEqual(await downs(), { a: 'stands', b: 'stands', c: 'stands', leaf: 'stands', side: 'stands', houses: [['inner', 'open'], ['outer', 'open']] });
   await open.close();
   open = undefined;
 
   // Another key opens nothing on this state.
-  await assert.rejects(NodeGround.open({ folder, env, unlock: { key: async () => 'ab'.repeat(32) } }), /this memory holds no drawer this key opens/);
+  await assert.rejects(NodeGround.open({ folder, env, unlock: { key: async () => 'ab'.repeat(32) } }), /this memory holds no dock this key opens/);
 });

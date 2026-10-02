@@ -87,7 +87,7 @@ export class Stateless extends Being.of({ kind: 'org.example.stateless', asks: {
   go() {}
 }
 
-export class ReadOnlyWrites extends Being.of({ kind: 'org.example.read', asks: { go: { hints: { readOnly: true, idempotent: false } } } }) {
+export class ReadOnlyWrites extends Being.of({ kind: 'org.example.read', asks: { go: { readOnly: true, idempotent: false } } }) {
   go() {}
 }
 

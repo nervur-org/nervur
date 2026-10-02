@@ -5,7 +5,7 @@
 // evicts. The code arrives signed in the app's bundle, and one web view
 // runs, so the lock is taken at once. A wake by push is the app's own
 // registry's faculty, since the library ships no faculty.
-import { openOn, type BrowserGround, type BrowserGroundOptions } from '../browser/browser-ground.ts';
+import { openOn, type BrowserGround, type BrowserGroundOptions, type BrowserPlatform } from '../browser/browser-ground.ts';
 import { NativeMemory, NativeUnlock, type NativeSecrets, type NativeStore } from './native.ts';
 
 /** What the shell hands the ground: its secret store and its native store. */
@@ -20,11 +20,13 @@ export interface AppGroundOptions extends Omit<BrowserGroundOptions, 'platform'>
   readonly load?: (href: string) => Promise<unknown>;
   /** Where its classes stand; the web view's own origin where omitted. */
   readonly origin?: string;
+  /** What starts each house's runner, where the app's build hands its own: a Web Worker of the web view's where omitted. */
+  readonly runner?: BrowserPlatform['runner'];
 }
 
 export const AppGround = Object.freeze({
   /** The app's ground: a BrowserGround whose unlock and memory are the shell's own. */
-  open({ shell, load, origin, ...options }: AppGroundOptions): Promise<BrowserGround> {
+  open({ shell, load, origin, runner, ...options }: AppGroundOptions): Promise<BrowserGround> {
     return openOn(
       {
         ...options,
@@ -33,6 +35,7 @@ export const AppGround = Object.freeze({
           persist: async () => true,
           ...(load === undefined ? {} : { load }),
           ...(origin === undefined ? {} : { origin }),
+          ...(runner === undefined ? {} : { runner }),
         },
       },
       { unlock: async () => new NativeUnlock(shell.secrets), memory: async (name) => new NativeMemory(shell.store, name) },

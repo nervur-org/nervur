@@ -5,10 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { Faculty, OK, type Status } from 'nervur';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
 import { bridge } from 'nervur/node';
-import * as phone from './phone.ts';
-import * as pi from './pi.ts';
+
+const phone = new URL('./phone.ts', import.meta.url);
+const pi = new URL('./pi.ts', import.meta.url);
 
 test('Each tap on the phone pulses the relay once, whatever fails between', { timeout: 30_000 }, async (t) => {
   const state = mkdtempSync(join(tmpdir(), 'garage-'));
@@ -22,13 +24,22 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
 
   // The Pi's ground, whose registry bridges the program as a NodeGround's does, and the door's twin.
   const relay = fileURLToPath(new URL('./relay.py', import.meta.url));
-  const garage = await BenchGround.open({
-    network,
-    host: 'pi',
-    names: ['garage.local'],
-    modules: { pi },
-    registry: { faculties: { bridge: { up: ({ memory }) => bridge({ command: 'python3', args: [relay], cwd: pin, memory }) } } },
-  });
+  class Bridged extends Faculty {
+    #stop: (() => unknown) | undefined;
+    // Its blueprint and its methods are what the program describes, so only its `up` learns them.
+    override async up(): Promise<Status> {
+      const { blueprint, window, object, down } = await bridge({ command: 'python3', args: [relay], cwd: pin, memory: this.made.memory });
+      Object.assign(this, object);
+      this.blueprint = blueprint;
+      this.window = window;
+      this.#stop = down;
+      return OK;
+    }
+    override async down(): Promise<void> {
+      await this.#stop?.();
+    }
+  }
+  const garage = await BenchGround.open({ network, host: 'pi', names: ['garage.local'], modules: { pi }, registry: { faculties: { bridge: Bridged } } });
   t.after(() => garage.down());
   // The relay, granted to the twin's class alone.
   await garage.hand({ method: 'facultiesAdd', args: { name: 'relay', make: 'bridge', kinds: ['org.example.garage'] } });

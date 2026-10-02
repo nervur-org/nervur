@@ -2,8 +2,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
-import * as desk from './desk.ts';
 import { faculties } from './recipe.ts';
+
+const desk = new URL('./desk.ts', import.meta.url);
 
 test('A person signs up at the face, and reaches their member as an API and as tools', async (t) => {
   const ground = await BenchGround.open({ network: new FakeNetwork(), host: 'desk', modules: { desk }, registry: { faculties } });

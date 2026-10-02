@@ -19,7 +19,7 @@ export const covers = (offer: Blueprint, want: Blueprint): Cover => {
     const sent = new Set(requiredOf(wanted.args));
     const extra = requiredOf(offered.args).find((key) => !sent.has(key));
     if (extra !== undefined) return { covered: false, why: `${want.name}.${name} requires ${extra}, which the need does not send` };
-    if (offered.hints.idempotent !== wanted.hints.idempotent) {
+    if (offered.idempotent !== wanted.idempotent) {
       return { covered: false, why: `${want.name}.${name} is idempotent in one and not the other` };
     }
   }

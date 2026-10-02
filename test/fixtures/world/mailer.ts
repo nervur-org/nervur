@@ -12,9 +12,9 @@ export class Mailer extends Being.of({
   cells: { sent: [] as string[], failed: [] as string[], count: 0 },
   asks: {
     notify: { args: s.object({ to: s.string() }) },
-    sent: { args: s.reply(Mail.send) },
+    sent: { for: 'mail', args: s.reply(Mail.send) },
     count: { args: s.object({ by: s.number() }) },
-    log: { hints: { readOnly: true }, result: s.object({ sent: s.array(s.string()), failed: s.array(s.string()), count: s.number() }) },
+    log: { readOnly: true, result: s.object({ sent: s.array(s.string()), failed: s.array(s.string()), count: s.number() }) },
   },
 }) {
   notify({ to }: Args<Mailer, 'notify'>) {

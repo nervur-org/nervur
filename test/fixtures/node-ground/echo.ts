@@ -2,5 +2,5 @@
 import { need, s } from 'nervur/being';
 
 export const Echo = need('echo', {
-  say: { args: s.object({ text: s.string() }), result: s.string(), hints: { readOnly: true } },
+  say: { args: s.object({ text: s.string() }), result: s.string(), readOnly: true },
 });

@@ -6,7 +6,7 @@ export class HostNext extends Being.of({
   kind: 'org.example.host',
   cells: { doors: 0 },
   asks: {
-    greet: { hints: { readOnly: true }, result: s.string() },
+    greet: { readOnly: true, result: s.string() },
   },
 }) {
   greet() {

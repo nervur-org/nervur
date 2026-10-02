@@ -5,10 +5,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { groundOne, hand } from '../fixtures/node/grounds.ts';
-import { ground, stop } from '../fixtures/node/spawned.ts';
+import { groundOne, hand } from '../../test/fixtures/node/grounds.ts';
+import { ground, stop } from '../../test/fixtures/node/spawned.ts';
 
-const script = new URL('../fixtures/node/ground.ts', import.meta.url).pathname;
+const script = new URL('../../test/fixtures/node/ground.ts', import.meta.url).pathname;
 
 test('Two grounds ask each other over TCP, and a restart loses nothing that landed', { timeout: 30_000 }, async (t) => {
   const folder = mkdtempSync(join(tmpdir(), 'nervur-ground-'));

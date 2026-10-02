@@ -4,11 +4,11 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { test } from 'node:test';
-import { quo } from '../../fixtures/quo.ts';
+import { verifier } from '../test/fixtures/quo.ts';
 
-const root = new URL('../', quo);
-const cli = new URL('verifier/cli.js', quo);
-const stand = [process.execPath, new URL('../fixtures/stand.ts', import.meta.url).pathname];
+const root = new URL('../', verifier);
+const cli = new URL('cli.js', verifier);
+const stand = [process.execPath, new URL('../test/proofs/fixtures/stand.ts', import.meta.url).pathname];
 
 const verify = async (t: { after: (fn: () => void) => void }, args: string[]) => {
   const run = spawn(process.execPath, [cli.pathname, ...args], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });

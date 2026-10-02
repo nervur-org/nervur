@@ -8,7 +8,7 @@ export class Depot extends Being.of({
   roles: { client: (asker) => asker.id.startsWith('client-') },
   asks: {
     pickup: { for: 'client', args: s.object({ items: s.array(s.string()) }) },
-    picked: { for: 'steward', hints: { readOnly: true }, result: s.array(s.string()) },
+    picked: { for: 'steward', readOnly: true, result: s.array(s.string()) },
   },
 }) {
   pickup({ items }: Args<Depot, 'pickup'>) {

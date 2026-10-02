@@ -8,8 +8,11 @@
 import type { Json } from '../being/being.ts';
 import { s } from '../being/schema.ts';
 import { WebCarry } from '../bodies/web-carry.ts';
-import type { Memory } from '../foundation.ts';
-import { Ground, joinedRegistry, type Registry, type Unlock } from '../ground/ground.ts';
+import type { Registry } from '../faculty.ts';
+import { Carry, Classes, Memory } from '../foundation.ts';
+import { forwarding, handOf } from '../ground/forwarding.ts';
+import { Ground, Hand, joinedRegistry, Unlock } from '../ground/ground.ts';
+import { engineStart, type Start } from '../ground/runner.ts';
 import type { Answer } from '../house/rows-shape.ts';
 import { IndexedDbMemory } from './indexeddb-memory.ts';
 import { LockedUnlock } from './locked-unlock.ts';
@@ -23,13 +26,19 @@ export interface BrowserPlatform {
   readonly origin: string;
   /** Asks the browser to keep its storage, and answers whether it will. */
   readonly persist: () => Promise<boolean>;
-  /** Loads a module of classes by URL: `import()`, or in a service worker a map of the worker's own imports. */
+  /** Loads a module of classes by URL where its houses open in place: `import()`, or in a service worker a map of the worker's own imports. */
   readonly load: Load;
+  /**
+   * What starts each house's runner: a Web Worker of the page's own where
+   * omitted. `null` on an engine that starts no thread, a service worker,
+   * whose houses open in place.
+   */
+  readonly runner: Start | null;
 }
 
 /**
- * Where its key and its memory rest: the terrain's own, never the
- * drawer's, since the drawer is read with them. A BrowserGround's are the
+ * Where its key and its memory rest: the terrain's own, never an entry
+ * in the dock, since the dock is read with them. A BrowserGround's are the
  * origin's IndexedDB; an AppGround's are the shell's. No entry exports
  * this.
  */
@@ -88,6 +97,7 @@ const defaults = (name: string): BrowserPlatform => ({
   origin: globalThis.location?.origin ?? `nervur:${name}`,
   persist: async () => (await navigator.storage?.persist?.()) ?? false,
   load: (href) => import(href),
+  runner: engineStart,
 });
 
 export class BrowserGround {
@@ -245,7 +255,7 @@ export class BrowserGround {
       .catch(() => undefined);
   }
 
-  // The boot: its own unlock and memory, then the ground on them, its ladder and its drawer's houses.
+  // The boot: its own unlock and memory, then the ground on them, its ladder and the houses its dock holds.
   async #boot(): Promise<Ground> {
     const name = this.#name;
     const platform = this.#platform;
@@ -255,71 +265,55 @@ export class BrowserGround {
     const closing = (opened: unknown) => () => (opened as { close?: () => void }).close?.();
     const own: Registry = {
       faculties: {
-        'store-unlock': {
-          takes: NONE,
-          up: async () => {
-            const unlock = await stores.unlock(`${name}-unlock`);
-            return { serves: 'unlock', object: unlock, down: closing(unlock) };
-          },
-        },
-        'store-memory': {
-          takes: NONE,
-          up: async () => {
-            const memory = await stores.memory(`${name}-ground`);
-            return { serves: 'memory', object: memory, down: closing(memory) };
-          },
-        },
+        'store-unlock': forwarding({ blueprint: Unlock, takes: NONE }, async () => {
+          const unlock = await stores.unlock(`${name}-unlock`);
+          return { object: unlock, down: closing(unlock) };
+        }),
+        'store-memory': forwarding({ blueprint: Memory, takes: NONE }, async () => {
+          const memory = await stores.memory(`${name}-ground`);
+          return { object: memory, down: closing(memory) };
+        }),
         // The hand, for every other page of the origin: the asks sent to this page on the channel, each answered there.
-        'channel-hand': {
-          takes: { args: s.object({ channel: s.string(), self: s.string(), persisted: s.boolean() }) },
-          up: ({ args, faculties }) => {
-            const ground = faculties.ground as { hand(request: BrowserHandRequest): Promise<Answer | { readonly describe: Json }> };
-            const channel = platform.channel(args.channel as string);
-            let open = true;
-            channel.onmessage = (event: MessageEvent) => {
-              const said = event.data as Said;
-              if (said.kind !== 'ask' || said.to !== args.self) return;
-              // An ask this hand's close ended is answered by no one here: the page that runs the ground next is asked again.
-              void ground.hand(said.request).then((answer) => {
-                if (!open) return;
-                channel.postMessage({
-                  kind: 'answer',
-                  id: said.id,
-                  answer: said.request.describe === true && 'result' in answer ? { result: { ...(answer.result as Record<string, Json>), persisted: args.persisted === true } } : answer,
-                } satisfies Said);
-              });
-            };
-            return {
-              serves: 'hand',
-              down: () => {
-                open = false;
-                channel.close();
-              },
-            };
-          },
-        },
-        // It only dials, so it writes no address into an invitation.
-        web: {
-          takes: { args: s.object({ allowPrivate: s.optional(s.boolean()) }) },
-          up: ({ args }) => {
-            const web = new WebCarry({ allowPrivate: args.allowPrivate === true });
-            return { serves: 'carry', schemes: ['https', 'http', 'wss', 'ws'], object: web };
-          },
-        },
-        origin: {
-          takes: NONE,
-          up: () => ({
-            serves: 'classes',
-            house: ({ args }) => {
-              if (typeof args.at !== 'string') throw new Error('the origin faculty names a house’s module in at');
-              return OriginClasses.open(args.at, platform.origin, platform.load);
+        'channel-hand': forwarding({ blueprint: Hand, takes: { args: s.object({ channel: s.string(), self: s.string(), persisted: s.boolean() }) } }, ({ args, call }) => {
+          const channel = platform.channel(args.channel as string);
+          let open = true;
+          channel.onmessage = (event: MessageEvent) => {
+            const said = event.data as Said;
+            if (said.kind !== 'ask' || said.to !== args.self) return;
+            // An ask this hand's close ended is answered by no one here: the page that runs the ground next is asked again.
+            void (handOf(call, said.request) as Promise<Answer | { readonly describe: Json }>).then((answer) => {
+              if (!open) return;
+              channel.postMessage({
+                kind: 'answer',
+                id: said.id,
+                answer: said.request.describe === true && 'result' in answer ? { result: { ...(answer.result as Record<string, Json>), persisted: args.persisted === true } } : answer,
+              } satisfies Said);
+            });
+          };
+          return {
+            down: () => {
+              open = false;
+              channel.close();
             },
-          }),
-        },
+          };
+        }),
+        // It only dials, so it writes no address into an invitation.
+        web: forwarding({ blueprint: Carry, takes: { args: s.object({ allowPrivate: s.optional(s.boolean()) }) } }, ({ args }) => ({
+          schemes: ['https', 'http', 'wss', 'ws'],
+          object: new WebCarry({ allowPrivate: args.allowPrivate === true }),
+        })),
+        origin: forwarding({ blueprint: Classes, takes: NONE }, () => ({
+          house: ({ args }) => {
+            if (typeof args.at !== 'string') throw new Error('the origin faculty names a house’s module in at');
+            // A contained house loads its module in its runner; one in place loads it here.
+            return platform.runner === null ? OriginClasses.open(args.at, platform.origin, platform.load) : OriginClasses.source(args.at, platform.origin);
+          },
+        })),
       },
     };
     const wait = this.#options.wait;
     return Ground.open({
+      ...(platform.runner === null ? {} : { runner: { start: platform.runner } }),
       registry: joinedRegistry(own, this.#options.registry ?? {}),
       primordial: {
         unlock: { make: 'store-unlock' },

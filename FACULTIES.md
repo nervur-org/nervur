@@ -2,8 +2,8 @@
 
 A faculty is anything a being calls that is not a being: a payment
 provider, a mail sender, a model, a sensor, a relay on a Pi. This guide
-teaches the craft whole. [Writing for nervur](AUTHORING.md) teaches beings and
-grounds, and the words both guides use.
+teaches the craft whole. [Writing a species](AUTHORING.md) teaches beings,
+and [Grounds](GROUNDS.md) how they run.
 
 The example is a garage door. A relay on a Raspberry Pi pulses once to
 toggle the door, so a pulse sent twice opens the door and closes it
@@ -14,25 +14,41 @@ the package's own tests run.
 
 ## What a faculty owes
 
-A faculty answers a blueprint: a name, and methods with their schemas.
-A registry holds it by name as `{ takes?, up, install? }`. The ground
-raises it by its `up` into a body, and hands the body to its houses as
-an offer, with the kinds its entry grants.
+A faculty is a class extending `Faculty` from `nervur`. Its blueprint is
+a name, and methods with their schemas. A registry holds the class by
+name. The ground makes one instance of it, the body, and runs its hooks.
+It hands the body to its houses as an offer, with the kinds its entry
+grants.
 
 ```text
-faculty = { takes?, install?, up }
+statics = { blueprint, takes?, needs?, version?, window?, fake?, examples?, contract? }
+hooks   = install?, migrate?(from), up?, health?, down?, uninstall?   each answers { ok, why? }
+parts   = handler?, registry?, schemes?, port?, house?(options), opened?(context)
 takes   = { args?: schema, secrets?: { [name]: what it holds } }
-body    = { blueprint?, object?, window?, handler?, registry?, down? }
+needs   = { [kind]: what an installer reads }
+made    = this.made: { name, args, secrets, faculties, memory, derive, met, call, listener }
 offer   = { blueprint, object, kinds?, window? }
 ```
 
+Every hook is optional, and the base class answers each one `{ ok: true
+}`. A hook that answers `{ ok: false, why }` keeps the body down with
+that why. A throw is read the same way, so nothing a faculty does falls
+further than its own body.
+
 - **It declares what it takes.** `takes.args` is a schema built with
   `s` from `nervur/being`, which its entry's args meet. `takes.secrets`
-  names each secret its entry must name, with a line saying what it
-  holds. The hand refuses an entry that fails either, before it lands,
-  and `facultiesCatalog` shows it to whoever writes the entry.
-- **The object has the blueprint's methods.** Each takes one args object
-  and a context, and answers `{ result }` or `{ error: { message } }`.
+  names each secret it takes, with a line saying what it holds. The hand
+  refuses an entry whose args fail, before it lands, and
+  `facultiesCatalog` shows both to whoever writes the entry.
+- **It waits for a secret, and never breaks without one.** A secret is
+  declared, never required. Reading one it takes while it is not kept
+  throws, and the ground keeps the body down with why, naming the secret
+  and what it holds. Setting the secret raises the body with no restart,
+  and removing it brings the body down. A faculty that goes on without a
+  secret asks `name in secrets` first.
+- **The body has the blueprint's methods.** Each is an instance method
+  that takes one args object and a context, and answers `{ result }` or
+  `{ error: { message } }`.
 - **An error is final, and a throw is not.** An error reaches the being
   as the answer. A throw, a crash or silence is a failure to answer, and
   the house asks again.
@@ -53,12 +69,21 @@ answered, with the same call id every time.
 So one call arrives more than once. A reply lost on its way back brings
 it again, and so does a program that died before it answered. A faculty
 that changes the world keeps each call id with the answer it gave, in
-the memory its `up` receives, where a restart and a move keep it. It
+its own memory, `this.made.memory`, where a restart and a move keep it. It
 answers a call id it has seen with that answer, and acts once.
 
 It keeps them for its `window`, seven days where the offer names none.
 The house gives up on an effect at the window and tells the being, so a
 retry never outlives the faculty's memory.
+
+### It may be watched
+
+A being watches a `readOnly` method of a faculty as she watches a
+standing's ask, passing the result she holds as `after`. The method then
+receives `context.watch`. It holds its answer while `context.watch.same`
+says it equals hers, and answers once it differs. The house ends the
+watch at `context.watch.until` whatever the faculty does. So a faculty
+that ignores the watch answers at once, and she polls.
 
 ### It calls back by token
 
@@ -92,32 +117,40 @@ reaches her through a standing, so policy is written as a being.
 
 ### It lives in the ground
 
-The object arrives living. The ground raises each faculty its entries
-name, awaiting its `up`, and the house never starts, stops or restarts
-it. Every being whose need it covers holds the same object. Its `up`
-receives four things beside the faculty's name.
+The body arrives living. The ground makes each faculty its entries name
+and awaits its `up`, and the house never starts, stops or restarts it.
+Every being whose need it covers reaches the same body. Every hook reads
+`this.made`, which holds six things beside the entry's name.
 
 - **`args`** are its entry's, as the owner wrote them.
-- **`secrets`** are the secrets its entry names, set through the hand
-  and kept sealed in a being of the ground's dock. No other code reads
-  them.
+- **`secrets`** are the secrets its entry names that are kept, set
+  through the hand and kept sealed in a being of the ground's dock. No
+  other code reads them. One read while it is absent keeps the body
+  waiting for it.
 - **`memory`** is the faculty's own, a view of the ground's memory
   sealed under a key the ground derives for it. Its call ids live there,
   so they move with the ground.
-- **`faculties`** holds the object of each body its entry names in
-  `faculties`, so one body calls another directly. It goes up after
-  each of them.
+- **`derive(label, length)`** answers bytes the ground derives from its
+  key for this entry and the label, thirty-two at least. The same entry
+  derives the same bytes in every life, so a key it signs with is never
+  stored.
+- **`call({ faculty, method, args, id })`** calls a method of a body its
+  entry names in `faculties`, and of no other. It answers `{ result }`
+  or `{ error }`, and never throws. A body down answers an error naming
+  why, so no faculty holds another's object.
+- **`listener`** is the ground's one listener, which a carry that serves
+  HTTP serves.
 
-`install` receives the same, and does the slow work once for each entry.
-A program's packages and a repository's checkout are installed there, so
-going up again installs nothing.
+`install` does the slow work once for each entry. A program's packages
+and a repository's checkout are installed there, so going up again
+installs nothing.
 
-A body answers four things beside its methods, each where it has one.
+A body carries four parts beside its methods, each where it has one.
 
 - **`handler`** answers HTTP on the ground's one listener. It takes a
   `Request` and answers a `Response`, or `null` where the request is not
   its own. A site, an API or an MCP server is a body with a handler.
-- **`down`** lets go of what its `up` opened. The ground calls it when
+- **`down()`** lets go of what its `up` opened. The ground calls it when
   the body is updated, restarted or removed, and when the ground stops,
   bodies in the reverse of the order they stood.
 - **`registry`** holds more faculties, for every entry that names this
@@ -326,8 +359,8 @@ export class Garage extends Being.of({
   cells: { openers: [] as string[], pulses: [] as number[], failed: [] as string[] },
   asks: {
     open: {},
-    pulsed: { args: s.reply(Relay.pulse) },
-    log: { hints: { readOnly: true }, result: s.object({ openers: s.array(s.string()), pulses: s.array(s.integer()), failed: s.array(s.string()) }) },
+    pulsed: { for: 'relay', args: s.reply(Relay.pulse) },
+    log: { readOnly: true, result: s.object({ openers: s.array(s.string()), pulses: s.array(s.integer()), failed: s.array(s.string()) }) },
   },
 }) {
   open() {
@@ -350,10 +383,10 @@ export class Remote extends Being.of({
   description: 'A garage remote on a phone: one tap, one opening.',
   cells: { garage: '', heard: 0, failed: [] as string[] },
   asks: {
-    accept: { args: s.object({ invitation: s.handle() }), hints: { idempotent: true } },
+    accept: { args: s.object({ invitation: s.handle() }), idempotent: true },
     tap: {},
-    opened: { args: s.reply(Door.open) },
-    heard: { hints: { readOnly: true }, result: s.integer() },
+    opened: { for: 'standing', args: s.reply(Door.open) },
+    heard: { readOnly: true, result: s.integer() },
   },
 }) {
   accept({ invitation }: Args<Remote, 'accept'>) {
@@ -423,7 +456,7 @@ import { need, s } from 'nervur/being';
 import { serve } from 'nervur/serve';
 
 export const Doorbell = need('doorbell', {
-  watch: { args: s.object({ inbox: s.handle() }), hints: { idempotent: true } },
+  watch: { args: s.object({ inbox: s.handle() }), idempotent: true },
   press: {},
 });
 
@@ -445,8 +478,7 @@ serve(Doorbell, {
 
 Its entry raises it with the faculty `bridge`, its command `node` and
 its args `["doorbell.js"]`. A faculty that needs no process of its own
-is a plain object its `up` answers instead, as the shop's payments
-are in [Writing for nervur](AUTHORING.md).
+is a class extending `Faculty` whose methods answer instead.
 
 ## Testing a faculty
 
@@ -463,7 +495,7 @@ retry is due.
 The Pi's house and the phone's each have a steward the owner pilots
 through the hand. It answers `bear`, and `offerFor`, which mints a paper
 on one of its beings for an occupant, as the shop's steward does in
-[Writing for nervur](AUTHORING.md). The phone's remote takes that paper
+[Writing a species](AUTHORING.md). The phone's remote takes that paper
 as its standing on the twin.
 
 ```ts
@@ -474,10 +506,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { Faculty, OK, type Status } from 'nervur';
 import { BenchGround, FakeNetwork } from 'nervur/bench';
 import { bridge } from 'nervur/node';
-import * as phone from './phone.ts';
-import * as pi from './pi.ts';
+
+const phone = new URL('./phone.ts', import.meta.url);
+const pi = new URL('./pi.ts', import.meta.url);
 
 test('Each tap on the phone pulses the relay once, whatever fails between', { timeout: 30_000 }, async (t) => {
   const state = mkdtempSync(join(tmpdir(), 'garage-'));
@@ -491,13 +525,22 @@ test('Each tap on the phone pulses the relay once, whatever fails between', { ti
 
   // The Pi's ground, whose registry bridges the program as a NodeGround's does, and the door's twin.
   const relay = fileURLToPath(new URL('./relay.py', import.meta.url));
-  const garage = await BenchGround.open({
-    network,
-    host: 'pi',
-    names: ['garage.local'],
-    modules: { pi },
-    registry: { faculties: { bridge: { up: ({ memory }) => bridge({ command: 'python3', args: [relay], cwd: pin, memory }) } } },
-  });
+  class Bridged extends Faculty {
+    #stop: (() => unknown) | undefined;
+    // Its blueprint and its methods are what the program describes, so only its `up` learns them.
+    override async up(): Promise<Status> {
+      const { blueprint, window, object, down } = await bridge({ command: 'python3', args: [relay], cwd: pin, memory: this.made.memory });
+      Object.assign(this, object);
+      this.blueprint = blueprint;
+      this.window = window;
+      this.#stop = down;
+      return OK;
+    }
+    override async down(): Promise<void> {
+      await this.#stop?.();
+    }
+  }
+  const garage = await BenchGround.open({ network, host: 'pi', names: ['garage.local'], modules: { pi }, registry: { faculties: { bridge: Bridged } } });
   t.after(() => garage.down());
   // The relay, granted to the twin's class alone.
   await garage.hand({ method: 'facultiesAdd', args: { name: 'relay', make: 'bridge', kinds: ['org.example.garage'] } });
@@ -576,3 +619,143 @@ the class it holds. A faculty a test does not run is an object the test
 writes, whose methods answer, throw, refuse or never answer as the test
 needs. Where no offer covers a need of a class, bearing a being of it
 fails with `no offer covers her need <member>`.
+
+## One contained faculty
+
+A faculty is one entity over its ground. Its blueprint and its hooks are
+all anyone sees of it. What it keeps lives in its own memory and in the
+cells of its twin, the being of the ground's dock that stands for its
+entry. So it moves with its ground, and runs wherever its needs are met.
+These are the opinions the library holds a faculty to.
+
+- **Declare what you take and what you need, as data.** `takes` is what
+  its entry hands it. `needs` is what it needs of its terrain, by kind,
+  as `{ packages: { apt: 'tesseract-ocr', brew: 'tesseract' } }` or
+  `{ containers: [{ image: 'redis:7' }] }`. A faculty never installs its
+  own terrain.
+- **Name its installers in its entry.** An installer is a faculty whose
+  blueprint is `Installer`. Its body lists the need kinds it meets, and
+  `meet({ kind, spec, name })` meets one. An entry names its installers
+  in order, as `installers: ['apt']`. The ground raises a faculty after
+  its installers.
+- **Needs are met before `install`, and only where install runs.** Each
+  need goes to the first installer named that meets its kind. A need no
+  installer named meets keeps the body down, naming the kind. A restart
+  meets nothing again. The library ships no installer, so one is written
+  once for each package manager, as any faculty is.
+- **Read what was met from `made.met`, never from the environment.** A
+  meet answers what it met, and the body reads it under the need's kind,
+  as `this.made.met.binaries.verdaccio`, an absolute path to spawn.
+  Nothing an installer does enters the process environment.
+- **Write only the hooks you need.** The base class answers every
+  unwritten one, so a clock writes its methods alone. `up` opens what
+  the body holds. `install` does the slow work
+  once for each entry. `migrate(from)` brings its memory to its
+  `version` before `up`, where the version its twin kept differs, forward
+  or back. `uninstall` lets go of what `install` made, once the body is
+  down and its entry removed.
+- **A body answers its health when asked.** `health()` answers `{ ok,
+  why? }`, and the hand's `faculties health` asks it. Nothing asks it on
+  a clock.
+- **Ship a `fake` and `examples` with every faculty that needs its
+  terrain.** A bench stands the fake in its place, with the same
+  blueprint and no terrain. A faculty that needs its terrain and has no
+  fake stays down on a bench. Each example names a method, its args, a
+  call id and the answer it `gives`. A static `contract(body)` throws
+  where a body breaks a promise no example can say.
+- **Test one faculty alone with `Bench.check`.** It walks the fake, and
+  the real body where the test hands its terrain in `made`. Each walk
+  installs, goes up, asks every example twice, goes down and up again on
+  the same memory, asks each once more, and uninstalls. So the stand-in
+  every other test stands is proven equal to the real one.
+- **Use a faculty in a test with `Bench.raise`.** It installs and raises
+  the faculty as a ground does, never its fake, and answers its body. A
+  test calls the body's methods and lets it go with `body.down()`.
+- **Prefer a WASM component where the faculty only computes and speaks
+  over the network.** It holds only what its host grants it, so it runs
+  on any ground. A faculty that drives a device, a native library or
+  another program stays native, over the bridge.
+
+The relay, contained, declares what its entry hands it, what it needs of
+the Pi, its version, its stand-in and its examples. Its entry names the
+installer that meets its need, as `installers: ['apt']`.
+
+```ts
+// The relay as one contained faculty: what its entry hands it, what it
+// needs of the Pi, its version, the stand-in a bench raises in its place,
+// and the examples the relay and its stand-in both answer. The ground
+// meets its need through an installer its entry names, then raises it.
+import { fileURLToPath } from 'node:url';
+import { Faculty, OK, type FacultyContext, type Status } from 'nervur';
+import { s, type Json } from 'nervur/being';
+import { bridge } from 'nervur/node';
+import { Relay } from './garage.ts';
+
+const program = fileURLToPath(new URL('./relay.py', import.meta.url));
+
+/** The bench's relay: the same blueprint, a count kept in the process, no pin and no Python. */
+export class FakeRelay extends Faculty {
+  static override readonly blueprint = Relay;
+  readonly #seen = new Map<string, number>();
+
+  async pulse(_args: Json, { id }: FacultyContext) {
+    if (!this.#seen.has(id)) this.#seen.set(id, this.#seen.size + 1);
+    return { result: this.#seen.get(id)! };
+  }
+}
+
+/** The relay: the Python program behind the bridge, started at its `up` and stopped at its `down`. */
+export class RelayFaculty extends Faculty {
+  static override readonly blueprint = Relay;
+  static override readonly takes = { args: s.object({ folder: s.string() }) };
+  static override readonly needs = { packages: { apt: 'python3', brew: 'python' } };
+  static override readonly version = '1';
+  static override readonly fake = FakeRelay;
+  // A pulse answers its count, and a call id sent again answers the count it gave.
+  static override readonly examples = [
+    { method: 'pulse', id: 'one', gives: { result: 1 } },
+    { method: 'pulse', id: 'two', gives: { result: 2 } },
+  ];
+  #program: { pulse(args: Json, context: FacultyContext): Promise<unknown>; stop(): unknown } | undefined;
+
+  override async up(): Promise<Status> {
+    const { object, down } = await bridge({ command: 'python3', args: [program], cwd: this.made.args.folder as string, memory: this.made.memory });
+    this.#program = { pulse: (object as { pulse: (args: Json, context: FacultyContext) => Promise<unknown> }).pulse, stop: () => down?.() };
+    return OK;
+  }
+
+  pulse(args: Json, context: FacultyContext): Promise<unknown> {
+    return this.#program!.pulse(args, context);
+  }
+
+  override async down(): Promise<void> {
+    await this.#program?.stop();
+  }
+}
+```
+
+One test walks the relay and its stand-in with `Bench.check`.
+
+```ts
+// relay.test.ts
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { Bench } from 'nervur/bench';
+import { RelayFaculty } from './relay.ts';
+
+test('The relay and its stand-in answer its examples alike', { timeout: 30_000 }, async (t) => {
+  const folder = mkdtempSync(join(tmpdir(), 'relay-'));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  const findings = await Bench.check(RelayFaculty, { made: { args: { folder } } });
+  assert.ok(findings.some(({ what }) => what.startsWith('its fake: ')) && findings.some(({ what }) => what.startsWith('the faculty: ')), 'both were walked');
+  assert.equal(readFileSync(join(folder, 'pulses'), 'utf8').trim().split('\n').length, 2, 'the real relay pulsed twice, since each call id came three times');
+});
+```
+
+Each example is asked, asked again with its call id, and asked once more
+after a restart on the same memory. The real relay pulses twice for six
+asks, and the fake answers each the same way. So every other test of the
+garage may stand the fake, and a bench never needs the Pi.

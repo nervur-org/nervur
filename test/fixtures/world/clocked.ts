@@ -2,7 +2,7 @@
 import { Being, s, need, type Args } from 'nervur/being';
 
 export const Fx = need('fx', {
-  rate: { args: s.object({ pair: s.string() }), result: s.object({ rate: s.number() }), hints: { readOnly: true } },
+  rate: { args: s.object({ pair: s.string() }), result: s.object({ rate: s.number() }), readOnly: true },
   book: { args: s.object({ pair: s.string(), amount: s.number() }) },
 });
 
@@ -11,12 +11,12 @@ export class Clocked extends Being.of({
   needs: { fx: Fx },
   cells: { last: 0 },
   asks: {
-    quote: { args: s.object({ pair: s.string() }), result: s.object({ rate: s.number() }), hints: { idempotent: true } },
-    booked: { args: s.reply(Fx.book) },
+    quote: { args: s.object({ pair: s.string() }), result: s.object({ rate: s.number() }), idempotent: true },
+    booked: { for: 'fx', args: s.reply(Fx.book) },
   },
 }) {
   async quote({ pair }: Args<Clocked, 'quote'>) {
-    const { rate } = await this.fx.rate({ pair });
+    const { rate } = this.must(await this.fx.rate({ pair }));
     this.cells.last = rate;
     this.fx.book({ pair, amount: rate }, { reply: 'booked' });
     return { rate };
